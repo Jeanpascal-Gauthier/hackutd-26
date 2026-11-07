@@ -900,9 +900,9 @@
     "fireStartMinute": 0,
     "notes": [
       "Fire starts in 7-break: ordinary (unrated) door, open, sprinkler impaired.",
-      "7-hall connects to 7-stair-b through a 60-min rated door that is propped OPEN (link.closed=false) and verticals[stair-b].doorsClosed=false: smoke enters stair B and rises to floors 8-12.",
+      "7-hall connects to 7-stair-b through a 60-min rated door that is propped OPEN (link.closed=false; verticals[stair-b].doorsClosed=false). Smoke enters stair B, rises and pools at the top: stair B is smoke-logged on floors 7-12 by about minute 11-17.",
       "Stair A and the elevator have rated doors that are closed (link.closed=true, doorsClosed=true): they stay smoke-free until a door is opened or a rating (60 min) is exceeded.",
-      "10-east holds 6 occupants including a mobility-limited person; it is reached by smoke via 10-stair-b first."
+      "10-east holds 6 occupants including a mobility-limited person; their nearest stair (B) fills with smoke, so they must use stair A."
     ]
   }
 }
