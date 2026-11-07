@@ -5,7 +5,7 @@
 export const COEFFICIENTS = {
   /** Smoke transfer rate per link type (per minute). */
   smoke: {
-    openDoor: 0.3,
+    openDoor: 0.7,
     closedDoor: 0.1, // closed, not fire-rated
     closedFireRatedDoor: 0.03,
     wall: 0.02, // leakage only
@@ -25,8 +25,13 @@ export const COEFFICIENTS = {
   ignitionThreshold: 0.2,
   /** Fraction of remaining headroom a burning room gains each minute. */
   fireGrowth: 0.25,
-  /** Smoke produced per minute = this x room fire (applied to remaining headroom). */
-  smokeProduction: 0.5,
+  /** Smoke produced per minute = this x room fire (a fire overfills its room; excess pushes out). */
+  smokeProduction: 1.0,
+
+  /** Smoke transfer is split into this many substeps per minute (numerical stability only). */
+  smokeSubsteps: 6,
+  /** A stairwell is "clear" on a floor while its smoke stays below this. */
+  clearThreshold: 0.3,
 
   /** Working sprinklers: growth multiplier, hard cap, and decay per minute. */
   sprinkler: { growthMultiplier: 0.2, fireCap: 0.35, decay: 0.05 },
