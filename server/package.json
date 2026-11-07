@@ -8,7 +8,8 @@
     "start": "tsx --env-file-if-exists=../.env src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test src/*/*.test.ts",
-    "verify": "tsx src/mock/verify.ts"
+    "verify": "tsx src/mock/verify.ts",
+    "verify:live": "tsx src/live/verify.ts"
   },
   "dependencies": {
     "@firewatch/shared": "*",
