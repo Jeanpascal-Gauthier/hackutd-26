@@ -5,6 +5,11 @@ import type { Recommendation, TrailStep } from "@firewatch/shared/types";
 export interface IngestInput {
   text: string;
   caller: string;
+  /**
+   * Set when the caller (e.g. the agent running as its own process) already located the report.
+   * The server then skips its ReportProcessor and uses these fields as the result.
+   */
+  preprocessed?: ProcessResult;
 }
 
 export interface ProcessResult {

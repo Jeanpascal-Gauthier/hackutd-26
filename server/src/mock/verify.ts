@@ -1,4 +1,4 @@
-// Verification script: starts the server (mock, no autoplay) and checks the contract.
+// Mock-mode end-to-end check: scripted calls replay through the real pipeline.
 //   npm run verify -w server
 import { spawn } from "node:child_process";
 import assert from "node:assert/strict";
@@ -9,7 +9,7 @@ import type { IncidentState } from "@firewatch/shared/types";
 const PORT = 18080;
 const base = `http://localhost:${PORT}`;
 const server = spawn("npx", ["tsx", "src/index.ts"], {
-  env: { ...process.env, PORT: String(PORT), AUTOPLAY: "0", MOCK: "1" },
+  env: { ...process.env, PORT: String(PORT), AUTOPLAY: "0", MOCK: "1", TICK_MS: "60" },
   stdio: "ignore",
 });
 
@@ -25,8 +25,14 @@ async function client(name: string) {
   return { name, ws, states, last: () => states[states.length - 1]! };
 }
 
+async function waitFor(what: string, pred: () => boolean, ms = 5000) {
+  for (const end = Date.now() + ms; Date.now() < end; await sleep(20)) if (pred()) return;
+  throw new Error(`timed out waiting for: ${what}`);
+}
+
 const post = (path: string, body?: unknown) =>
   fetch(base + path, { method: "POST", headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+const room = (s: IncidentState, id: string) => s.rooms.find((r) => r.roomId === id)!;
 
 async function main() {
   for (let i = 0; i < 50; i++) {
@@ -38,29 +44,51 @@ async function main() {
   const b = await client("B");
   assert.equal(a.states.length, 1, "A gets full state on connect");
   assert.equal(a.last().simMinute, 0);
-  console.log("ok  both clients got initial state at minute 0");
+  assert.equal(a.last().rooms.length, 108);
+  assert.equal(a.last().origin, undefined, "no fire before replay");
+  console.log("ok  both clients got initial state: minute 0, 108 rooms, no fire");
+
+  assert.equal((await post("/mock/replay")).status, 200);
+  // The origin and the demo trail arrive in two consecutive broadcasts: wait for both.
+  await waitFor("first scripted call", () => a.last().origin?.roomId === "7-break" && (a.last().trail?.length ?? 0) >= 5);
+  assert.ok(room(a.last(), "7-break").fire > 0);
+  assert.ok(a.last().recommendation?.actions.length, "real recommendation");
+  assert.deepEqual(a.last().trail?.map((t) => t.tool), ["locate_room", "merge_reports", "run_spread", "find_clear_exits", "write_recommendation"]);
+  console.log("ok  replay: scripted call -> origin 7-break, recommendation, 5-step trail");
+
+  await waitFor("all scripted calls delivered", () => a.last().simMinute >= 13);
+  assert.equal(a.last().reports.length, 4);
+  assert.equal(a.last().reports.filter((r) => !r.roomId).length, 1, "the vague call stays unlocated");
+  assert.equal(a.last().origin?.roomId, "7-break", "later smoke reports above support the origin");
+  assert.ok(a.last().origin!.confidence > 0.8);
+  console.log(`ok  4 scripted calls; origin 7-break @ ${a.last().origin!.confidence}; trail ${a.last().trail!.length} steps`);
+
+  await waitFor("replay reaches minute 30", () => a.last().simMinute === 30);
+  await sleep(200);
+  assert.equal(a.last().simMinute, 30, "replay stops at 30");
+  assert.ok(room(a.last(), "12-stair-b").smoke >= 0.3 && room(a.last(), "12-stair-a").smoke < 0.3);
+  await waitFor("both clients in sync", () => JSON.stringify(a.last()) === JSON.stringify(b.last()), 1000);
+  assert.deepEqual(a.last(), b.last(), "both clients see identical state");
+  console.log("ok  replay stopped at minute 30; stair B smoky, stair A clear; clients identical");
 
   a.ws.send(JSON.stringify({ type: "setSimMinute", minute: 4 }));
   await sleep(150);
-  assert.deepEqual(a.last(), b.last(), "both clients see identical state");
   assert.equal(b.last().simMinute, 4);
-  assert.ok(b.last().rooms.find((r) => r.roomId === "7-break")!.fire > 0.5);
-  assert.ok(b.last().recommendation, "recommendation scripted at minute 3");
-  console.log("ok  setSimMinute broadcast identically to both clients (7-break burning)");
+  assert.ok(room(b.last(), "7-break").fire > 0.5);
+  console.log("ok  setSimMinute scrubs the forecast for everyone");
 
   a.ws.send(JSON.stringify({ type: "acceptRecommendation" }));
   await sleep(150);
   assert.equal(b.last().recommendation, undefined);
   console.log("ok  acceptRecommendation consumed and broadcast");
 
-  const bad = await post("/ingest", { text: "", caller: 5 });
-  assert.equal(bad.status, 400);
-  assert.equal((await post("/ingest", { text: "x", caller: "y" })).status, 200);
+  assert.equal((await post("/ingest", { text: "", caller: 5 })).status, 400);
+  const good = await post("/ingest", { text: "smoke on floor 5 in the conference room", caller: "y" });
+  assert.equal(good.status, 200);
   await sleep(100);
-  assert.ok(b.last().reports.some((r) => r.text === "x"));
+  assert.ok(b.last().reports.some((r) => r.roomId === "5-conf"));
   console.log("ok  /ingest rejects bad input, accepts good input, broadcasts report");
 
-  // Reconnect: B drops, state changes meanwhile, B returns and gets the *current* state.
   b.ws.close();
   await sleep(100);
   a.ws.send(JSON.stringify({ type: "setSimMinute", minute: 7 }));
@@ -72,11 +100,12 @@ async function main() {
   console.log("ok  reconnecting client immediately receives current state");
 
   assert.equal((await post("/mock/reset")).status, 200);
-  await sleep(100);
-  assert.equal(a.last().simMinute, 0);
-  assert.deepEqual(a.last(), b2.last());
+  await waitFor("reset reaches both clients", () => a.last().simMinute === 0 && b2.last().simMinute === 0);
   assert.equal(a.last().reports.length, 0);
-  console.log("ok  /mock/reset returned everyone to minute 0");
+  assert.equal(a.last().trail?.length, 0);
+  assert.equal(a.last().origin, undefined);
+  assert.deepEqual(a.last(), b2.last());
+  console.log("ok  /mock/reset returned everyone to minute 0, no fire");
   console.log("ALL PASSED");
 }
 

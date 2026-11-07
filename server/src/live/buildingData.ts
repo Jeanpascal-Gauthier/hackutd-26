@@ -15,6 +15,8 @@ const meta = JSON.parse(
 ) as Meta;
 
 export const building = sharedBuilding as Building;
+/** Sprinkler status per room id. */
+export const sprinklers: Record<string, "active" | "impaired" | "none"> = meta.sprinklers;
 /** Rooms whose sprinklers work (impaired and none excluded). */
 export const sprinklerRooms: string[] = Object.entries(meta.sprinklers)
   .filter(([, status]) => status === "active")

@@ -1,32 +1,84 @@
-// HTTP: POST /ingest (validated, handed to the ReportProcessor), GET /health, mock controls.
+// HTTP API (see server/API.md):
+//   POST /ingest      report in (optionally with the agent's own result) -> shared ingest path
+//   GET  /state       current IncidentState          GET /building  building + occupants + sprinklers
+//   POST /forecast    what-if forecast from an origin, state unchanged (agent tools)
+//   GET  /health      POST /live/reset      POST /mock/reset, /mock/replay (mock mode)
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { randomUUID } from "node:crypto";
-import type { IncidentStore } from "../state/store.ts";
-import type { IngestInput, ProcessResult, ReportProcessor } from "../state/processor.ts";
+import type { Building, IncidentState, Occupant, Recommendation, TrailStep } from "@firewatch/shared/types";
+import type { Forecast } from "../live/forecast.ts";
+import type { IngestInput, ProcessResult } from "../state/processor.ts";
+import type { Ingest } from "../state/ingest.ts";
 
-const MAX_BODY = 16 * 1024;
+const MAX_BODY = 256 * 1024; // room for an agent trail
+const MAX_TRAIL = 50;
+const MAX_ACTIONS = 5;
 const MAX_TEXT = 2000;
 const MAX_CALLER = 100;
 
 export interface HttpDeps {
-  store: IncidentStore;
-  getProcessor: () => ReportProcessor;
-  /** Present only in mock mode: POST /mock/reset and /mock/replay. */
+  ingest: Ingest;
+  getState(): IncidentState;
+  buildingInfo: { building: Building; occupants: Occupant[]; sprinklers: Record<string, string> };
+  /** Runs a forecast without touching incident state. Throws on an unknown origin. */
+  forecast(origin: string, minutes: number): Forecast;
+  /** POST /live/reset: clear the incident (no fire, no reports). Also stops a running demo. */
+  resetLive(): void;
+  /** Present only in mock mode: POST /mock/reset and /mock/replay drive the scripted demo. */
   mock?: { reset(): void; replay(): void };
-  /** Present only in live mode: POST /live/reset, and told about every ingested report. */
-  live?: { reset(): void; onReport(result: ProcessResult): void };
+}
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const isStr = (v: unknown, max: number) => typeof v === "string" && v.trim() !== "" && v.length <= max;
+
+/**
+ * Optional fields an agent sends when it already did the work: roomId, confidence,
+ * recommendation, trail, reply. Returns undefined when none are present.
+ */
+function validateAgentResult(b: Record<string, unknown>, roomIds: ReadonlySet<string>, errors: string[]): ProcessResult | undefined {
+  const keys = ["roomId", "confidence", "recommendation", "trail", "reply"] as const;
+  if (!keys.some((k) => b[k] !== undefined)) return undefined;
+  const out: ProcessResult = {};
+
+  if (b.roomId !== undefined) {
+    if (typeof b.roomId === "string" && roomIds.has(b.roomId)) out.roomId = b.roomId;
+    else errors.push("`roomId` must be a room id from shared/building.json");
+  }
+  if (b.confidence !== undefined) {
+    if (typeof b.confidence === "number" && b.confidence >= 0 && b.confidence <= 1) out.confidence = b.confidence;
+    else errors.push("`confidence` must be a number from 0 to 1");
+  }
+  if (out.roomId && out.confidence === undefined) errors.push("`confidence` is required with `roomId`");
+  if (b.recommendation !== undefined) {
+    const r = b.recommendation;
+    if (isObj(r) && Array.isArray(r.actions) && r.actions.length >= 1 && r.actions.length <= MAX_ACTIONS && r.actions.every((a) => isStr(a, 300)) && (r.callerReply === undefined || isStr(r.callerReply, MAX_TEXT)))
+      out.recommendation = { actions: r.actions as string[], ...(r.callerReply !== undefined && { callerReply: r.callerReply as string }) } satisfies Recommendation;
+    else errors.push(`\`recommendation\` must be { actions: 1-${MAX_ACTIONS} strings, callerReply?: string }`);
+  }
+  if (b.trail !== undefined) {
+    const t = b.trail;
+    if (Array.isArray(t) && t.length <= MAX_TRAIL && t.every((s) => isObj(s) && isStr(s.tool, 100) && typeof s.ms === "number"))
+      out.trail = t.map((s) => ({ tool: s.tool, input: s.input ?? null, output: s.output ?? null, ms: s.ms }) as TrailStep);
+    else errors.push(`\`trail\` must be at most ${MAX_TRAIL} steps of { tool: string, input, output, ms: number }`);
+  }
+  if (b.reply !== undefined) {
+    if (isStr(b.reply, MAX_TEXT)) out.reply = b.reply as string;
+    else errors.push(`\`reply\` must be a non-empty string of at most ${MAX_TEXT} characters`);
+  }
+  return out;
 }
 
 /** Returns validated input or a list of problems. */
-export function validateIngest(body: unknown): IngestInput | string[] {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) return ["body must be a JSON object"];
-  const { text, caller } = body as Record<string, unknown>;
+export function validateIngest(body: unknown, roomIds: ReadonlySet<string> = new Set()): IngestInput | string[] {
+  if (!isObj(body)) return ["body must be a JSON object"];
+  const { text, caller } = body;
   const errors: string[] = [];
   if (typeof text !== "string" || text.trim() === "") errors.push("`text` must be a non-empty string");
   else if (text.length > MAX_TEXT) errors.push(`\`text\` must be at most ${MAX_TEXT} characters`);
   if (typeof caller !== "string" || caller.trim() === "") errors.push("`caller` must be a non-empty string");
   else if (caller.length > MAX_CALLER) errors.push(`\`caller\` must be at most ${MAX_CALLER} characters`);
-  return errors.length ? errors : { text: (text as string).trim(), caller: (caller as string).trim() };
+  const preprocessed = validateAgentResult(body, roomIds, errors);
+  if (errors.length) return errors;
+  return { text: (text as string).trim(), caller: (caller as string).trim(), ...(preprocessed && { preprocessed }) };
 }
 
 function json(res: ServerResponse, status: number, body: unknown) {
@@ -53,15 +105,48 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
-export function createHttpServer({ store, getProcessor, mock, live }: HttpDeps) {
+async function readJson(req: IncomingMessage, res: ServerResponse): Promise<{ ok: true; body: unknown } | { ok: false }> {
+  let raw: string;
+  try {
+    raw = await readBody(req);
+  } catch {
+    json(res, 413, { ok: false, error: "body too large" });
+    return { ok: false };
+  }
+  try {
+    return { ok: true, body: JSON.parse(raw) };
+  } catch {
+    json(res, 400, { ok: false, error: "invalid JSON" });
+    return { ok: false };
+  }
+}
+
+export function createHttpServer({ ingest, getState, buildingInfo, forecast, resetLive, mock }: HttpDeps) {
+  const roomIds = new Set(buildingInfo.building.rooms.map((r) => r.id));
   return createServer(async (req, res) => {
-    const { method, url } = req;
+    const method = req.method;
+    const url = (req.url ?? "").split("?")[0];
     if (method === "OPTIONS") return json(res, 204, null);
     if (method === "GET" && url === "/health") return json(res, 200, { ok: true, mock: !!mock });
+    if (method === "GET" && url === "/state") return json(res, 200, getState());
+    if (method === "GET" && url === "/building") return json(res, 200, buildingInfo);
+
+    if (method === "POST" && url === "/forecast") {
+      const r = await readJson(req, res);
+      if (!r.ok) return;
+      const b = isObj(r.body) ? r.body : {};
+      const minutes = b.minutes ?? 30;
+      if (typeof b.origin !== "string" || !roomIds.has(b.origin))
+        return json(res, 400, { ok: false, errors: ["`origin` must be a room id from shared/building.json"] });
+      if (typeof minutes !== "number" || !Number.isInteger(minutes) || minutes < 1 || minutes > 60)
+        return json(res, 400, { ok: false, errors: ["`minutes` must be an integer from 1 to 60"] });
+      const f = forecast(b.origin, minutes);
+      // Snapshots are left out (108 rooms x 31 minutes); the summary and exits are what tools need.
+      return json(res, 200, { ok: true, origin: f.origin, minutes: f.minutes, summary: f.summary, exits: f.exits, recommendation: f.recommendation });
+    }
 
     if (method === "POST" && url === "/live/reset") {
-      if (!live) return json(res, 404, { ok: false, error: "live mode is off (start with MOCK=0)" });
-      live.reset();
+      resetLive();
       return json(res, 200, { ok: true });
     }
 
@@ -72,36 +157,13 @@ export function createHttpServer({ store, getProcessor, mock, live }: HttpDeps) 
     }
 
     if (method === "POST" && url === "/ingest") {
-      let body: string;
-      try {
-        body = await readBody(req);
-      } catch {
-        return json(res, 413, { ok: false, error: "body too large" });
-      }
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(body);
-      } catch {
-        return json(res, 400, { ok: false, error: "invalid JSON" });
-      }
-      const input = validateIngest(parsed);
+      const r = await readJson(req, res);
+      if (!r.ok) return;
+      const input = validateIngest(r.body, roomIds);
       if (Array.isArray(input)) return json(res, 400, { ok: false, errors: input });
 
       try {
-        const result = await getProcessor()(input);
-        const report = {
-          id: randomUUID(),
-          caller: input.caller,
-          text: input.text,
-          roomId: result.roomId,
-          confidence: result.confidence,
-          time: Date.now(),
-        };
-        store.addReport(report);
-        if (result.trail?.length) store.patch({ trail: [...(store.get().trail ?? []), ...result.trail] });
-        if (live) live.onReport(result);
-        else if (result.recommendation) store.setRecommendation(result.recommendation);
-        const reply = result.reply ?? store.get().recommendation?.callerReply;
+        const { report, reply } = await ingest(input);
         return json(res, 200, { ok: true, report, reply });
       } catch (err) {
         console.error("[ingest] processor failed", err);

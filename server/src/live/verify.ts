@@ -65,6 +65,43 @@ async function main() {
   assert.equal(st().simMinute, 20, "a new report keeps the scrub position");
   console.log(`ok  floor-10 report: origin stays 7-break, confidence ${before} -> ${st().origin!.confidence}`);
 
+  const building = await (await fetch(base + "/building")).json() as Record<string, any>;
+  assert.equal(building.building.rooms.length, 108);
+  assert.equal(building.sprinklers["7-break"], "impaired");
+  assert.ok(building.occupants.length > 0);
+  const remote = await (await fetch(base + "/state")).json() as IncidentState;
+  assert.deepEqual(remote, st(), "GET /state matches the WebSocket state");
+  console.log("ok  GET /building and GET /state");
+
+  const before2 = JSON.stringify(st());
+  const fc = await post("/forecast", { origin: "5-conf" });
+  assert.equal(fc.ok, true);
+  assert.ok(fc.summary.floorsAtRisk.includes(5));
+  assert.ok(Array.isArray(fc.exits) && fc.recommendation.actions.length);
+  assert.equal(fc.snapshots, undefined, "snapshots are not sent");
+  await sleep(100);
+  assert.equal(JSON.stringify(st()), before2, "forecast does not change incident state");
+  assert.equal((await post("/forecast", { origin: "nope" })).ok, false);
+  console.log(`ok  POST /forecast (what-if 5-conf): floors at risk ${fc.summary.floorsAtRisk.join(",")}; state unchanged`);
+
+  const agentRec = { actions: ["Agent: evacuate floors 7-12 by Stairwell A"], callerReply: "Agent reply" };
+  const pre = await post("/ingest", {
+    caller: "agent-test",
+    text: "it's coming from the kitchen area on seven",
+    roomId: "7-break",
+    confidence: 0.9,
+    recommendation: agentRec,
+    trail: [{ tool: "locate_room", input: { text: "kitchen on seven" }, output: { roomId: "7-break", confidence: 0.9 }, ms: 350 }],
+    reply: "Agent says: leave by Stairwell A",
+  });
+  await sleep(100);
+  assert.equal(pre.report.roomId, "7-break");
+  assert.equal(pre.report.confidence, 0.9, "agent's confidence kept, not the locator's");
+  assert.equal(pre.reply, "Agent says: leave by Stairwell A");
+  assert.deepEqual(st().recommendation, agentRec, "agent recommendation wins");
+  assert.equal(st().trail?.at(-1)?.tool, "locate_room");
+  console.log("ok  /ingest with an agent result skips the locator; agent recommendation, reply and trail used");
+
   ws.send(JSON.stringify({ type: "acceptRecommendation" }));
   await sleep(100);
   assert.equal(st().recommendation, undefined);
