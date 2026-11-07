@@ -1,0 +1,14 @@
+# Paradev workspace config: makes every new workspace come up ready.
+
+[install]
+run = ["npm install"]
+
+[setup]
+# Link the main checkout's .env (real secrets) into this workspace, so every
+# workspace shares one file. Fall back to a blank copy of .env.example if the
+# main checkout has no .env yet.
+run = ['if [ -f "$SUPERSET_ROOT_PATH/.env" ]; then ln -sfn "$SUPERSET_ROOT_PATH/.env" .env; elif [ ! -e .env ]; then cp .env.example .env; fi']
+
+[terminals.dev]
+run = "npm run dev"
+default = true
