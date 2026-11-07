@@ -6,7 +6,8 @@
   "scripts": {
     "generate": "tsx generate.ts",
     "validate": "tsx validate.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test building.test.ts"
   },
   "dependencies": {
     "@firewatch/shared": "*"

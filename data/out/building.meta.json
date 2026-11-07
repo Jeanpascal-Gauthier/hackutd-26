@@ -1,0 +1,908 @@
+{
+  "seed": 26,
+  "floors": 12,
+  "doors": [
+    {
+      "a": "1-hall",
+      "b": "1-break",
+      "ratingMinutes": 0
+    },
+    {
+      "a": "1-hall",
+      "b": "1-east",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "1-hall",
+      "b": "1-west",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "1-hall",
+      "b": "1-office",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "1-hall",
+      "b": "1-conf",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "1-hall",
+      "b": "1-stair-a",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "1-hall",
+      "b": "1-stair-b",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "1-hall",
+      "b": "1-elev-1",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "2-hall",
+      "b": "2-break",
+      "ratingMinutes": 0
+    },
+    {
+      "a": "2-hall",
+      "b": "2-east",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "2-hall",
+      "b": "2-west",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "2-hall",
+      "b": "2-office",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "2-hall",
+      "b": "2-conf",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "2-hall",
+      "b": "2-storage",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "2-hall",
+      "b": "2-stair-a",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "2-hall",
+      "b": "2-stair-b",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "2-hall",
+      "b": "2-elev-1",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "3-hall",
+      "b": "3-break",
+      "ratingMinutes": 0
+    },
+    {
+      "a": "3-hall",
+      "b": "3-east",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "3-hall",
+      "b": "3-west",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "3-hall",
+      "b": "3-office",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "3-hall",
+      "b": "3-stair-a",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "3-hall",
+      "b": "3-stair-b",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "3-hall",
+      "b": "3-elev-1",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "4-hall",
+      "b": "4-break",
+      "ratingMinutes": 0
+    },
+    {
+      "a": "4-hall",
+      "b": "4-east",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "4-hall",
+      "b": "4-west",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "4-hall",
+      "b": "4-office",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "4-hall",
+      "b": "4-conf",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "4-hall",
+      "b": "4-stair-a",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "4-hall",
+      "b": "4-stair-b",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "4-hall",
+      "b": "4-elev-1",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "5-hall",
+      "b": "5-break",
+      "ratingMinutes": 0
+    },
+    {
+      "a": "5-hall",
+      "b": "5-east",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "5-hall",
+      "b": "5-west",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "5-hall",
+      "b": "5-office",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "5-hall",
+      "b": "5-conf",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "5-hall",
+      "b": "5-storage",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "5-hall",
+      "b": "5-stair-a",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "5-hall",
+      "b": "5-stair-b",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "5-hall",
+      "b": "5-elev-1",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "6-hall",
+      "b": "6-break",
+      "ratingMinutes": 0
+    },
+    {
+      "a": "6-hall",
+      "b": "6-east",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "6-hall",
+      "b": "6-west",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "6-hall",
+      "b": "6-office",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "6-hall",
+      "b": "6-stair-a",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "6-hall",
+      "b": "6-stair-b",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "6-hall",
+      "b": "6-elev-1",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "7-hall",
+      "b": "7-break",
+      "ratingMinutes": 0
+    },
+    {
+      "a": "7-hall",
+      "b": "7-east",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "7-hall",
+      "b": "7-west",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "7-hall",
+      "b": "7-office",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "7-hall",
+      "b": "7-conf",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "7-hall",
+      "b": "7-stair-a",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "7-hall",
+      "b": "7-stair-b",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "7-hall",
+      "b": "7-elev-1",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "8-hall",
+      "b": "8-break",
+      "ratingMinutes": 0
+    },
+    {
+      "a": "8-hall",
+      "b": "8-east",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "8-hall",
+      "b": "8-west",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "8-hall",
+      "b": "8-office",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "8-hall",
+      "b": "8-conf",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "8-hall",
+      "b": "8-storage",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "8-hall",
+      "b": "8-stair-a",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "8-hall",
+      "b": "8-stair-b",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "8-hall",
+      "b": "8-elev-1",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "9-hall",
+      "b": "9-break",
+      "ratingMinutes": 0
+    },
+    {
+      "a": "9-hall",
+      "b": "9-east",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "9-hall",
+      "b": "9-west",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "9-hall",
+      "b": "9-office",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "9-hall",
+      "b": "9-stair-a",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "9-hall",
+      "b": "9-stair-b",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "9-hall",
+      "b": "9-elev-1",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "10-hall",
+      "b": "10-break",
+      "ratingMinutes": 0
+    },
+    {
+      "a": "10-hall",
+      "b": "10-east",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "10-hall",
+      "b": "10-west",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "10-hall",
+      "b": "10-office",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "10-hall",
+      "b": "10-conf",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "10-hall",
+      "b": "10-stair-a",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "10-hall",
+      "b": "10-stair-b",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "10-hall",
+      "b": "10-elev-1",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "11-hall",
+      "b": "11-break",
+      "ratingMinutes": 0
+    },
+    {
+      "a": "11-hall",
+      "b": "11-east",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "11-hall",
+      "b": "11-west",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "11-hall",
+      "b": "11-office",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "11-hall",
+      "b": "11-conf",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "11-hall",
+      "b": "11-storage",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "11-hall",
+      "b": "11-stair-a",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "11-hall",
+      "b": "11-stair-b",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "11-hall",
+      "b": "11-elev-1",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "12-hall",
+      "b": "12-break",
+      "ratingMinutes": 0
+    },
+    {
+      "a": "12-hall",
+      "b": "12-east",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "12-hall",
+      "b": "12-west",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "12-hall",
+      "b": "12-office",
+      "ratingMinutes": 20
+    },
+    {
+      "a": "12-hall",
+      "b": "12-stair-a",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "12-hall",
+      "b": "12-stair-b",
+      "ratingMinutes": 60
+    },
+    {
+      "a": "12-hall",
+      "b": "12-elev-1",
+      "ratingMinutes": 60
+    }
+  ],
+  "sprinklers": {
+    "1-hall": "active",
+    "1-break": "active",
+    "1-east": "active",
+    "1-west": "active",
+    "1-office": "active",
+    "1-conf": "active",
+    "1-stair-a": "none",
+    "1-stair-b": "none",
+    "1-elev-1": "none",
+    "2-hall": "active",
+    "2-break": "active",
+    "2-east": "active",
+    "2-west": "active",
+    "2-office": "active",
+    "2-conf": "active",
+    "2-storage": "active",
+    "2-stair-a": "none",
+    "2-stair-b": "none",
+    "2-elev-1": "none",
+    "3-hall": "active",
+    "3-break": "active",
+    "3-east": "active",
+    "3-west": "active",
+    "3-office": "active",
+    "3-stair-a": "none",
+    "3-stair-b": "none",
+    "3-elev-1": "none",
+    "4-hall": "active",
+    "4-break": "active",
+    "4-east": "active",
+    "4-west": "active",
+    "4-office": "active",
+    "4-conf": "active",
+    "4-stair-a": "none",
+    "4-stair-b": "none",
+    "4-elev-1": "none",
+    "5-hall": "active",
+    "5-break": "active",
+    "5-east": "active",
+    "5-west": "active",
+    "5-office": "active",
+    "5-conf": "active",
+    "5-storage": "active",
+    "5-stair-a": "none",
+    "5-stair-b": "none",
+    "5-elev-1": "none",
+    "6-hall": "active",
+    "6-break": "active",
+    "6-east": "active",
+    "6-west": "active",
+    "6-office": "active",
+    "6-stair-a": "none",
+    "6-stair-b": "none",
+    "6-elev-1": "none",
+    "7-hall": "active",
+    "7-break": "impaired",
+    "7-east": "active",
+    "7-west": "active",
+    "7-office": "active",
+    "7-conf": "active",
+    "7-stair-a": "none",
+    "7-stair-b": "none",
+    "7-elev-1": "none",
+    "8-hall": "active",
+    "8-break": "active",
+    "8-east": "active",
+    "8-west": "active",
+    "8-office": "active",
+    "8-conf": "active",
+    "8-storage": "active",
+    "8-stair-a": "none",
+    "8-stair-b": "none",
+    "8-elev-1": "none",
+    "9-hall": "active",
+    "9-break": "active",
+    "9-east": "active",
+    "9-west": "active",
+    "9-office": "active",
+    "9-stair-a": "none",
+    "9-stair-b": "none",
+    "9-elev-1": "none",
+    "10-hall": "active",
+    "10-break": "active",
+    "10-east": "active",
+    "10-west": "active",
+    "10-office": "active",
+    "10-conf": "active",
+    "10-stair-a": "none",
+    "10-stair-b": "none",
+    "10-elev-1": "none",
+    "11-hall": "active",
+    "11-break": "active",
+    "11-east": "active",
+    "11-west": "active",
+    "11-office": "active",
+    "11-conf": "active",
+    "11-storage": "active",
+    "11-stair-a": "none",
+    "11-stair-b": "none",
+    "11-elev-1": "none",
+    "12-hall": "active",
+    "12-break": "active",
+    "12-east": "active",
+    "12-west": "active",
+    "12-office": "active",
+    "12-stair-a": "none",
+    "12-stair-b": "none",
+    "12-elev-1": "none"
+  },
+  "occupants": [
+    {
+      "room": "1-break",
+      "count": 6,
+      "flags": []
+    },
+    {
+      "room": "1-conf",
+      "count": 9,
+      "flags": []
+    },
+    {
+      "room": "1-east",
+      "count": 2,
+      "flags": []
+    },
+    {
+      "room": "1-office",
+      "count": 9,
+      "flags": [
+        "child"
+      ]
+    },
+    {
+      "room": "1-west",
+      "count": 10,
+      "flags": []
+    },
+    {
+      "room": "2-break",
+      "count": 2,
+      "flags": []
+    },
+    {
+      "room": "2-conf",
+      "count": 8,
+      "flags": []
+    },
+    {
+      "room": "2-east",
+      "count": 8,
+      "flags": [
+        "mobility"
+      ]
+    },
+    {
+      "room": "2-office",
+      "count": 7,
+      "flags": []
+    },
+    {
+      "room": "2-west",
+      "count": 4,
+      "flags": []
+    },
+    {
+      "room": "3-break",
+      "count": 2,
+      "flags": [
+        "child"
+      ]
+    },
+    {
+      "room": "3-east",
+      "count": 2,
+      "flags": []
+    },
+    {
+      "room": "3-office",
+      "count": 5,
+      "flags": []
+    },
+    {
+      "room": "3-west",
+      "count": 7,
+      "flags": []
+    },
+    {
+      "room": "4-break",
+      "count": 9,
+      "flags": []
+    },
+    {
+      "room": "4-conf",
+      "count": 3,
+      "flags": [
+        "child"
+      ]
+    },
+    {
+      "room": "4-east",
+      "count": 9,
+      "flags": []
+    },
+    {
+      "room": "4-office",
+      "count": 9,
+      "flags": []
+    },
+    {
+      "room": "4-west",
+      "count": 7,
+      "flags": []
+    },
+    {
+      "room": "5-break",
+      "count": 8,
+      "flags": [
+        "child"
+      ]
+    },
+    {
+      "room": "5-conf",
+      "count": 4,
+      "flags": []
+    },
+    {
+      "room": "5-east",
+      "count": 2,
+      "flags": []
+    },
+    {
+      "room": "5-office",
+      "count": 4,
+      "flags": []
+    },
+    {
+      "room": "5-west",
+      "count": 8,
+      "flags": [
+        "mobility"
+      ]
+    },
+    {
+      "room": "6-break",
+      "count": 6,
+      "flags": []
+    },
+    {
+      "room": "6-east",
+      "count": 8,
+      "flags": []
+    },
+    {
+      "room": "6-office",
+      "count": 7,
+      "flags": []
+    },
+    {
+      "room": "6-west",
+      "count": 10,
+      "flags": []
+    },
+    {
+      "room": "7-break",
+      "count": 3,
+      "flags": []
+    },
+    {
+      "room": "7-conf",
+      "count": 4,
+      "flags": []
+    },
+    {
+      "room": "7-east",
+      "count": 10,
+      "flags": []
+    },
+    {
+      "room": "7-office",
+      "count": 4,
+      "flags": []
+    },
+    {
+      "room": "7-west",
+      "count": 5,
+      "flags": []
+    },
+    {
+      "room": "8-break",
+      "count": 2,
+      "flags": []
+    },
+    {
+      "room": "8-conf",
+      "count": 2,
+      "flags": []
+    },
+    {
+      "room": "8-east",
+      "count": 7,
+      "flags": []
+    },
+    {
+      "room": "8-office",
+      "count": 3,
+      "flags": [
+        "mobility"
+      ]
+    },
+    {
+      "room": "8-west",
+      "count": 8,
+      "flags": []
+    },
+    {
+      "room": "9-break",
+      "count": 10,
+      "flags": []
+    },
+    {
+      "room": "9-east",
+      "count": 6,
+      "flags": []
+    },
+    {
+      "room": "9-office",
+      "count": 10,
+      "flags": []
+    },
+    {
+      "room": "9-west",
+      "count": 5,
+      "flags": []
+    },
+    {
+      "room": "10-break",
+      "count": 7,
+      "flags": []
+    },
+    {
+      "room": "10-conf",
+      "count": 8,
+      "flags": []
+    },
+    {
+      "room": "10-east",
+      "count": 6,
+      "flags": [
+        "mobility"
+      ]
+    },
+    {
+      "room": "10-office",
+      "count": 7,
+      "flags": [
+        "child"
+      ]
+    },
+    {
+      "room": "10-west",
+      "count": 7,
+      "flags": [
+        "child"
+      ]
+    },
+    {
+      "room": "11-break",
+      "count": 6,
+      "flags": []
+    },
+    {
+      "room": "11-conf",
+      "count": 9,
+      "flags": []
+    },
+    {
+      "room": "11-east",
+      "count": 10,
+      "flags": []
+    },
+    {
+      "room": "11-office",
+      "count": 4,
+      "flags": []
+    },
+    {
+      "room": "11-west",
+      "count": 5,
+      "flags": []
+    },
+    {
+      "room": "12-break",
+      "count": 5,
+      "flags": []
+    },
+    {
+      "room": "12-east",
+      "count": 10,
+      "flags": []
+    },
+    {
+      "room": "12-office",
+      "count": 6,
+      "flags": []
+    },
+    {
+      "room": "12-west",
+      "count": 2,
+      "flags": []
+    }
+  ],
+  "demo": {
+    "origin": "7-break",
+    "fireStartMinute": 0,
+    "notes": [
+      "Fire starts in 7-break: ordinary (unrated) door, open, sprinkler impaired.",
+      "7-hall connects to 7-stair-b through a 60-min rated door that is propped OPEN (link.closed=false) and verticals[stair-b].doorsClosed=false: smoke enters stair B and rises to floors 8-12.",
+      "Stair A and the elevator have rated doors that are closed (link.closed=true, doorsClosed=true): they stay smoke-free until a door is opened or a rating (60 min) is exceeded.",
+      "10-east holds 6 occupants including a mobility-limited person; it is reached by smoke via 10-stair-b first."
+    ]
+  }
+}

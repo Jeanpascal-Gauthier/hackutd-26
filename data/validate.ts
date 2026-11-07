@@ -1,27 +1,19 @@
-// Stub: basic sanity checks on shared/building.json.
+// Validates a generated building. Defaults to data/out/; pass a directory to check another.
+//   npm run validate -w data [-- <dir containing building.json + building.meta.json>]
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import type { Building } from "@firewatch/shared/types";
+import { validate } from "./check.ts";
+import type { BuildingMeta } from "./model.ts";
 
-const IN = fileURLToPath(new URL("../shared/building.json", import.meta.url));
-const building = JSON.parse(readFileSync(IN, "utf8")) as Building;
+const dir = process.argv[2] ? resolve(process.argv[2]) : fileURLToPath(new URL("./out", import.meta.url));
+const building = JSON.parse(readFileSync(`${dir}/building.json`, "utf8")) as Building;
+const meta = JSON.parse(readFileSync(`${dir}/building.meta.json`, "utf8")) as BuildingMeta;
 
-const errors: string[] = [];
-const ids = new Set<string>();
-
-for (const r of building.rooms) {
-  if (ids.has(r.id)) errors.push(`duplicate room id: ${r.id}`);
-  ids.add(r.id);
-}
-for (const l of building.links) {
-  if (!ids.has(l.a)) errors.push(`link references unknown room: ${l.a}`);
-  if (!ids.has(l.b)) errors.push(`link references unknown room: ${l.b}`);
-}
-
+const errors = validate(building, meta);
 if (errors.length) {
   console.error(errors.join("\n"));
   process.exit(1);
 }
-console.log(
-  `ok: ${building.rooms.length} rooms, ${building.links.length} links, ${building.verticals.length} verticals`,
-);
+console.log(`ok: ${building.rooms.length} rooms, ${building.links.length} links, ${building.verticals.length} verticals`);
