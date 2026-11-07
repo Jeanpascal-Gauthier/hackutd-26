@@ -66,6 +66,7 @@ async function main() {
   await sleep(200);
   assert.equal(a.last().simMinute, 30, "replay stops at 30");
   assert.ok(room(a.last(), "12-stair-b").smoke >= 0.3 && room(a.last(), "12-stair-a").smoke < 0.3);
+  await waitFor("both clients in sync", () => JSON.stringify(a.last()) === JSON.stringify(b.last()), 1000);
   assert.deepEqual(a.last(), b.last(), "both clients see identical state");
   console.log("ok  replay stopped at minute 30; stair B smoky, stair A clear; clients identical");
 
@@ -98,8 +99,7 @@ async function main() {
   console.log("ok  reconnecting client immediately receives current state");
 
   assert.equal((await post("/mock/reset")).status, 200);
-  await sleep(100);
-  assert.equal(a.last().simMinute, 0);
+  await waitFor("reset reaches both clients", () => a.last().simMinute === 0 && b2.last().simMinute === 0);
   assert.equal(a.last().reports.length, 0);
   assert.equal(a.last().trail?.length, 0);
   assert.equal(a.last().origin, undefined);
