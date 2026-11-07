@@ -49,7 +49,8 @@ async function main() {
   console.log("ok  both clients got initial state: minute 0, 108 rooms, no fire");
 
   assert.equal((await post("/mock/replay")).status, 200);
-  await waitFor("first scripted call", () => a.last().origin?.roomId === "7-break");
+  // The origin and the demo trail arrive in two consecutive broadcasts: wait for both.
+  await waitFor("first scripted call", () => a.last().origin?.roomId === "7-break" && (a.last().trail?.length ?? 0) >= 5);
   assert.ok(room(a.last(), "7-break").fire > 0);
   assert.ok(a.last().recommendation?.actions.length, "real recommendation");
   assert.deepEqual(a.last().trail?.map((t) => t.tool), ["locate_room", "merge_reports", "run_spread", "find_clear_exits", "write_recommendation"]);
