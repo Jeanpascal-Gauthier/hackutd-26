@@ -1,0 +1,18 @@
+[
+  {
+    "caller": "demo-1",
+    "callerPhone": "+12145550101",
+    "callerFloor": 7,
+    "text": "theres smoke coming out of the break room on 7, near the microwaves"
+  },
+  {
+    "caller": "demo-2",
+    "callerPhone": "+12145550102",
+    "text": "I smell smoke in the hallway, I'm on the 8th floor by the conference room"
+  },
+  {
+    "caller": "demo-3",
+    "callerPhone": "+12145550103",
+    "text": "fire alarm going off, I can't tell where it's coming from, what do I do"
+  }
+]

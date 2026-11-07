@@ -1,4 +1,6 @@
 {
   "extends": "../tsconfig.base.json",
-  "include": ["src"]
+  "compilerOptions": { "types": ["node"] },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules"]
 }

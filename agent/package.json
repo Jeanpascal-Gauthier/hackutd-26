@@ -4,12 +4,18 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smoke": "tsx --env-file-if-exists=.env scripts/smoke.ts"
   },
   "dependencies": {
-    "@firewatch/shared": "*"
+    "@firewatch/shared": "*",
+    "openai": "^7.53.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15"
   }
 }
