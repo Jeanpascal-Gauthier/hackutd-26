@@ -1,6 +1,6 @@
 // Smoke test: can we reach Nemotron on NVIDIA's API, and does it call tools?
 //
-//   cp agent/.env.example agent/.env   # set NVIDIA_API_KEY
+//   cp .env.example .env   # at the repo root; set NVIDIA_API_KEY
 //   npm run smoke -w agent
 //
 // Exits 0 when the model returns a well-formed call to `locate_room`, 1 otherwise.
