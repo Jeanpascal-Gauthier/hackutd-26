@@ -1,20 +1,18 @@
-// HTTP: POST /ingest (validated, handed to the ReportProcessor), GET /health, mock controls.
+// HTTP: POST /ingest (validated, then the shared ingest path), GET /health, reset/replay controls.
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { randomUUID } from "node:crypto";
-import type { IncidentStore } from "../state/store.ts";
-import type { IngestInput, ProcessResult, ReportProcessor } from "../state/processor.ts";
+import type { IngestInput } from "../state/processor.ts";
+import type { Ingest } from "../state/ingest.ts";
 
 const MAX_BODY = 16 * 1024;
 const MAX_TEXT = 2000;
 const MAX_CALLER = 100;
 
 export interface HttpDeps {
-  store: IncidentStore;
-  getProcessor: () => ReportProcessor;
-  /** Present only in mock mode: POST /mock/reset and /mock/replay. */
+  ingest: Ingest;
+  /** POST /live/reset: clear the incident (no fire, no reports). Also stops a running demo. */
+  resetLive(): void;
+  /** Present only in mock mode: POST /mock/reset and /mock/replay drive the scripted demo. */
   mock?: { reset(): void; replay(): void };
-  /** Present only in live mode: POST /live/reset, and told about every ingested report. */
-  live?: { reset(): void; onReport(result: ProcessResult): void };
 }
 
 /** Returns validated input or a list of problems. */
@@ -53,15 +51,14 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
-export function createHttpServer({ store, getProcessor, mock, live }: HttpDeps) {
+export function createHttpServer({ ingest, resetLive, mock }: HttpDeps) {
   return createServer(async (req, res) => {
     const { method, url } = req;
     if (method === "OPTIONS") return json(res, 204, null);
     if (method === "GET" && url === "/health") return json(res, 200, { ok: true, mock: !!mock });
 
     if (method === "POST" && url === "/live/reset") {
-      if (!live) return json(res, 404, { ok: false, error: "live mode is off (start with MOCK=0)" });
-      live.reset();
+      resetLive();
       return json(res, 200, { ok: true });
     }
 
@@ -88,20 +85,7 @@ export function createHttpServer({ store, getProcessor, mock, live }: HttpDeps) 
       if (Array.isArray(input)) return json(res, 400, { ok: false, errors: input });
 
       try {
-        const result = await getProcessor()(input);
-        const report = {
-          id: randomUUID(),
-          caller: input.caller,
-          text: input.text,
-          roomId: result.roomId,
-          confidence: result.confidence,
-          time: Date.now(),
-        };
-        store.addReport(report);
-        if (result.trail?.length) store.patch({ trail: [...(store.get().trail ?? []), ...result.trail] });
-        if (live) live.onReport(result);
-        else if (result.recommendation) store.setRecommendation(result.recommendation);
-        const reply = result.reply ?? store.get().recommendation?.callerReply;
+        const { report, reply } = await ingest(input);
         return json(res, 200, { ok: true, report, reply });
       } catch (err) {
         console.error("[ingest] processor failed", err);
