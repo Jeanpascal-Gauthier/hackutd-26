@@ -53,12 +53,36 @@ export interface Recommendation {
   callerReply?: string;
 }
 
+/** Evacuation picture for one occupied floor, over the whole 0..30 min forecast. */
+export interface FloorExit {
+  floor: number;
+  people: number;
+  flags: string[]; // union of occupant flags on the floor
+  stair: string | null; // recommended stairwell id, e.g. "stair-a"; null if none
+  blockedAt: Record<string, number | null>; // stairwell id -> first minute its smoke >= 0.3 (null = stays clear)
+  atRiskAt: number | null; // first minute an occupied room on this floor reaches smoke >= 0.3
+}
+
+/** One logged agent tool call, for the console's agent trail. */
+export interface TrailStep {
+  tool: string;
+  input: unknown;
+  output: unknown;
+  ms: number;
+}
+
 export interface IncidentState {
   simMinute: number;
   rooms: RoomState[];
   reports: Report[];
   occupants: Occupant[];
   recommendation?: Recommendation;
+  /** Most likely fire origin, merged from all reports. */
+  origin?: { roomId: string; confidence: number };
+  /** Per occupied floor: which stairwell is clear and when smoke arrives. */
+  exits?: FloorExit[];
+  /** Agent tool calls, oldest first. */
+  trail?: TrailStep[];
 }
 
 /** Shape of shared/building.json. */

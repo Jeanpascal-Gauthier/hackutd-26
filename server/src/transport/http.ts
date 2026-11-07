@@ -2,7 +2,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import type { IncidentStore } from "../state/store.ts";
-import type { IngestInput, ReportProcessor } from "../state/processor.ts";
+import type { IngestInput, ProcessResult, ReportProcessor } from "../state/processor.ts";
 
 const MAX_BODY = 16 * 1024;
 const MAX_TEXT = 2000;
@@ -13,6 +13,8 @@ export interface HttpDeps {
   getProcessor: () => ReportProcessor;
   /** Present only in mock mode: POST /mock/reset and /mock/replay. */
   mock?: { reset(): void; replay(): void };
+  /** Present only in live mode: POST /live/reset, and told about every ingested report. */
+  live?: { reset(): void; onReport(result: ProcessResult): void };
 }
 
 /** Returns validated input or a list of problems. */
@@ -51,11 +53,17 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
-export function createHttpServer({ store, getProcessor, mock }: HttpDeps) {
+export function createHttpServer({ store, getProcessor, mock, live }: HttpDeps) {
   return createServer(async (req, res) => {
     const { method, url } = req;
     if (method === "OPTIONS") return json(res, 204, null);
     if (method === "GET" && url === "/health") return json(res, 200, { ok: true, mock: !!mock });
+
+    if (method === "POST" && url === "/live/reset") {
+      if (!live) return json(res, 404, { ok: false, error: "live mode is off (start with MOCK=0)" });
+      live.reset();
+      return json(res, 200, { ok: true });
+    }
 
     if (method === "POST" && (url === "/mock/reset" || url === "/mock/replay")) {
       if (!mock) return json(res, 404, { ok: false, error: "mock mode is off" });
@@ -90,8 +98,11 @@ export function createHttpServer({ store, getProcessor, mock }: HttpDeps) {
           time: Date.now(),
         };
         store.addReport(report);
-        if (result.recommendation) store.setRecommendation(result.recommendation);
-        return json(res, 200, { ok: true, report });
+        if (result.trail?.length) store.patch({ trail: [...(store.get().trail ?? []), ...result.trail] });
+        if (live) live.onReport(result);
+        else if (result.recommendation) store.setRecommendation(result.recommendation);
+        const reply = result.reply ?? store.get().recommendation?.callerReply;
+        return json(res, 200, { ok: true, report, reply });
       } catch (err) {
         console.error("[ingest] processor failed", err);
         return json(res, 502, { ok: false, error: "processing failed" });

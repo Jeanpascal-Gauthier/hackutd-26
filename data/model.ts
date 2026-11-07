@@ -10,6 +10,8 @@ export const HALL_W = 30; // metres
 export const HALL_D = 3;
 export const ROOM_D = 8;
 const SEED = 26;
+/** Floor of the demo fire (7-break); stair B's door is propped open here. */
+const DEMO_FLOOR = 7;
 
 /** Room name slots in priority order. Every floor has the first 4..6. */
 const ROOM_SLOTS: [string, string][] = [
@@ -92,9 +94,9 @@ export function generate(): { building: Building; meta: BuildingMeta } {
       rooms.push({ id, floor: f, name: `Floor ${f} ${label}`, x: i * w, z: HALL_D, w, d: ROOM_D });
       sprinklers[id] = "active";
 
-      // Hall door. Break rooms have ordinary doors; everything else is rated.
-      // Storage doors are kept shut.
-      addLink(hall, id, "door", key === "break" ? 0 : 20, key === "storage");
+      // Hall door. Break rooms have an ordinary door that stands open; every other
+      // room has a rated door that is kept shut (as fire code expects).
+      addLink(hall, id, "door", key === "break" ? 0 : 20, key !== "break");
 
       const count = key === "storage" ? 0 : Math.floor(rand() * 9) + 2;
       const flags = FLAGS.filter(() => count > 0 && rand() < 0.15);
@@ -115,9 +117,9 @@ export function generate(): { building: Building; meta: BuildingMeta } {
       const label = s === ELEVATOR ? "Elevator" : `Stairwell ${s.slice(-1).toUpperCase()}`;
       rooms.push({ id, floor: f, name: `Floor ${f} ${label}`, x, z, w: sw, d: sd });
       sprinklers[id] = "none";
-      // All shaft doors are 60-min rated. Closed by default except stair B
-      // (see demo notes): there the door is rated but propped open.
-      const propped = s === "stair-b";
+      // All shaft doors are 60-min rated and closed, except stair B on the demo
+      // fire floor (see demo notes): rated, but propped open.
+      const propped = s === "stair-b" && f === DEMO_FLOOR;
       addLink(hall, id, "door", 60, !propped);
     }
   }
@@ -136,7 +138,7 @@ export function generate(): { building: Building; meta: BuildingMeta } {
     id,
     kind: id === ELEVATOR ? "elevator" : "stair",
     floors: [1, FLOORS],
-    // Stair B: doors propped open => smoke can enter the shaft.
+    // Stair B: a door is propped open (floor 7) => smoke can enter the shaft.
     doorsClosed: id !== "stair-b",
   }));
 
@@ -153,9 +155,9 @@ export function generate(): { building: Building; meta: BuildingMeta } {
       fireStartMinute: 0,
       notes: [
         "Fire starts in 7-break: ordinary (unrated) door, open, sprinkler impaired.",
-        "7-hall connects to 7-stair-b through a 60-min rated door that is propped OPEN (link.closed=false) and verticals[stair-b].doorsClosed=false: smoke enters stair B and rises to floors 8-12.",
+        "7-hall connects to 7-stair-b through a 60-min rated door that is propped OPEN (link.closed=false; verticals[stair-b].doorsClosed=false). Smoke enters stair B, rises and pools at the top: stair B is smoke-logged on floors 7-12 by about minute 11-17.",
         "Stair A and the elevator have rated doors that are closed (link.closed=true, doorsClosed=true): they stay smoke-free until a door is opened or a rating (60 min) is exceeded.",
-        "10-east holds 6 occupants including a mobility-limited person; it is reached by smoke via 10-stair-b first.",
+        "10-east holds 6 occupants including a mobility-limited person; their nearest stair (B) fills with smoke, so they must use stair A.",
       ],
     },
   };
