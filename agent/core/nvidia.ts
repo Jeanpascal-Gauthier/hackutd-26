@@ -7,7 +7,7 @@ export const NVIDIA_MODEL = process.env.NVIDIA_MODEL ?? "nvidia/nemotron-3-super
 export function createNvidiaClient(): OpenAI {
   const apiKey = process.env.NVIDIA_API_KEY;
   if (!apiKey) {
-    throw new Error("NVIDIA_API_KEY is not set. Copy agent/.env.example to agent/.env and fill it in.");
+    throw new Error("NVIDIA_API_KEY is not set. Copy .env.example to .env at the repo root and fill it in.");
   }
   return new OpenAI({ apiKey, baseURL: NVIDIA_BASE_URL });
 }
