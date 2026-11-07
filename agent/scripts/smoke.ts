@@ -6,7 +6,7 @@
 // Exits 0 when the model returns a well-formed call to `locate_room`, 1 otherwise.
 
 import type OpenAI from "openai";
-import { createNvidiaClient, NVIDIA_BASE_URL, NVIDIA_MODEL } from "../core/nvidia.ts";
+import { createNvidiaClient, NVIDIA_BASE_URL, NVIDIA_FAST, NVIDIA_MODEL } from "../core/nvidia.ts";
 
 const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
   {
@@ -45,6 +45,7 @@ async function main() {
     tool_choice: "auto",
     temperature: 0.2,
     max_tokens: 1024,
+    ...NVIDIA_FAST,
   });
   const ms = Date.now() - started;
 
