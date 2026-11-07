@@ -1,0 +1,19 @@
+{
+  "name": "firewatch",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "server",
+    "agent",
+    "console",
+    "data"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n server,console -c red,cyan \"npm run dev -w server\" \"npm run dev -w console\"",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.6.3"
+  }
+}
