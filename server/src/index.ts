@@ -1,74 +1,32 @@
-import { createServer } from "node:http";
-import { WebSocketServer, type WebSocket } from "ws";
-import type { ClientEvent, ServerEvent } from "@firewatch/shared/events";
-import { mockState } from "./mockIncident.ts";
+// FireSight server entry. Wiring only: store <- (mock fixture | real sim) ; ws + http on one port.
+import { IncidentStore } from "./state/store.ts";
+import type { ReportProcessor } from "./state/processor.ts";
+import { createHttpServer } from "./transport/http.ts";
+import { attachWebSocket } from "./transport/ws.ts";
+import { MockIncident } from "./mock/controller.ts";
+import { mockProcessor } from "./mock/processor.ts";
 
-const PORT = 8080;
-const TICK_MS = 2000;
+const PORT = Number(process.env.PORT ?? 8080);
+const TICK_MS = Number(process.env.TICK_MS ?? 2000);
+const MOCK = process.env.MOCK !== "0"; // default on: no API keys or simulation needed
+const AUTOPLAY = process.env.AUTOPLAY !== "0";
 
-let simMinute = 0;
+export const store = new IncidentStore();
 
-// --- HTTP: POST /ingest {text, caller} -----------------------------------
-const server = createServer((req, res) => {
-  if (req.method === "POST" && req.url === "/ingest") {
-    let body = "";
-    req.on("data", (chunk) => (body += chunk));
-    req.on("end", () => {
-      try {
-        const { text, caller } = JSON.parse(body) as { text: string; caller: string };
-        console.log(`[ingest] caller=${caller} text=${JSON.stringify(text)}`);
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ ok: true }));
-      } catch {
-        res.writeHead(400, { "content-type": "application/json" });
-        res.end(JSON.stringify({ ok: false, error: "invalid JSON" }));
-      }
-    });
-    return;
-  }
-  res.writeHead(404);
-  res.end();
+// Person C: call setReportProcessor(agentFn) to replace the mock.
+let processor: ReportProcessor = mockProcessor;
+export const setReportProcessor = (p: ReportProcessor) => void (processor = p);
+
+const mock = MOCK ? new MockIncident(store, TICK_MS) : undefined;
+if (mock) mock.reset(); // start at minute 0 so the first client sees a valid state
+
+const httpServer = createHttpServer({ store, getProcessor: () => processor, mock });
+attachWebSocket(httpServer, store, {
+  // Mock: replay the fixture at that minute. Real mode: set minute on the simulation (not built yet).
+  setSimMinute: (minute) => (mock ? mock.goTo(minute) : store.patch({ simMinute: minute })),
 });
 
-// --- WebSocket ------------------------------------------------------------
-const wss = new WebSocketServer({ server });
-
-function send(ws: WebSocket, event: ServerEvent) {
-  ws.send(JSON.stringify(event));
-}
-
-function broadcast() {
-  const event: ServerEvent = { type: "state", state: mockState(simMinute) };
-  for (const client of wss.clients) {
-    if (client.readyState === client.OPEN) send(client, event);
-  }
-}
-
-wss.on("connection", (ws) => {
-  console.log("[ws] client connected");
-  send(ws, { type: "state", state: mockState(simMinute) });
-
-  ws.on("message", (raw) => {
-    let event: ClientEvent;
-    try {
-      event = JSON.parse(raw.toString()) as ClientEvent;
-    } catch {
-      return;
-    }
-    console.log("[ws] received", event);
-    if (event.type === "setSimMinute") {
-      simMinute = event.minute;
-      broadcast();
-    }
-    // TODO: acceptRecommendation, dispatch
-  });
-});
-
-setInterval(() => {
-  simMinute += 1;
-  broadcast();
-}, TICK_MS);
-
-server.listen(PORT, () => {
-  console.log(`[server] ws://localhost:${PORT}  POST http://localhost:${PORT}/ingest`);
+httpServer.listen(PORT, () => {
+  console.log(`[server] ws://localhost:${PORT}  POST /ingest  mock=${MOCK}`);
+  if (mock && AUTOPLAY) mock.replay();
 });
