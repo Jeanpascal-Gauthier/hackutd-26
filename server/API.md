@@ -4,8 +4,28 @@ One port (default `8080`) serves both HTTP and the WebSocket. All bodies are JSO
 
 `npm run dev` starts **mock mode**: scripted calls replay through the real model. `MOCK=0 npm run dev` starts **live mode**: it waits for real reports. Both modes support every endpoint below.
 
-## For the agent (runs as its own process)
+## For the agent
 
+There are two ways to connect. Pick one.
+
+### Option A: in-process (the server calls the agent)
+Export this from `agent/index.ts`:
+
+```ts
+export async function processReport(input: { text: string; caller: string }): Promise<{
+  roomId?: string; confidence?: number;                       // a room id from shared/building.json, 0..1
+  recommendation?: { actions: string[]; callerReply?: string };
+  trail?: { tool: string; input: unknown; output: unknown; ms: number }[];
+  reply?: string;                                             // text back to the caller
+}>
+```
+
+Start with `AGENT=1 npm run dev` (add `MOCK=0` for live mode). The server loads it from `server/src/agent/bridge.ts`, and `POST /ingest` calls it for every report, including the mock demo's scripted calls. The startup log line says which one is active (`reports->agent processReport()`).
+- If the export is missing, the server logs a warning and uses its rule-based locator.
+- If one call throws, takes longer than `AGENT_TIMEOUT_MS` (default 20000), or returns a non-object, **that report** falls back to the rule-based locator. The error is logged as `[agent] …`.
+- The `/ingest` response carries `reply`, which the Photon adapter texts to the caller.
+
+### Option B: separate process (the agent calls the server)
 The agent never imports server code. Its tools call these endpoints:
 
 | Agent tool | Endpoint |

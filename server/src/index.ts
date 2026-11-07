@@ -9,20 +9,33 @@ import { LiveIncident } from "./live/incident.ts";
 import { forecast } from "./live/forecast.ts";
 import { sprinklers } from "./live/buildingData.ts";
 import { MockIncident } from "./mock/controller.ts";
+import { AGENT_EXPORT, guardAgent, loadAgentProcessor } from "./agent/bridge.ts";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const TICK_MS = Number(process.env.TICK_MS ?? 2000);
 const MOCK = process.env.MOCK !== "0"; // default on: scripted demo calls, no API keys needed
 const AUTOPLAY = process.env.AUTOPLAY !== "0";
+const AGENT = process.env.AGENT === "1"; // opt in: Nemotron agent (needs NVIDIA_API_KEY in .env)
+const AGENT_TIMEOUT_MS = Number(process.env.AGENT_TIMEOUT_MS ?? 20000);
 
 export const store = new IncidentStore();
 const live = new LiveIncident(store);
 live.reset(); // minute 0, no fire, so the first client sees a valid state
 
-// Person C: either POST the agent's result to /ingest (see server/API.md), or call
-// setReportProcessor(agentFn) to replace the rule-based locator (live/locate.ts) in-process.
+// Who turns a caller's words into a room: the rule-based locator (live/locate.ts) by default.
+// AGENT=1 registers agent/index.ts's processReport() instead (agent/bridge.ts); a failure or
+// timeout on one report falls back to the locator. (The agent can also run as its own
+// process and POST its results to /ingest: see server/API.md.)
 let processor: ReportProcessor = live.processor;
 export const setReportProcessor = (p: ReportProcessor) => void (processor = p);
+let agentOn = false;
+if (AGENT) {
+  const agent = await loadAgentProcessor();
+  if (agent) {
+    setReportProcessor(guardAgent(agent, live.processor, AGENT_TIMEOUT_MS));
+    agentOn = true;
+  }
+}
 
 const ingest = createIngest(store, () => processor, live);
 const mock = MOCK ? new MockIncident(store, live, ingest, TICK_MS) : undefined;
@@ -40,6 +53,7 @@ attachWebSocket(httpServer, store, {
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`[server] ws://localhost:${PORT}  POST /ingest  mode=${MOCK ? "mock (scripted calls)" : "live"}`);
+  const who = agentOn ? `agent ${AGENT_EXPORT}()` : "rule-based locator";
+  console.log(`[server] ws://localhost:${PORT}  POST /ingest  mode=${MOCK ? "mock (scripted calls)" : "live"}  reports->${who}`);
   if (mock && AUTOPLAY) void mock.replay();
 });
