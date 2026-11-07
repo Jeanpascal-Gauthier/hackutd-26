@@ -22,329 +22,99 @@
       "name": "Shadow Catcher",
       "framingRole": "support",
       "transform": {
-        "position": [0, 0.001, -1.35]
+        "position": [0, 0.001, -0.75]
       },
       "components": {
         "ShadowCatcher": {
-          "size": [6, 6],
+          "size": [4, 4],
           "opacity": 0.25
         }
       }
     },
     {
-      "id": "grab-plinth",
-      "name": "Grab Plinth",
+      "id": "command-desk",
+      "name": "Command Desk",
       "content": {
         "type": "asset",
-        "asset": "plinth",
+        "asset": "command-desk",
         "castShadow": true,
         "receiveShadow": true
       },
       "transform": {
-        "position": [-0.9543, 0, -1.1214],
-        "rotationDeg": [0, 30, 0]
-      },
-      "children": [
-        {
-          "id": "grab-plinth-contact",
-          "name": "Contact Shadow",
-          "transform": {
-            "position": [0, 0.002, 0]
-          },
-          "components": {
-            "ContactShadow": {
-              "size": [0.8, 0.8],
-              "opacity": 0.4,
-              "color": [0, 0, 0, 1],
-              "height": 0.0016
-            }
-          }
-        },
-        {
-          "id": "graphite-cube",
-          "name": "Graphite Cube",
-          "content": {
-            "type": "asset",
-            "asset": "graphite-cube",
-            "castShadow": true,
-            "receiveShadow": true
-          },
-          "transform": {
-            "position": [-0.25, 0.998, -0.03],
-            "rotationDeg": [0, 20, 0],
-            "scale": 1.2
-          },
-          "components": {
-            "RayInteractable": {},
-            "DistanceGrabbable": {
-              "movementMode": "MoveFromTarget"
-            }
-          }
-        },
-        {
-          "id": "graphite-cube-contact",
-          "name": "Contact Shadow",
-          "transform": {
-            "position": [-0.25, 0.921, -0.03]
-          },
-          "components": {
-            "ContactShadow": {
-              "size": [0.26, 0.26],
-              "opacity": 0.4,
-              "color": [0, 0, 0, 1],
-              "height": 0.00052
-            }
-          }
-        },
-        {
-          "id": "graphite-gem",
-          "name": "Graphite Gem",
-          "content": {
-            "type": "asset",
-            "asset": "graphite-gem",
-            "castShadow": true,
-            "receiveShadow": true
-          },
-          "transform": {
-            "position": [0, 1.006, -0.03],
-            "rotationDeg": [15, 0, 10],
-            "scale": 1.2
-          },
-          "components": {
-            "RayInteractable": {},
-            "DistanceGrabbable": {
-              "movementMode": "MoveFromTarget"
-            }
-          }
-        },
-        {
-          "id": "graphite-gem-contact",
-          "name": "Contact Shadow",
-          "transform": {
-            "position": [0, 0.921, -0.03]
-          },
-          "components": {
-            "ContactShadow": {
-              "size": [0.24, 0.24],
-              "opacity": 0.4,
-              "color": [0, 0, 0, 1],
-              "height": 0.00048
-            }
-          }
-        },
-        {
-          "id": "graphite-knot",
-          "name": "Graphite Knot",
-          "content": {
-            "type": "asset",
-            "asset": "graphite-knot",
-            "castShadow": true,
-            "receiveShadow": true
-          },
-          "transform": {
-            "position": [0.25, 1.02, -0.03],
-            "rotationDeg": [0, -30, 0],
-            "scale": 0.74
-          },
-          "components": {
-            "RayInteractable": {},
-            "DistanceGrabbable": {
-              "movementMode": "MoveFromTarget"
-            }
-          }
-        },
-        {
-          "id": "graphite-knot-contact",
-          "name": "Contact Shadow",
-          "transform": {
-            "position": [0.25, 0.921, -0.03]
-          },
-          "components": {
-            "ContactShadow": {
-              "size": [0.26, 0.26],
-              "opacity": 0.4,
-              "color": [0, 0, 0, 1],
-              "height": 0.00052
-            }
-          }
-        },
-        {
-          "id": "grab-label",
-          "name": "Grab Label",
-          "content": {
-            "type": "asset",
-            "asset": "label-grab"
-          },
-          "transform": {
-            "position": [0, 0.94, 0.358],
-            "rotationDeg": [-32, 0, 0],
-            "scale": 0.12
-          }
-        }
-      ]
+        "position": [0, 0, -0.75]
+      }
     },
     {
-      "id": "select-plinth",
-      "name": "Select Plinth",
-      "content": {
-        "type": "asset",
-        "asset": "plinth",
-        "castShadow": true,
-        "receiveShadow": true
-      },
-      "transform": {
-        "position": [0, 0, -1.5]
-      },
-      "children": [
-        {
-          "id": "select-plinth-contact",
-          "name": "Contact Shadow",
-          "transform": {
-            "position": [0, 0.002, 0]
-          },
-          "components": {
-            "ContactShadow": {
-              "size": [0.8, 0.8],
-              "opacity": 0.4,
-              "color": [0, 0, 0, 1],
-              "height": 0.0016
-            }
-          }
-        },
-        {
-          "id": "robot",
-          "name": "Robot",
-          "metadata": {
-            "iwsdk.validation": {
-              "allowFloating": true
-            }
-          },
-          "content": {
-            "type": "asset",
-            "asset": "robot",
-            "castShadow": true
-          },
-          "transform": {
-            "position": [0, 1.2, -0.02],
-            "scale": 0.6
-          },
-          "components": {
-            "AudioSource": {
-              "src": "./audio/chime.mp3",
-              "maxInstances": 3,
-              "playbackMode": "fade-restart"
-            },
-            "RayInteractable": {},
-            "Robot": {}
-          }
-        },
-        {
-          "id": "robot-contact",
-          "name": "Contact Shadow",
-          "transform": {
-            "position": [0, 0.921, -0.02]
-          },
-          "components": {
-            "ContactShadow": {
-              "size": [0.37, 0.37],
-              "opacity": 0.4,
-              "color": [0, 0, 0, 1],
-              "height": 0.00074
-            }
-          }
-        },
-        {
-          "id": "select-label",
-          "name": "Select Label",
-          "content": {
-            "type": "asset",
-            "asset": "label-select"
-          },
-          "transform": {
-            "position": [0, 0.94, 0.358],
-            "rotationDeg": [-32, 0, 0],
-            "scale": 0.12
-          }
-        }
-      ]
+      "id": "building-floor-0",
+      "name": "Building Floor 0",
+      "content": { "type": "asset", "asset": "building-floor-slab" },
+      "transform": { "position": [-0.75, 0.7975, -0.75] }
     },
     {
-      "id": "spin-plinth",
-      "name": "Spin Plinth",
-      "content": {
-        "type": "asset",
-        "asset": "plinth",
-        "castShadow": true,
-        "receiveShadow": true
-      },
-      "transform": {
-        "position": [0.9543, 0, -1.1214],
-        "rotationDeg": [0, -30, 0]
-      },
-      "children": [
-        {
-          "id": "spin-plinth-contact",
-          "name": "Contact Shadow",
-          "transform": {
-            "position": [0, 0.002, 0]
-          },
-          "components": {
-            "ContactShadow": {
-              "size": [0.8, 0.8],
-              "opacity": 0.4,
-              "color": [0, 0, 0, 1],
-              "height": 0.0016
-            }
-          }
-        },
-        {
-          "id": "graphite-ring",
-          "name": "Graphite Ring",
-          "content": {
-            "type": "asset",
-            "asset": "graphite-ring",
-            "castShadow": true,
-            "receiveShadow": true
-          },
-          "transform": {
-            "position": [0, 1.165, -0.02]
-          },
-          "components": {
-            "RayInteractable": {},
-            "DistanceGrabbable": {
-              "movementMode": "RotateAtSource"
-            }
-          }
-        },
-        {
-          "id": "graphite-ring-contact",
-          "name": "Contact Shadow",
-          "transform": {
-            "position": [0, 0.921, -0.02]
-          },
-          "components": {
-            "ContactShadow": {
-              "size": [0.4, 0.4],
-              "opacity": 0.4,
-              "color": [0, 0, 0, 1],
-              "height": 0.0008
-            }
-          }
-        },
-        {
-          "id": "spin-label",
-          "name": "Spin Label",
-          "content": {
-            "type": "asset",
-            "asset": "label-spin"
-          },
-          "transform": {
-            "position": [0, 0.94, 0.358],
-            "rotationDeg": [-32, 0, 0],
-            "scale": 0.12
-          }
-        }
-      ]
+      "id": "building-floor-1",
+      "name": "Building Floor 1",
+      "content": { "type": "asset", "asset": "building-floor-slab" },
+      "transform": { "position": [-0.75, 0.8325, -0.75] }
+    },
+    {
+      "id": "building-floor-2",
+      "name": "Building Floor 2",
+      "content": { "type": "asset", "asset": "building-floor-slab" },
+      "transform": { "position": [-0.75, 0.8675, -0.75] }
+    },
+    {
+      "id": "building-floor-3",
+      "name": "Building Floor 3",
+      "content": { "type": "asset", "asset": "building-floor-slab" },
+      "transform": { "position": [-0.75, 0.9025, -0.75] }
+    },
+    {
+      "id": "building-floor-4",
+      "name": "Building Floor 4",
+      "content": { "type": "asset", "asset": "building-floor-slab" },
+      "transform": { "position": [-0.75, 0.9375, -0.75] }
+    },
+    {
+      "id": "building-floor-5",
+      "name": "Building Floor 5",
+      "content": { "type": "asset", "asset": "building-floor-slab" },
+      "transform": { "position": [-0.75, 0.9725, -0.75] }
+    },
+    {
+      "id": "building-floor-6",
+      "name": "Building Floor 6",
+      "content": { "type": "asset", "asset": "building-floor-slab" },
+      "transform": { "position": [-0.75, 1.0075, -0.75] }
+    },
+    {
+      "id": "building-floor-7",
+      "name": "Building Floor 7",
+      "content": { "type": "asset", "asset": "building-floor-slab" },
+      "transform": { "position": [-0.75, 1.0425, -0.75] }
+    },
+    {
+      "id": "building-floor-8",
+      "name": "Building Floor 8",
+      "content": { "type": "asset", "asset": "building-floor-slab" },
+      "transform": { "position": [-0.75, 1.0775, -0.75] }
+    },
+    {
+      "id": "building-floor-9",
+      "name": "Building Floor 9",
+      "content": { "type": "asset", "asset": "building-floor-slab" },
+      "transform": { "position": [-0.75, 1.1125, -0.75] }
+    },
+    {
+      "id": "building-floor-10",
+      "name": "Building Floor 10",
+      "content": { "type": "asset", "asset": "building-floor-slab" },
+      "transform": { "position": [-0.75, 1.1475, -0.75] }
+    },
+    {
+      "id": "building-floor-11",
+      "name": "Building Floor 11",
+      "content": { "type": "asset", "asset": "building-floor-slab" },
+      "transform": { "position": [-0.75, 1.1825, -0.75] }
     },
     {
       "id": "welcome-panel",
@@ -360,6 +130,31 @@
       },
       "components": {
         "RayInteractable": {}
+      }
+    },
+    {
+      "id": "voice-panel",
+      "name": "Voice Panel",
+      "content": {
+        "type": "asset",
+        "asset": "voice-panel"
+      },
+      "transform": {
+        "position": [0, 1.35, -1.9],
+        "scale": 0.22
+      }
+    },
+    {
+      "id": "resources-panel",
+      "name": "Resources Panel",
+      "content": {
+        "type": "asset",
+        "asset": "resources-panel"
+      },
+      "transform": {
+        "position": [1.56, 1.4, -0.9],
+        "rotationDeg": [0, -60, 0],
+        "scale": 0.2
       }
     },
     {
