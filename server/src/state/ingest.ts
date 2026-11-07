@@ -1,5 +1,5 @@
 // The one path every report takes, whether it comes from POST /ingest or the scripted demo:
-// processor (agent or rule-based locator) -> report in the store -> trail -> live incident update.
+// processor (or the agent's own result, if it sent one) -> report in the store -> trail -> live incident update.
 import { randomUUID } from "node:crypto";
 import type { Report } from "@firewatch/shared/types";
 import type { IncidentStore } from "./store.ts";
@@ -20,7 +20,7 @@ export function createIngest(
   live: { onReport(result: ProcessResult): void },
 ): Ingest {
   return async (input) => {
-    const result = await getProcessor()(input);
+    const result = input.preprocessed ?? (await getProcessor()(input));
     const report: Report = {
       id: randomUUID(),
       caller: input.caller,

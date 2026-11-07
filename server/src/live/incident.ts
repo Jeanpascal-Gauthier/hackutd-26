@@ -1,27 +1,20 @@
 // LIVE mode controller (MOCK=0): reports -> merged origin -> 30-minute spread forecast
 // (precomputed, so scrubbing is instant) -> exits -> recommendation. Mirrors mock/controller.ts.
-import type { Building, Occupant } from "@firewatch/shared/types";
 import type { IncidentStore } from "../state/store.ts";
 import type { ProcessResult, ReportProcessor } from "../state/processor.ts";
-import { findExits, simulateSpread, type SpreadSnapshot } from "../simulation/index.ts";
+import type { SpreadSnapshot } from "../simulation/index.ts";
 import * as defaults from "./buildingData.ts";
+import { FORECAST_MINUTES, forecast, type ForecastData } from "./forecast.ts";
 import { locate } from "./locate.ts";
 import { mergeReports } from "./merge.ts";
-import { recommend } from "./recommend.ts";
 
-export const FORECAST_MINUTES = 30;
-
-interface LiveData {
-  building: Building;
-  sprinklerRooms: string[];
-  occupants: Occupant[];
-}
+export { FORECAST_MINUTES };
 
 export class LiveIncident {
   private snapshots: SpreadSnapshot[] = [];
   private originId: string | undefined;
 
-  constructor(private store: IncidentStore, private data: LiveData = defaults) {}
+  constructor(private store: IncidentStore, readonly data: ForecastData = defaults) {}
 
   /** No fire yet: every room clear, occupants known, no reports. */
   reset(): void {
@@ -43,27 +36,28 @@ export class LiveIncident {
   };
 
   /**
-   * Called after a report was added to the store. Re-merges the origin; when it moves,
-   * re-runs the forecast, exits and recommendation. An agent-supplied recommendation wins.
+   * Called after a report was added to the store. Re-merges the origin; when it moves, re-runs
+   * the forecast, exits and recommendation. An agent-supplied recommendation always wins.
    */
   onReport(result: ProcessResult): void {
-    const { building, sprinklerRooms, occupants } = this.data;
-    const origin = mergeReports(this.store.get().reports, building);
-    if (!origin) return;
-
+    const origin = mergeReports(this.store.get().reports, this.data.building);
+    if (!origin) {
+      if (result.recommendation) this.store.patch({ recommendation: result.recommendation });
+      return;
+    }
     if (origin.roomId === this.originId) {
-      this.store.patch({ origin });
+      this.store.patch(result.recommendation ? { origin, recommendation: result.recommendation } : { origin });
       return;
     }
     this.originId = origin.roomId;
-    this.snapshots = simulateSpread(building, origin.roomId, FORECAST_MINUTES, { sprinklerRooms });
-    const exits = findExits(building, this.snapshots, occupants);
+    const f = forecast(origin.roomId, this.data);
+    this.snapshots = f.snapshots;
     const minute = Math.min(this.store.get().simMinute, FORECAST_MINUTES);
     this.store.patch({
       origin,
-      exits,
+      exits: f.exits,
       rooms: this.snapshots[minute].rooms,
-      recommendation: result.recommendation ?? recommend(exits, origin.roomId, building),
+      recommendation: result.recommendation ?? f.recommendation,
     });
   }
 

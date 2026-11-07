@@ -6,6 +6,8 @@ import { createIngest } from "./state/ingest.ts";
 import { createHttpServer } from "./transport/http.ts";
 import { attachWebSocket } from "./transport/ws.ts";
 import { LiveIncident } from "./live/incident.ts";
+import { forecast } from "./live/forecast.ts";
+import { sprinklers } from "./live/buildingData.ts";
 import { MockIncident } from "./mock/controller.ts";
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -17,7 +19,8 @@ export const store = new IncidentStore();
 const live = new LiveIncident(store);
 live.reset(); // minute 0, no fire, so the first client sees a valid state
 
-// Person C: call setReportProcessor(agentFn) to replace the rule-based locator (live/locate.ts).
+// Person C: either POST the agent's result to /ingest (see server/API.md), or call
+// setReportProcessor(agentFn) to replace the rule-based locator (live/locate.ts) in-process.
 let processor: ReportProcessor = live.processor;
 export const setReportProcessor = (p: ReportProcessor) => void (processor = p);
 
@@ -26,6 +29,9 @@ const mock = MOCK ? new MockIncident(store, live, ingest, TICK_MS) : undefined;
 
 const httpServer = createHttpServer({
   ingest,
+  getState: () => store.get(),
+  buildingInfo: { building: live.data.building, occupants: live.data.occupants, sprinklers },
+  forecast: (origin, minutes) => forecast(origin, live.data, minutes),
   resetLive: () => (mock ? mock.reset() : live.reset()),
   mock,
 });
