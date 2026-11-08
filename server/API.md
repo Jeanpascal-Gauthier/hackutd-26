@@ -325,6 +325,7 @@ The same records, filtered. Query parameters are all optional and combine: `floo
   - `{ "type": "setIncidentPhase", "incidentId": "inc-1", "phase": "open"|"dispatched"|"on_scene"|"resolved" }`
   - `{ "type": "addIncidentNote", "incidentId": "inc-1", "text": "…" }`: at most 500 characters; an incident keeps its last 50.
   - Events naming an unknown incident are ignored with a server log line.
+  - `{ "type": "executeAction", "propertyId": "dc-coit", "actionId": "dc-coit:close-dampers" }`: the operator runs one planned action on one building. It is marked `done` and `portfolioImpact.summary.usdAtRiskAfterActions` drops. Idempotent; unknown ids are ignored with a server log line.
   - `{ "type": "lookupAddress", "address": "…" }`: start an address lookup (same as `POST /incident/address`).
   - `{ "type": "confirmBuilding", "buildingId": "osm:way:123" }`: confirm a candidate (same as `POST /incident/building`).
   - `{ "type": "useDemoBuilding" }`: back to the demo building, incident cleared.
@@ -364,12 +365,12 @@ The webhook tool an ElevenLabs voice agent calls during a call. It is off unless
 ### `POST /voice/incident`
 The webhook tool `report_incident`: any emergency, placed on the map as `state.mapIncidents[]` (shared/types.ts `MapIncident`). Same auth as `/voice/report`.
 
-- **Body:** `{ type: "fire"|"crash"|"other", address, description, what?, in_building?, severity?, lanes_blocked?, caller? }`. `description` is required. An unrecognized `type` becomes `other`; unrecognized `severity` or `lanes_blocked` become `unknown`.
+- **Body:** `{ type: "fire"|"crash"|"flood"|"other", address, description, what?, in_building?, severity?, lanes_blocked?, caller? }`. `description` is required. An unrecognized `type` becomes `other`, and an `other` report whose words say flood, water main, burst pipe, storm drain or sewer overflow becomes `flood`; unrecognized `severity` or `lanes_blocked` become `unknown`.
 - **Answer:** always 200 once authorized: `{ ok, reply, incidentId, status }`. `reply` is what the voice agent says. It waits at most 4 s for the geocoder, so `status` may still be `locating`.
 - **One emergency, one incident:** a report joins an existing incident of the same kind from the same caller in the last 30 minutes, at the same stated address, or within 150 m once geocoded. A sole caller giving a different address moves the pin. A resolved incident is never joined: a new report there opens a new incident. For `other`, a report that names a `what` joins only the same (normalized) label; one with no `what` can still attach.
 - **Phases:** `phase` starts `open` and moves by `dispatchIncident` and `setIncidentPhase`. Resolved incidents stay in `mapIncidents`, and their pending recommendation is cleared. Over 50 incidents, the oldest resolved go first.
 - **Recommendations:** each incident has its own `recommendation`, which moves to `accepted` when the operator accepts it. The newest also fills the global `state.recommendation` (the same object), unless a building's plan is showing.
-- **Forecasts** run in the background (`forecastStatus`). `fire` has wind-driven fire and smoke areas and nearby building exposures. `crash` has congestion segments by minute. `other` has none. Forecasts are modeled: `assumptions` must be shown with them. `forecastAt` is when the current one was built.
+- **Forecasts** run in the background (`forecastStatus`). `fire` has wind-driven fire and smoke areas and nearby building exposures. `crash` has congestion segments by minute. `flood` has water polygons by minute. `other` has none. Forecasts are modeled: `assumptions` must be shown with them. `forecastAt` is when the current one was built.
 - **Refresh:** located, unresolved fires and crashes re-run their forecast every 5 minutes. The previous forecast and `forecastStatus` stay until the new one is ready, a failed refresh changes nothing, and a pending recommendation is updated silently (an accepted one is left alone).
 - `reports[].reply` on the incident and on `state.reports[]` keeps what the caller was told. The responder brief uses only `query` (the stated location) and `reports[].text` (caller words); it excludes replies, forecasts, inferred fields, recommendations, dispatch records, and operator notes.
 - **Voice follow-ups:** use the current ElevenLabs system prompt in [DEMO.md](../DEMO.md#phone-calls-elevenlabs). Report what happened and where immediately, then ask one short question at a time about missing details such as people hurt or trapped, floor/room, hazards, or access. Submit each caller answer through `report_incident`; preserve uncertainty and corrections, and never fill missing answers with guesses.
@@ -378,6 +379,19 @@ The webhook tool `report_incident`: any emergency, placed on the map as `state.m
 
 ### `POST /map-incidents`
 The same body and behavior as `/voice/incident` (`type`, `what`, `address`, `description`, `severity`, `lanes_blocked`, `in_building`, `caller`), without the voice token, for the console and for testing. Reports are `channel: "console"`. One operator types many reports, so only the same place ties a console report to an earlier incident, never the caller. Answers `{ ok, incident, reply }`, or 400 with `errors` when `description` is missing.
+
+### Portfolio impact (CBRE)
+Every fire, crash and flood that is placed on the map is joined with the building portfolio ([server/src/portfolio/portfolio.ts](src/portfolio/portfolio.ts): 8 synthetic buildings with systems and their dependencies, leases with SLA penalty per hour, occupancy by time of day, and access roads). After every change the server re-assesses it, in the impact agent ([agent/core/impact](../agent/core/impact)), and writes the result into the state. All fields are optional and additive.
+
+- `portfolioImpact` (on the state): `{ properties[], summary, briefing, mode, trail?, time }`.
+  - `summary`: `{ buildings, people, usdAtRisk, usdAtRiskAfterActions, horizonMinutes, headline }`. `headline` is ready to print: "6 buildings · 1,240 people · ~$380K at risk in the next 30 min". `usdAtRiskAfterActions` is what is still at risk once the executed actions are counted; this is the number that drops on Execute.
+  - `properties[]`: every building any incident reaches, highest cost first. Each has `risk`, `people`, `downtimeHours`, `cost {slaUsd, lostRentUsd, damageUsd, totalUsd}`, `accessCut`, `reasons[]`, `incidentIds[]` (a building hit by two incidents appears once), `chain[]` (the failure chain in time order: `{id, minute, systemId, label, hazard, causedBy}`), and `actions[]` (ordered by deadline: `{id, text, deadlineMinute, prevents, savesUsd, reason, status: "pending"|"done"}`).
+  - `mode`: `rules` (deterministic, instant) or `llm` (Nemotron ran the tools; `trail[]` is its tool calls, for the agent trail). The rules answer lands first; the Nemotron answer replaces it a few seconds later when `NVIDIA_API_KEY` is set.
+- On each map incident: `impact` `{center, radiusMeters, stretch?, reasons[]}` (the blast radius to draw; `stretch` lengthens it downwind or downstream), `affectedRoads[]` (red road sections `{path, road, reason: "crash"|"flood"|"closure", fromMinute}`; draw those with `fromMinute` <= the forecast minute), `affectedProperties[]` (its slice of `portfolioImpact.properties`), `flood` (`{steps: [{minute, water: ring}], summary, assumptions}`).
+- **Linking:** same kind within 150 m is merged into one incident (several calls). A different kind within 500 m is kept separate and linked: `related` is the ids of the linked incidents, nearest first, and `zoneId` is shared by every incident in the same cluster. Draw a dashed line between linked incidents.
+- **Access cut:** `affectedProperties[].accessCut` is true when every road a building is reached by is red. Road names are matched by core name, so "W Campbell Rd" and "West Campbell Road" are the same road.
+- **Without the agent:** if `agent/` can't be loaded the server logs why and runs on; `portfolioImpact` is then absent and everything else works.
+- `npm run demo:cbre -w server` plays fire, then crash, then flood, then Execute against a running server (`SERVER_URL` to point it elsewhere).
 
 ### `POST /voice/address`
 The webhook tool `report_address`: the caller said the building's address. Same auth as `/voice/report` (503 without `VOICE_TOKEN`, 401 with a wrong token).

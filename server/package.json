@@ -8,6 +8,7 @@
     "start": "tsx --env-file-if-exists=../.env src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/*/*.test.ts\"",
+    "demo:cbre": "tsx src/mock/cbreDemo.ts",
     "verify": "tsx src/mock/verify.ts",
     "verify:live": "tsx src/live/verify.ts"
   },
