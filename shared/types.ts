@@ -61,6 +61,8 @@ export interface FloorExit {
   stair: string | null; // recommended stairwell id, e.g. "stair-a"; null if none
   blockedAt: Record<string, number | null>; // stairwell id -> first minute its smoke >= 0.3 (null = stays clear)
   atRiskAt: number | null; // first minute an occupied room on this floor reaches smoke >= 0.3
+  /** Rooms to light green: hall -> clear stairwell -> down to floor 1. Empty if no stair. */
+  route?: string[];
 }
 
 /** One logged agent tool call, for the console's agent trail. */
@@ -83,6 +85,18 @@ export interface IncidentState {
   exits?: FloorExit[];
   /** Agent tool calls, oldest first. */
   trail?: TrailStep[];
+  /** The recommendation the commander accepted (the route stays lit after accepting). */
+  accepted?: { recommendation: Recommendation; time: number };
+  /** Crews sent from the headset/console (`dispatch` events). */
+  dispatches?: { roomId: string; time: number }[];
+  /** Ready-made incident log for the console, oldest first (last 200). */
+  log?: LogEntry[];
+}
+
+export interface LogEntry {
+  time: number; // epoch ms
+  kind: "report" | "origin" | "recommendation" | "accepted" | "dispatch";
+  text: string;
 }
 
 /** Shape of shared/building.json. */
