@@ -1,3 +1,6 @@
+import building from '../../shared/building.json';
+import type { Building } from './incident-types.js';
+import { createIncidentBuilding } from './scene-assets/incident-building.scene-asset.js';
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -6,7 +9,7 @@
  */
 
 import { AssetType, defineAssets } from '@iwsdk/core';
-import { createCommandDesk } from './scene-assets/command-room.scene-asset.js';
+import { createCommandDesk, createCommandRoom } from './scene-assets/command-room.scene-asset.js';
 
 const publicAssetUrl = (filePath: string): string =>
   `${import.meta.env.BASE_URL}${filePath.replace(/^\/+/u, '')}`;
@@ -18,7 +21,9 @@ const uikitml = (fileName: string, name: string) => ({
 });
 
 export default defineAssets({
+  'incident-building-preview': createIncidentBuilding(building as Building).root,
   'command-desk': createCommandDesk(),
+  'command-room': createCommandRoom(),
   'welcome-panel': uikitml('welcome.uikitml', 'Welcome Panel'),
   'voice-panel': uikitml('voice-panel.uikitml', 'Voice Panel'),
   'resources-panel': uikitml('resources-panel.uikitml', 'Resources Panel'),
