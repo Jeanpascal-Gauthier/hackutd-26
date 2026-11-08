@@ -29,6 +29,7 @@
     <span id="fireeye-page" class="small"></span>
     <Button id="fireeye-more" class="button" style="display: none"><ButtonLabel class="button-label">More recommendations</ButtonLabel></Button>
     <span id="fireeye-note" class="small">Confirm the selected building with the caller. Map imagery is not a live view.</span>
+    <Button id="fireeye-exit" class="button" style="display: none"><ButtonLabel class="button-label">Exit to browser</ButtonLabel></Button>
     <div class="row">
       <Button id="fireeye-enter" class="button"><ButtonLabel class="button-label">Enter VR</ButtonLabel></Button>
       <Button id="fireeye-retry" class="button" style="display: none"><ButtonLabel class="button-label">Retry map</ButtonLabel></Button>

@@ -1,7 +1,8 @@
-import { Box3, Color, Group, Quaternion, Raycaster, UIKitMLAsset, Vector3, VisibilityState, createSystem, type Entity, type Object3D } from '@iwsdk/core';
+import { Box3, Group, Quaternion, Raycaster, UIKitMLAsset, Vector3, VisibilityState, createSystem, type Entity, type Object3D } from '@iwsdk/core';
 import { fetchBuilding, IncidentSocket } from './incident-client.js';
 import type { IncidentState } from './incident-types.js';
 import { FireEyeMap } from './fire-eye-map.js';
+import { FireEyeAtmosphere } from './fire-eye-atmosphere.js';
 import { FireEyeStatus, type FireEyePhase, type FireEyeState } from './fire-eye-state.js';
 import { PullGesture } from './pull-gesture.js';
 import { StreetViewClient, type PanoMetadata } from './street-view-client.js';
@@ -23,6 +24,7 @@ export class FireEyeSystem extends createSystem({}) {
   private room: Object3D | null = null;
   private marker: Object3D | null = null;
   private map: FireEyeMap | null = null;
+  private atmosphere: FireEyeAtmosphere | null = null;
   private mapEntity: Entity | null = null;
   private lifecycle: Entity | null = null;
   private socket: IncidentSocket | null = null;
@@ -71,7 +73,7 @@ export class FireEyeSystem extends createSystem({}) {
       const object = this.world.getSceneObject(id);
       if (object) object.visible = false;
     }
-    this.world.scene.background = new Color('#e4e8eb');
+    this.atmosphere = new FireEyeAtmosphere(this.world);
     this.world.renderer.shadowMap.enabled = false;
     // City meshes are hundreds of metres away; the desk's 1 mm near plane loses
     // enough depth precision there to make roofs and roads fight each other.
@@ -91,6 +93,7 @@ export class FireEyeSystem extends createSystem({}) {
     this.raycaster.far = 3000;
     for (const id of ['fireeye-streetview', 'fireeye-streetview-cancel', 'fireeye-streetview-exit']) this.bind(id, () => this.toggleStreet());
     this.bind('fireeye-enter', () => { void this.world.launchXR(); });
+    this.bind('fireeye-exit', () => { void this.world.exitXR(); });
     this.bind('fireeye-retry', () => { void this.resolveLocation(); });
     this.bind('fireeye-back', () => { this.manualPreview = false; this.paused = true; this.showBriefing(); });
     this.bind('fireeye-resume', () => { this.manualPreview = true; this.paused = false; this.maybeStartCountdown(true); });
@@ -109,8 +112,17 @@ export class FireEyeSystem extends createSystem({}) {
         this.set('fireeye-map-status', { text: `City view / ${view} / target 45 degrees below eye level` });
       });
     }
+    let wasImmersive = false;
     this.cleanupFuncs.push(this.world.visibilityState.subscribe(value => {
-      this.set('fireeye-enter', { display: value === VisibilityState.NonImmersive ? 'flex' : 'none' });
+      const isImmersive = value !== VisibilityState.NonImmersive;
+      this.set('fireeye-enter', { display: isImmersive ? 'none' : 'flex' });
+      this.set('fireeye-exit', { display: isImmersive ? 'flex' : 'none' });
+      if (wasImmersive && !isImmersive) {
+        this.manualPreview = false;
+        this.paused = true;
+        this.showBriefing();
+      }
+      wasImmersive = isImmersive;
     }));
     this.socket = new IncidentSocket(state => this.onState(state), status => {
       this.connected = status === 'connected';
@@ -125,6 +137,7 @@ export class FireEyeSystem extends createSystem({}) {
       this.abort?.abort();
       this.socket?.close();
       this.clearMap();
+      this.atmosphere?.dispose();
       this.lifecycle?.dispose();
       this.streetScene?.dispose();
       this.reticle?.dispose();
@@ -145,6 +158,7 @@ export class FireEyeSystem extends createSystem({}) {
 
   private phase(phase: FireEyePhase): void {
     this.state.phase = phase;
+    this.atmosphere?.setCityVisible(phase === 'city');
     this.lifecycle?.setValue(FireEyeStatus, 'phase', phase);
     this.set('fireeye-status-box', { backgroundColor: phase === 'error' ? '#64372b' : phase === 'city' ? '#174c42' : '#193b48' });
   }
@@ -152,7 +166,7 @@ export class FireEyeSystem extends createSystem({}) {
   private onState(state: IncidentState): void {
     const key = state.building ? `${state.building.id}:${state.building.version}` : 'demo';
     if (this.buildingKey && key !== this.buildingKey) {
-      this.actions = []; this.fingerprint = ''; this.paused = false;
+      this.actions = []; this.fingerprint = '';
       void this.resolveLocation();
     }
     this.buildingKey = key;

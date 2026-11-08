@@ -41,10 +41,11 @@ export default async function ({ frame, workspaceRoot }) {
         maxTriangles=Math.max(maxTriangles,count);minTriangles=Math.min(minTriangles,count);
       }
     } finally { tiles.removeEventListener('tile-visibility-change',track); }
-    const seen=new Set();let totalTextures=0,mipmappedTextures=0,maxTexture=0,maxAnisotropy=0;
+    const seen=new Set();let totalTextures=0,mipmappedTextures=0,maxTexture=0,maxAnisotropy=0,tileMaterials=0,fogMaterials=0;
     tiles.group.traverse(object=>{
       for(const material of Array.isArray(object.material)?object.material:[object.material]) {
         if(!material)continue;
+        tileMaterials++;if(material.fog)fogMaterials++;
         for(const value of Object.values(material)) {
           if(!value?.isTexture||seen.has(value))continue;
           seen.add(value);totalTextures++;
@@ -58,7 +59,8 @@ export default async function ({ frame, workspaceRoot }) {
       near:w.camera.near,far:w.camera.far,anchor:{x:map.anchor.position.x,y:map.anchor.position.y,z:map.anchor.position.z},
       errorTarget:tiles.errorTarget,cameraCount:tiles.cameras.length,preloadRegistered:map.preloadRegistered,
       visible:tiles.visibleTiles.size,loaded:tiles.stats.loaded,failed:tiles.stats.failed,
-      settledVisibilityChanges:changes,minTriangles,maxTriangles,totalTextures,mipmappedTextures,maxTexture,maxAnisotropy};
+      settledVisibilityChanges:changes,minTriangles,maxTriangles,totalTextures,mipmappedTextures,maxTexture,maxAnisotropy,
+      tileMaterials,fogMaterials,fog:w.scene.fog?{near:w.scene.fog.near,far:w.scene.fog.far,color:w.scene.fog.color.getHexString()}:null,atmosphereActive:window.__fireeye.system.atmosphere.active};
   });
   results.push(result);
   console.log(JSON.stringify(result));
@@ -72,11 +74,18 @@ export default async function ({ frame, workspaceRoot }) {
   assert.ok(result.maxAnisotropy<=4);
   assert.ok(result.maxTriangles<100000,'The tested viewpoint must fit the Quest triangle budget');
   assert.equal(result.failed,0);
+  assert.equal(result.atmosphereActive,true);
+  assert.equal(result.tileMaterials,result.fogMaterials);
+  assert.deepEqual(result.fog,{near:450,far:1400,color:'e4e8eb'});
   assert.equal(result.settledVisibilityChanges,0,'Tiles must not alternate while the camera is stationary and loading has settled');
   }
   await cli('xr','exit');
   await frame.waitForFunction(()=>window.__fireeye.system.map.selectionCamera===window.__world.camera);
+  assert.equal(await frame.evaluate(()=>window.__fireeye.state.phase),'briefing');
+  assert.equal(await frame.evaluate(()=>window.__world.scene.fog),null);
   await cli('xr','enter');
+  await press('fireeye-resume');
+  await frame.waitForFunction(()=>window.__fireeye.state.phase==='city');
   await mkdir(join(workspaceRoot,'artifacts'),{recursive:true});
   await writeFile(join(workspaceRoot,'artifacts/fireeye-stability.json'),JSON.stringify({views:results,exitCameraRestored:true},null,2));
 }

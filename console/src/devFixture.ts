@@ -103,8 +103,8 @@ function fixture(kind: "lookup" | "tower") {
   return { building, state };
 }
 
-/** The fixture named by `?fixture=`, or null. `&view=plan` opens the floor plan, `&theme=dark` the dark theme. */
-export function devFixture(): { building: Building; state: IncidentState; view: "plan" | "3d" } | null {
+/** The fixture named by `?fixture=`, or null. `&view=map` opens surroundings, `&theme=dark` the dark theme. */
+export function devFixture(): { building: Building; state: IncidentState; view: "map" | "3d" } | null {
   const params = new URLSearchParams(location.search);
   const name = params.get("fixture");
   if (name !== "lookup" && name !== "tower") return null;
@@ -115,5 +115,5 @@ export function devFixture(): { building: Building; state: IncidentState; view: 
   if (result.state.buildingLookup && (status === "searching" || status === "loading" || status === "failed")) {
     result.state.buildingLookup = { ...result.state.buildingLookup, status, candidates: status === "failed" ? [] : result.state.buildingLookup.candidates, error: status === "failed" ? "No building outline is mapped at this address." : undefined };
   }
-  return { ...result, view: params.get("view") === "plan" ? "plan" : "3d" };
+  return { ...result, view: ["map", "plan"].includes(params.get("view") ?? "") ? "map" : "3d" };
 }
