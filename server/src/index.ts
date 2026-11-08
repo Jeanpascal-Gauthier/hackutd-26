@@ -1,6 +1,7 @@
 // FireSight server entry. Wiring only (app.ts): one live incident (real spread model) behind ws +
 // http on one port. Live mode (default) waits for reports and supports building address lookup;
 // MOCK=1 opts into scripted calls on the demo building.
+import "./environment.ts";
 import { createApp } from "./app.ts";
 import { AGENT_EXPORT, guardAgent, loadAgentProcessor, loadAgentReset, loadOccupancyEstimator } from "./agent/bridge.ts";
 

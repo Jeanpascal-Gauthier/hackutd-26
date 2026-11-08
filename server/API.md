@@ -18,6 +18,11 @@ building from the confirmed record (with an estimated layout) and activates it.
 The server loads the root `.env` file. Fill in its `GEOAPIFY_API_KEY` value locally, then restart
 the server. Keep credentials out of Git and browser code. The tracked `.env.example` contains
 the setting names; `.env` and `.env.*` variants are ignored, while `.env.example` remains public.
+The server entry point loads this file relative to its source location before initializing
+the app and agent, including when launched directly without CLI environment-file flags.
+Explicitly supplied environment variables take precedence. A missing `.env` is allowed.
+Development uses Node's built-in watcher with the tsx TypeScript loader. If a restart still
+shows old configuration, check for an older process holding port 8080 before launching again.
 
 ```dotenv
 GEOAPIFY_API_KEY=your_key_here
