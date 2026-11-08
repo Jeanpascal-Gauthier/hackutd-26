@@ -1,14 +1,46 @@
-import type { ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { PulseIcon } from "./Icons";
 
-/**
- * A people count. Estimated counts (room kind x building use x time of day, not a record) read
- * "≈ 14 people" with an "estimated" tooltip; recorded counts render exactly as before.
- */
+/** Ids that appeared after the first snapshot, for the one-time arrival highlight. */
+export function useFreshIds(ids: string[] | null): Set<string> {
+  const known = useRef<Set<string> | null>(null);
+  const [fresh, setFresh] = useState<Set<string>>(() => new Set());
+  const signature = ids?.join("\n");
+  useLayoutEffect(() => {
+    if (!ids) return;
+    if (!known.current) { known.current = new Set(ids); return; }
+    if (!ids.length) { known.current.clear(); setFresh(new Set()); return; }
+    const added = ids.filter((id) => !known.current!.has(id));
+    if (!added.length) return;
+    known.current = new Set(ids);
+    setFresh((previous) => new Set([...previous, ...added].filter((id) => known.current!.has(id))));
+    // The signature tracks the identifiers without rerunning for unchanged snapshots.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
+  return fresh;
+}
+
+export function formatAgo(elapsedMs: number) {
+  const minutes = Math.floor(elapsedMs / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min ago`;
+}
+
+/** Relative time that keeps itself current. */
+export function Ago({ value }: { value: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(timer);
+  }, []);
+  return <time dateTime={new Date(value).toISOString()} title={new Date(value).toLocaleString()}>{formatAgo(now - value)}</time>;
+}
+
+/** Only display recorded counts; inferred occupancy is unavailable in the console. */
 export function PeopleCount({ count, estimated = false, unit = "people" }: { count: number; estimated?: boolean; unit?: string }) {
-  const text = unit ? `${count} ${unit}` : `${count}`;
-  if (!estimated) return <>{text}</>;
-  return <span className="estimated-count" title="Estimated count, not a record"><span aria-hidden="true">≈ </span>{text}<span className="sr-only"> (estimated)</span></span>;
+  if (estimated) return <span aria-label="People count unavailable">—</span>;
+  return <>{unit ? `${count} ${unit}` : `${count}`}</>;
 }
 
 export const formatTime = (value: number) =>

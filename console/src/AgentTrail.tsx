@@ -24,26 +24,20 @@ function summary(step: TrailStep): { tag: string; text: string } | null {
     const parts = [query && `“${query}”`, match && `matched ${match}`, candidates !== null && `${candidates} outline${candidates === 1 ? "" : "s"} nearby`].filter(Boolean);
     return { tag: "Building lookup", text: parts.length ? parts.join(" · ") : "Address lookup recorded" };
   }
-  if (step.tool === "estimate_occupancy") {
-    const total = typeof output.total === "number" ? output.total : null;
-    const floors = Object.keys(record(output.byFloor)).length;
-    const basis = Array.isArray(output.basis) ? output.basis.length : 0;
-    const parts = [total !== null && `≈ ${total} people estimated`, floors > 0 && `${floors} floor${floors === 1 ? "" : "s"}`, basis > 0 && `${basis} basis note${basis === 1 ? "" : "s"}`].filter(Boolean);
-    return { tag: "Occupancy estimate", text: parts.length ? parts.join(" · ") : "Occupancy estimate recorded" };
-  }
   return null;
 }
 
 export function AgentTrail({ steps = [], demo = false }: { steps?: readonly TrailStep[]; demo?: boolean }) {
+  const visibleSteps = steps.filter((step) => step.tool !== "estimate_occupancy");
   return (
     <section className="panel" aria-labelledby="agent-heading">
-      <PanelHeading label="Server tool activity" title="Tool-call trail" id="agent-heading" count={steps.length} aside={<span className="agent-icon" aria-hidden="true"><SparkIcon size={18} /></span>} />
+      <PanelHeading label="Server tool activity" title="Tool-call trail" id="agent-heading" count={visibleSteps.length} aside={<span className="agent-icon" aria-hidden="true"><SparkIcon size={18} /></span>} />
       <p className="panel-note trail-note">
         {demo ? "Scripted scenario: tool entries and timings may be illustrative." : "Recorded tool calls in execution order, with the server's input, output, and duration."}
       </p>
-      {steps.length ? (
+      {visibleSteps.length ? (
         <ol className="tool-trail">
-          {steps.map((step, index) => {
+          {visibleSteps.map((step, index) => {
             const about = summary(step);
             return (
             <li key={`${index}-${step.tool}`} className={hasError(step.output) ? "failed" : "recorded"}>

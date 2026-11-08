@@ -24,7 +24,7 @@ function FloorForecast({ exit, minute, selected, estimated, onSelect }: {
     <article className={`exit-floor ${selected ? "selected-floor" : ""}`}>
       <div className="exit-floor-heading">
         <button className="text-button" aria-pressed={selected} onClick={onSelect}>Floor {exit.floor}</button>
-        <span><PeopleCount count={exit.people} estimated={estimated} /></span>
+        {!estimated && <span><PeopleCount count={exit.people} /></span>}
       </div>
       <dl className="exit-details">
         <div><dt>Recommended stair</dt><dd className={exit.stair ? "" : "risk-active"}>{exit.stair ? stairName(exit.stair) : "No stair recommended"}</dd></div>
@@ -33,7 +33,7 @@ function FloorForecast({ exit, minute, selected, estimated, onSelect }: {
           <div key={stair}><dt>{stairName(stair)} smoke threshold</dt><dd><SmokeTime minute={blocked} currentMinute={minute} /></dd></div>
         ))}
       </dl>
-      {exit.flags.length > 0 && <p className="assistance-note">Assistance flags: {exit.flags.join(", ")}</p>}
+      {!estimated && exit.flags.length > 0 && <p className="assistance-note">Assistance flags: {exit.flags.join(", ")}</p>}
     </article>
   );
 }
@@ -67,7 +67,7 @@ export function ExitAnalysis({ state, floor, onSelectFloor, onSelectRoom }: {
         <>
           <div className="forecast-summary">
             <div><strong>{atRisk.length}</strong><span>floors at risk</span></div>
-            <div><strong><PeopleCount count={atRisk.reduce((sum, exit) => sum + exit.people, 0)} estimated={atRisk.some((exit) => estimated.has(exit.floor))} unit="" /></strong><span>people on those floors</span></div>
+            {!atRisk.some((exit) => estimated.has(exit.floor)) && <div><strong><PeopleCount count={atRisk.reduce((sum, exit) => sum + exit.people, 0)} unit="" /></strong><span>people on those floors</span></div>}
             <div><strong>{exits.filter((exit) => !exit.stair).length}</strong><span>floors without a stair recommendation</span></div>
           </div>
           <p className="panel-note">Predicted smoke threshold times are measured from forecast minute 0. A recommended stair may still become smoky; review its time below.</p>

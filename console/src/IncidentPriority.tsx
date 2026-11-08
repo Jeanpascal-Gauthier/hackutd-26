@@ -1,4 +1,4 @@
-import type { FloorExit, IncidentState } from "@firewatch/shared/types";
+import type { FloorExit, IncidentState, Recommendation } from "@firewatch/shared/types";
 import { estimatedFloors, useBuilding, type ActiveBuilding } from "./activeBuilding";
 import { CheckIcon, FlameIcon, StairsIcon, UsersIcon } from "./Icons";
 import { Empty, PeopleCount, Timestamp } from "./ui";
@@ -41,7 +41,7 @@ export function IncidentSummary({ state, onLocate }: {
       <div className={`priority-stat ${atRisk.length ? "people-stat" : ""}`}>
         <span className="priority-label"><UsersIcon size={18} />People at risk</span>
         <strong className="priority-value">{exits.length ? <PeopleCount count={atRisk.reduce((sum, exit) => sum + exit.people, 0)} estimated={atRisk.some((exit) => estimated.has(exit.floor))} unit="" /> : "—"}<span>{exits.length ? `across ${atRisk.length} floor${atRisk.length === 1 ? "" : "s"}` : "Forecast pending"}</span></strong>
-        <span className="priority-detail">{atRisk.some((exit) => estimated.has(exit.floor)) ? "Occupancy estimated · over the 30-minute forecast" : "Estimated over the 30-minute forecast"}</span>
+        <span className="priority-detail">{atRisk.some((exit) => estimated.has(exit.floor)) ? "People count unavailable" : "Estimated over the 30-minute forecast"}</span>
       </div>
       <div className={`priority-stat ${first ? "exit-stat" : ""}`}>
         <span className="priority-label"><StairsIcon size={18} />Stair smoke forecast</span>
@@ -52,18 +52,21 @@ export function IncidentSummary({ state, onLocate }: {
   );
 }
 
-export function PriorityActions({ state, connected, onAccept }: {
-  state: IncidentState | null;
+/** One recommendation awaiting a decision: the building's (`variant="building"`) or a map incident's. */
+export function PriorityActions({ pending, accepted, connected, onAccept, title = "Next actions", headingId = "actions-heading", variant = "building" }: {
+  pending?: Recommendation;
+  accepted?: IncidentState["accepted"];
   connected: boolean;
   onAccept: () => void;
+  title?: string;
+  headingId?: string;
+  variant?: "building" | "incident";
 }) {
-  const pending = state?.recommendation;
-  const accepted = state?.accepted;
   const recommendation = pending ?? accepted?.recommendation;
   return (
-    <section className={`panel priority-actions ${pending ? "needs-decision" : ""}`} aria-labelledby="actions-heading">
+    <section className={`panel priority-actions ${pending ? "needs-decision" : ""}`} aria-labelledby={headingId}>
       <div className="panel-heading">
-        <h2 id="actions-heading">Next actions</h2>
+        <h2 id={headingId}>{title}</h2>
         {pending ? <span className="pill warn">Needs decision</span> : accepted ? <span className="pill safe"><CheckIcon size={14} />Accepted on server</span> : null}
       </div>
       {recommendation ? (
@@ -81,12 +84,12 @@ export function PriorityActions({ state, connected, onAccept }: {
           {pending ? (
             <>
               <button className="button primary full-width accept-button" disabled={!connected} onClick={onAccept}><CheckIcon size={18} />Accept recommendation</button>
-              <p className="action-footnote">Commander backup control. Dispatch and caller replies are separate.</p>
+              <p className="action-footnote">{variant === "building" ? "Commander backup control. " : "Records the decision only. "}Dispatch and caller replies are separate.</p>
               {accepted && <p className="previous-decision">Previous accepted decision: <Timestamp value={accepted.time} /> · See activity below.</p>}
             </>
           ) : <p className="action-footnote">Acceptance source is not recorded. New recommendations will appear here.</p>}
         </div>
-      ) : <Empty title="No action recommendation yet" text="Located reports will produce suggested actions for review." />}
+      ) : <Empty title="No action recommendation yet" text={variant === "building" ? "Located reports will produce suggested actions for review." : "Suggested actions will appear when this incident has enough detail."} />}
     </section>
   );
 }
@@ -112,7 +115,7 @@ export function EvacuationPriorities({ state, floor, onFloor }: {
               <tbody>{rows.map((exit) => (
                 <tr key={exit.floor} className={exit.floor === floor ? "selected-priority" : ""}>
                   <th scope="row"><button aria-label={`Inspect floor ${exit.floor}`} aria-pressed={exit.floor === floor} onClick={() => onFloor(exit.floor)}>{exit.floor}{exit.floor === originFloor && <span className="origin-label">Origin</span>}</button></th>
-                  <td><PeopleCount count={exit.people} estimated={estimated.has(exit.floor)} unit="" />{exit.flags.length > 0 && <span className="assistance-label" title={exit.flags.join(", ")}>Assistance needed<span className="sr-only">: {exit.flags.join(", ")}</span></span>}</td>
+                  <td><PeopleCount count={exit.people} estimated={estimated.has(exit.floor)} unit="" />{!estimated.has(exit.floor) && exit.flags.length > 0 && <span className="assistance-label" title={exit.flags.join(", ")}>Assistance needed<span className="sr-only">: {exit.flags.join(", ")}</span></span>}</td>
                   <td><span className={exit.stair ? "recommended-stair" : "missing-stair"}>{exit.stair ? stairName(exit.stair) : "None recommended"}</span>{exit.stair && exit.blockedAt[exit.stair] != null && <span className="missing-stair stair-timing">Smoke at +{exit.blockedAt[exit.stair]} min</span>}</td>
                 </tr>
               ))}</tbody>

@@ -1,13 +1,13 @@
 // Real-world data for map incidents. Each provider is injected, so tests never touch the network.
 import type { GeoPoint, WindReading } from "@firewatch/shared/types";
 import type { BuildingService } from "../buildings/service.ts";
-import { DEFAULT_OVERPASS_URL, nearbyBuildings, nearbyRoads } from "../buildings/overpass.ts";
+import { DEFAULT_OVERPASS_URL, nearbyBuildings, nearbyRoads, validOverpassUrl, validateLocation } from "../buildings/overpass.ts";
 import { isObject, providerJson, type Fetch, type RequestOptions } from "../buildings/provider.ts";
 import type { AddressCandidate } from "../buildings/geoapify.ts";
 import type { OsmElement } from "../buildings/types.ts";
 import { ROAD_RADIUS_METERS, type RoadWay } from "./crashModel.ts";
-import type { NearbyBuilding } from "./fireModel.ts";
-import { localFrame, offset } from "./geo.ts";
+import { EXPOSURE_RADIUS_METERS, SENSITIVE_RADIUS_METERS, type NearbyBuilding, type NearbyBuildings } from "./fireModel.ts";
+import { geoDistance, localFrame, offset } from "./geo.ts";
 
 export interface GeocodeMatch {
   location: GeoPoint;
@@ -18,13 +18,16 @@ export interface MapProviders {
   /** The best match precise enough to pin, or null when there is none. Throws if the geocoder is down. */
   geocode(query: string): Promise<GeocodeMatch | null>;
   roads(location: GeoPoint): Promise<RoadWay[]>;
-  buildings(location: GeoPoint): Promise<NearbyBuilding[]>;
+  /** Buildings close by, plus hospitals, schools and care homes further out. */
+  buildings(location: GeoPoint): Promise<NearbyBuildings>;
   /** Current surface wind. Throws if weather is unavailable. */
   wind(location: GeoPoint): Promise<WindReading>;
 }
 
-const EXPOSURE_RADIUS_METERS = 250;
 const OVERPASS_WAIT_MS = 10000;
+const SENSITIVE_WAIT_MS = 8000; // this lookup runs beside the ordinary one and must not hold up the forecast
+const MAX_SENSITIVE_SITES = 250; // a hard cap on the query; Overpass truncates arbitrarily past it
+const SAME_SITE_METERS = 300; // one hospital is often mapped as both a campus and a point
 const ROUTE_BATCH = 4;
 /** Matches this coarse put a pin kilometres away from the emergency. */
 const TOO_VAGUE = new Set(["country", "state", "county", "city", "postcode"]);
@@ -40,9 +43,94 @@ function roadWay(element: OsmElement): RoadWay[] {
   return [{ id: element.id, name: tags.name ?? tags.ref ?? null, highway, oneway, lanes: lanes > 0 ? lanes : null, nodes: element.nodes, geometry: element.geometry }];
 }
 
+const SENSITIVE_USES = new Map([
+  ["amenity=hospital", "hospital"], ["amenity=clinic", "clinic"], ["amenity=school", "school"],
+  ["amenity=university", "university"], ["amenity=kindergarten", "kindergarten"], ["amenity=nursing_home", "nursing home"],
+  ["healthcare=hospital", "hospital"], ["healthcare=clinic", "clinic"],
+  ["social_facility=nursing_home", "nursing home"], ["social_facility=assisted_living", "care facility"], ["social_facility=group_home", "care facility"],
+  // Only read off buildings already fetched: querying these would return every wing of every campus.
+  ["building=hospital", "hospital"], ["building=school", "school"], ["building=university", "university"], ["building=kindergarten", "kindergarten"],
+]);
+
+function useOf(tags: Record<string, string> | undefined): string | undefined {
+  for (const key of ["amenity", "healthcare", "social_facility", "building"]) {
+    const use = SENSITIVE_USES.get(`${key}=${tags?.[key]}`);
+    if (use) return use;
+  }
+  return undefined;
+}
+
 function building(element: OsmElement): NearbyBuilding[] {
   if (element.type !== "way" || !element.geometry || element.geometry.length < 4) return [];
-  return [{ id: `osm:way:${element.id}`, name: element.tags?.name ?? null, outline: element.geometry.slice(0, -1) }];
+  const use = useOf(element.tags);
+  return [{ id: `osm:way:${element.id}`, name: element.tags?.name ?? null, outline: element.geometry.slice(0, -1), ...(use ? { use } : {}) }];
+}
+
+function sensitiveSite(raw: unknown): NearbyBuilding[] {
+  if (!isObject(raw) || typeof raw.type !== "string" || typeof raw.id !== "number" || !isObject(raw.tags)) return [];
+  const tags = raw.tags as Record<string, string>;
+  const use = useOf(tags);
+  const at = isObject(raw.center) ? raw.center : raw;
+  if (!use || typeof at.lat !== "number" || typeof at.lon !== "number") return [];
+  return [{ id: `osm:${raw.type}:${raw.id}`, name: typeof tags.name === "string" ? tags.name : null, outline: [], location: { lat: at.lat, lon: at.lon }, use }];
+}
+
+/** Sites by centre point only, which keeps a 3 km query small. Goes direct because overpass.ts has no tag query. */
+async function sensitiveSitesOverpass(location: GeoPoint, url: string, options: RequestOptions): Promise<NearbyBuilding[]> {
+  const { lat, lon } = validateLocation(location);
+  const around = `(around:${SENSITIVE_RADIUS_METERS},${lat},${lon})`;
+  const query = `[out:json][timeout:${SENSITIVE_WAIT_MS / 1000}];(`
+    + `nwr["amenity"~"^(hospital|clinic|school|university|kindergarten|nursing_home)$"]${around};`
+    + `nwr["healthcare"~"^(hospital|clinic)$"]${around};`
+    + `nwr["social_facility"~"^(nursing_home|assisted_living|group_home)$"]${around};`
+    + `);out center ${MAX_SENSITIVE_SITES};`;
+  const body = await providerJson(validOverpassUrl(url), "OpenStreetMap", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json", "user-agent": "FireWatch/0.0.0 (HackUTD building lookup prototype)" },
+    body: new URLSearchParams({ data: query }).toString(),
+  }, { ...options, timeoutMs: SENSITIVE_WAIT_MS });
+  // A remark means Overpass gave up part way, so the list would silently be missing sites.
+  if (!isObject(body) || !Array.isArray(body.elements) || typeof body.remark === "string") throw new Error("Overpass returned no complete site list");
+  return body.elements.slice(0, MAX_SENSITIVE_SITES).flatMap(sensitiveSite);
+}
+
+const GEOAPIFY_SENSITIVE: [string, string][] = [
+  ["healthcare.hospital", "hospital"], ["healthcare.clinic_or_praxis", "clinic"], ["education.school", "school"],
+  ["education.university", "university"], ["childcare.kindergarten", "kindergarten"],
+  ["service.social_facility.nursing_home", "nursing home"], ["service.social_facility.retirement_home", "care facility"],
+];
+
+async function sensitiveSitesGeoapify({ lat, lon }: GeoPoint, apiKey: string, options: RequestOptions): Promise<NearbyBuilding[]> {
+  const url = new URL("https://api.geoapify.com/v2/places");
+  url.search = new URLSearchParams({
+    categories: GEOAPIFY_SENSITIVE.map(([category]) => category).join(","),
+    filter: `circle:${lon},${lat},${SENSITIVE_RADIUS_METERS}`,
+    bias: `proximity:${lon},${lat}`,
+    limit: String(MAX_SENSITIVE_SITES),
+    apiKey,
+  }).toString();
+  const body = await providerJson(url, "Geoapify places", { headers: { accept: "application/json" } }, { timeoutMs: 8000, ...options });
+  if (!isObject(body) || !Array.isArray(body.features)) throw new Error("Geoapify places returned no list");
+  return body.features.flatMap((feature: unknown, index: number): NearbyBuilding[] => {
+    const props = isObject(feature) && isObject(feature.properties) ? feature.properties : {};
+    if (typeof props.lat !== "number" || typeof props.lon !== "number" || !Array.isArray(props.categories)) return [];
+    const categories = props.categories.filter((c): c is string => typeof c === "string");
+    const use = GEOAPIFY_SENSITIVE.find(([key]) => categories.some((c) => c === key || c.startsWith(`${key}.`)))?.[1];
+    if (!use) return [];
+    return [{ id: typeof props.place_id === "string" ? props.place_id : `site-${index}`, name: typeof props.name === "string" ? props.name : null, outline: [], location: { lat: props.lat, lon: props.lon }, use }];
+  });
+}
+
+/** Adds the sites to the buildings. A site that is also a fetched building marks it rather than repeating it. */
+function withSensitiveSites(nearby: NearbyBuilding[], sites: NearbyBuilding[]): NearbyBuilding[] {
+  const byId = new Map(nearby.map((b) => [b.id, b]));
+  const added: NearbyBuilding[] = [];
+  for (const site of sites) {
+    const known = byId.get(site.id);
+    if (known) known.use ??= site.use;
+    else if (!added.some((a) => a.name !== null && a.name === site.name && a.use === site.use && geoDistance(a.location!, site.location!) <= SAME_SITE_METERS)) added.push(site);
+  }
+  return [...nearby, ...added];
 }
 
 const key = (point: number[]) => `${point[0]},${point[1]}`;
@@ -176,10 +264,21 @@ export function defaultMapProviders(service: Pick<BuildingService, "search">, op
       async () => (await nearbyRoads(location, ROAD_RADIUS_METERS, overpass(), overpassRequest)).flatMap(roadWay),
       (key) => approachRoads(location, key, request, batchDelay),
     ),
-    buildings: (location) => withFallback(
-      async () => (await nearbyBuildings(location, overpass(), overpassRequest, EXPOSURE_RADIUS_METERS)).flatMap(building),
-      (key) => placesNear(location, key, request),
-    ),
+    async buildings(location) {
+      // Side by side so a slow site lookup costs no extra time. Its failure only removes the sites.
+      const [nearby, sites] = await Promise.all([
+        withFallback(
+          async () => (await nearbyBuildings(location, overpass(), overpassRequest, EXPOSURE_RADIUS_METERS)).flatMap(building),
+          (key) => placesNear(location, key, request),
+        ),
+        withFallback(
+          () => sensitiveSitesOverpass(location, overpass(), request),
+          (key) => sensitiveSitesGeoapify(location, key, request),
+        ).catch(() => null),
+      ]);
+      if (sites) return withSensitiveSites(nearby, sites);
+      return Object.assign(nearby, { sensitiveSitesUnavailable: true });
+    },
     async wind({ lat, lon }) {
       const url = new URL("https://api.open-meteo.com/v1/forecast");
       url.search = new URLSearchParams({ latitude: String(lat), longitude: String(lon), current: "wind_speed_10m,wind_direction_10m", wind_speed_unit: "ms" }).toString();

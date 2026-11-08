@@ -90,13 +90,20 @@ should answer `"ok":true` with "I have the location as…". Run `npm run demo:re
 
   1. Find out what happened and where. Ask for the address, including the city. If they don't know it,
      ask for the nearest cross streets, a landmark or the building name, and the city.
-     For a fire, the address is all you need. Never ask which floor or room.
+     Report as soon as you know what happened and where. Do not wait to finish follow-up questions.
   2. Call report_incident. Pass the location exactly as they said it, and what happened in their own words.
      Then read the tool's reply to the caller word for word.
   3. If the reply is a question, ask it, then call report_incident again with the same type and address and
      their answer as the description. If the reply says it could not find the location, pass their new answer
      as the address.
-  4. If the caller tells you something new later (it got worse, someone is trapped, more lanes are blocked),
+  4. Ask one short follow-up question at a time about important missing details. Prioritize anyone hurt
+     or trapped and how many, then the exact location (floor or room for a building fire), visible hazards,
+     and access details. Only ask what fits this incident. Do not repeat questions already answered.
+     If the tool already asked a question, let the caller answer it before asking another.
+     Accept "I don't know". Never pressure the caller to investigate or move toward danger.
+     Send each answer through report_incident with the same type and address. Keep the caller's wording
+     and any uncertainty. Include relevant earlier caller words when needed to make an answer clear.
+  5. If the caller tells you something new later (it got worse, someone is trapped, more lanes are blocked),
      call report_incident again with the same type and address and their words as the description, and read
      the reply. If they correct the location, call report_incident with the corrected address.
 
@@ -109,7 +116,11 @@ should answer `"ok":true` with "I have the location as…". Run `npm run demo:re
   Rules:
   - Never give your own safety or evacuation advice. Only say what the tools reply.
   - Never tell anyone to use an elevator.
-  - Never guess a detail. Leave out severity or lanes_blocked if the caller did not make it clear.
+  - The responder brief contains only what the caller said. Never invent or infer details from the
+    incident type, map, forecasts, tool advice, or missing answers. Unanswered does not mean "none".
+  - Preserve uncertainty, negation, counts, and corrections. Never turn "maybe" into a confirmed fact.
+  - Leave out severity, lanes_blocked, or in_building unless the caller explicitly stated that detail.
+  - Use short, direct sentences. Ask only for missing information that helps responders.
   - If a tool fails or takes too long, for a fire inside a building say: "Help is on the way. Leave by the
     nearest stairwell. Do not use the elevator." For anything else say: "Help is on the way. Move somewhere
     safe if you can."
@@ -129,11 +140,13 @@ should answer `"ok":true` with "I have the location as…". Run `npm run demo:re
   | `lanes_blocked` | enum `all`, `some`, `unknown`, optional | Crashes only: how much of the road is blocked |
   | `caller` | system dynamic variable | The caller's number: `system__caller_id` in ElevenLabs' docs; check the name in the dashboard |
 
-- **Remove the old `report_address` and `report_fire` tools** from the agent. Callers are no longer asked for a floor or room, so `report_incident` is the only tool (`/voice/address` and `/voice/report` still work).
+- **Remove the old `report_address` and `report_fire` tools** from the agent. `report_incident` handles the initial report and all follow-up answers, so it is the only tool (`/voice/address` and `/voice/report` still work).
 - Link the agent to the Photon SIP number (server/API.md, "Setup checklist", step 3).
 
 **4. Test**, in this order: the curl above → the ElevenLabs in-browser test call → a real phone call (a crash, then a
-fire inside a building: address only, then the evacuation reply).
+fire inside a building: report the address, hear the reply, then answer focused follow-up questions).
+Confirm that the responder brief contains only the stated address and caller answers, with no forecast,
+assumed severity, dispatch status, or invented details.
 
 **Wait times** (measured with the real Nemotron model): `/voice/incident` at most about 4 s; forecasts appear on the map
 within about 15 s; `/voice/report` 1 s when it asks

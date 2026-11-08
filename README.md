@@ -1,8 +1,10 @@
-# FireWatch
+# FirstSight
 
-HackUTD '26 project. FireWatch turns reports about a fire in a multi-story building into a live 3D model that an incident commander views in a VR headset: where the fire is, where the smoke will be over the next 30 minutes, who is still inside, and which stairwell is safe. Dispatch sees the same live state on a laptop console.
+HackUTD '26 project. FirstSight gives emergency operators a shared incident workspace for fires, car crashes, and other disruptions. The dispatch console shows an incident queue, Google Maps locations, modeled fire and smoke spread or traffic queues, caller reports, response status, and copyable responder briefs. Street View supplies scene context from existing imagery. Forecasts are illustrative models, and scene imagery does not establish current conditions.
 
-## How it works
+The existing building-fire workflow remains available: a shared 3D building and floor plan, room-by-room smoke forecasts, occupancy estimates, and evacuation analysis on the console and Quest headset. The headset and the text/QR agent currently retain that building-focused workflow; the new geographic incident workspace is in `console/` and `server/`. See [console integration and remaining work](console/INTEGRATION.md).
+
+## Building-fire workflow
 
 1. A person in the building texts the FireWatch line (Photon 2.0, iMessage), or fills in the QR web form: "There's smoke coming from the break room on the 7th floor."
 2. A Nemotron agent calls its tools in order: `locate_room` → `merge_reports` → `run_spread` → `find_clear_exits` → `write_recommendation`. If the location is unclear, it texts the caller a follow-up question.
@@ -41,7 +43,7 @@ Use `npm run demo -- --mock` for scripted calls on the demo building.
 | `shared/` | The contract: `types.ts`, WebSocket events (`events.ts`), `building.json` |
 | `server/` | Node server on :8080: incident state, WebSocket, `POST /ingest`, spread model, exit finder, mock mode. API in [server/API.md](server/API.md) |
 | `agent/` | Nemotron agent and its five tools, Photon 2.0 line, QR report form |
-| `console/` | React + Vite + three.js dispatch console: 3D building, floor plan, call log, agent trail, exit analysis |
+| `console/` | FirstSight React + Vite dispatch console: multi-incident Google Maps, forecast overlays, response controls, briefs, and existing three.js building tools |
 | `headset/` | Immersive Web SDK (three.js) mixed-reality app for the Quest |
 | `data/` | Building generator and validator (floor plans, sprinkler and fire-door inspection records, occupancy) |
 
@@ -52,7 +54,7 @@ Use `npm run demo -- --mock` for scripted calls on the demo building.
 - **Phone calls:** a Photon voice number forwards calls over SIP to an ElevenLabs voice agent, which asks for the address and the fire's location and calls the server's `/voice/address` and `/voice/report` tools ([DEMO.md](DEMO.md#phone-calls-elevenlabs), [server/API.md](server/API.md#phone-calls-photon--elevenlabs--firesight))
 - **Address lookup:** Geoapify geocoding plus OpenStreetMap building outlines (`GEOAPIFY_API_KEY`)
 - **Headset:** Meta Immersive Web SDK, running in the Quest browser over HTTPS
-- **Console:** React, Vite, three.js
+- **Console:** React, Vite, Google Maps JavaScript API, three.js
 - **Server:** Node + TypeScript, HTTP and WebSocket on one port
 
 ## Scripts

@@ -8,7 +8,7 @@ import { startServer, verifyPort } from "../testing/startServer.ts";
 
 const PORT = verifyPort(18080);
 const base = `http://localhost:${PORT}`;
-const server = await startServer(PORT, { AUTOPLAY: "0", MOCK: "1", TICK_MS: "60" });
+const server = await startServer(PORT, { AUTOPLAY: "0", MOCK: "1", TICK_MS: "60", WS_BROADCAST_MS: "0" });
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

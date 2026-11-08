@@ -1,0 +1,119 @@
+/* Incident workspace: the queue, per-incident panels, map and brief. Same tokens as the rest of the console. */
+.pill.danger { color: var(--fire); background: var(--fire-surface); border-color: var(--fire-border); }
+
+/* ---------- Summary strip ---------- */
+.incident-strip { grid-template-columns: minmax(0, .8fr) minmax(0, .8fr) minmax(0, 1.4fr); }
+.needs-stat .priority-label { color: var(--warn); }
+.strip-headline { font-size: 24px; overflow-wrap: anywhere; }
+.strip-headline > span { font-size: 15px; }
+
+/* ---------- Queue ---------- */
+.queue-list { list-style: none; margin: 0; padding: 0; max-height: 480px; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.queue-row { display: flex; flex-direction: column; gap: 6px; width: 100%; min-height: 44px; padding: 12px 20px; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); border-left: 3px solid transparent; }
+.queue-row.selected { background: var(--accent-surface); border-left-color: var(--accent); }
+.queue-row-top { display: flex; align-items: center; gap: 8px; }
+.queue-row-top strong { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.queue-icon { display: grid; flex-shrink: 0; color: var(--text-secondary); }
+.queue-icon.fire { color: var(--fire); }
+.queue-icon.crash { color: var(--warn); }
+.queue-elapsed, .queue-started { font-size: 12px; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.queue-place { display: flex; align-items: flex-start; gap: 5px; font-size: 13px; color: var(--text-secondary); overflow-wrap: anywhere; min-width: 0; }
+.queue-place svg { flex-shrink: 0; margin-top: 3px; color: var(--text-muted); }
+.queue-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.queue-tags .pill { font-size: 11px; padding: 3px 7px; }
+.queue-quiet { font-size: 12px; color: var(--text-muted); }
+.queue-resolved { border-top: 1px solid var(--line); }
+.queue-resolved > summary { display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 8px 20px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text-secondary); }
+
+/* ---------- Response ---------- */
+.response-body { display: flex; flex-direction: column; gap: 14px; padding: 0 20px 20px; }
+.response-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.response-actions .button { flex: 1 1 120px; }
+.response-units { list-style: none; margin: 0; padding: 0; }
+.response-units li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; overflow-wrap: anywhere; }
+.response-units time { flex-shrink: 0; font-size: 12px; color: var(--text-muted); }
+
+/* ---------- Reports ---------- */
+.report-reply { margin-bottom: 10px; }
+.report-place { display: inline-flex; align-items: flex-start; gap: 5px; font-size: 13px; color: var(--text-secondary); overflow-wrap: anywhere; min-width: 0; }
+.report-place svg { flex-shrink: 0; margin-top: 2px; }
+.report-switch { display: flex; margin-bottom: 14px; }
+.report-switch button { flex: 1; min-height: 44px; }
+.report-form select { display: block; width: 100%; min-height: 44px; margin-top: 6px; padding: 10px 12px; background: var(--input-bg); color: var(--text); border: 1px solid var(--line-strong); border-radius: 6px; font: inherit; font-size: 16px; }
+.report-form select:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.report-form-row { display: flex; gap: 12px; }
+.report-form-row > label { flex: 1; min-width: 0; }
+.dispatch-shell .report-form .report-check { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.dispatch-shell .report-form .report-check input { width: 20px; min-height: 20px; height: 20px; margin: 0; padding: 0; accent-color: var(--accent); }
+
+/* ---------- Map ---------- */
+.map-place { display: block; margin-top: 2px; font: 500 13px/1.4 var(--font-sans); letter-spacing: 0; color: var(--text-muted); overflow-wrap: anywhere; }
+.map-panel .map-heading h2 { flex: 1 1 200px; min-width: 0; }
+.map-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.incident-tool-note { font-size: 14px; line-height: 1.5; color: var(--text-secondary); overflow-wrap: anywhere; }
+
+/* ---------- Brief ---------- */
+.brief-body { display: flex; flex-direction: column; gap: 12px; padding: 0 20px 20px; }
+.brief-section h3 { font-size: 14px; color: var(--text-secondary); }
+.brief-section p { font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+.notice .text-button { font-size: 14px; color: var(--accent); }
+
+/* ---------- Incident tools ---------- */
+.incident-tools { min-width: 0; }
+.incident-tools-intro { padding: 0 20px 16px; color: var(--text-secondary); font-size: 14px; line-height: 1.5; }
+.incident-tool-picker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0 20px 20px; }
+.incident-tool-picker button { display: flex; align-items: flex-start; gap: 9px; min-height: 76px; padding: 13px 10px; text-align: left; color: var(--text-secondary); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; }
+.incident-tool-picker button[aria-pressed=true] { color: var(--accent); background: var(--accent-surface); border-color: var(--accent); }
+.incident-tool-picker button svg { flex-shrink: 0; margin-top: 2px; }
+.incident-tool-picker strong, .incident-tool-picker small { display: block; }
+.incident-tool-picker strong { font-size: 13px; font-weight: 600; }
+.incident-tool-picker small { margin-top: 4px; font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+.incident-tools > div[hidden] { display: none; }
+.incident-tool-body { padding: 20px; border-top: 1px solid var(--line); }
+.incident-tool-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.dispatch-shell .incident-tool-heading h3 { font-size: 16px; }
+.incident-tools .responder-brief { border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; }
+.situation-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; margin: 16px 0; }
+.situation-checks > div { padding: 14px 0; border-top: 1px solid var(--line); }
+.situation-checks dt { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.situation-checks dt svg { color: var(--warn); }
+.situation-checks dd { margin: 6px 0 0; overflow-wrap: anywhere; }
+.situation-checks dd strong { display: block; font-size: 14px; font-weight: 500; }
+.situation-checks dd small { display: block; margin-top: 4px; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.follow-up-questions { margin: 16px 0 20px; padding-left: 24px; }
+.follow-up-questions li { padding: 10px 0 10px 5px; border-bottom: 1px solid var(--line); font-size: 14px; line-height: 1.55; }
+.follow-up-questions li::marker { color: var(--accent); }
+.incident-tool-copy { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.incident-tool-copy > span { font-size: 13px; color: var(--text-secondary); }
+
+@media (hover: hover) and (pointer: fine) {
+  .queue-row:hover:not(.selected) { background: var(--surface-2); }
+}
+
+@media (max-width: 1100px) {
+  .incident-tool-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .incident-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .strip-headline { font-size: 22px; }
+}
+@media (max-width: 760px) {
+  .incident-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .incident-strip .priority-stat:first-child { grid-column: auto; }
+  .incident-strip .priority-stat:last-child { grid-column: 1/-1; }
+  .map-controls { width: 100%; }
+  .map-controls .view-switch { flex: 1 1 100%; }
+  /* Phone: the queue first, then the scene, then the rest of each column. */
+  .incident-layout .command-column, .incident-layout .workspace-column { display: contents; }
+  .incident-queue { order: 1; }
+  .map-panel { order: 2; }
+  .incident-layout .priority-actions { order: 3; }
+  .response-controls { order: 4; }
+  .reports-workspace, .incident-tools { order: 5; }
+  .incident-layout .reports-panel { order: 6; }
+  .incident-layout .manual-panel { order: 7; }
+  .workspace-column > .notice { order: 2; }
+}
+@media (max-width: 460px) {
+  .situation-checks { grid-template-columns: minmax(0, 1fr); }
+  .incident-tool-picker button { flex-direction: column; }
+}

@@ -18,6 +18,19 @@ export const FlameIcon = (p: P) => (
 export const PinIcon = (p: P) => (
   <Icon {...p}><path d="M12 21s-6.5-5.6-6.5-11A6.5 6.5 0 0 1 18.5 10c0 5.4-6.5 11-6.5 11Z" /><circle cx="12" cy="10" r="2.3" /></Icon>
 );
+/** A location seen through a viewfinder: the brand mark. */
+export const SceneIcon = (p: P) => (
+  <Icon {...p}><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16" /><path d="M12 17s-4-3.4-4-6.5a4 4 0 0 1 8 0c0 3.1-4 6.5-4 6.5Z" /><circle cx="12" cy="10.5" r="1.25" /></Icon>
+);
+export const CrashIcon = (p: P) => (
+  <Icon {...p}><path d="M4.5 16.5H4v-3.4a1.5 1.5 0 0 1 1.1-1.45l2-.55 1.8-3A2 2 0 0 1 10.6 7h3.6a2 2 0 0 1 1.6.8L18 11l1.4.45A1.5 1.5 0 0 1 20.5 13v3.5h-1" /><path d="M9.5 16.5h5" /><circle cx="7" cy="16.5" r="2" /><circle cx="17" cy="16.5" r="2" /></Icon>
+);
+export const AlertIcon = (p: P) => (
+  <Icon {...p}><path d="M12 4 21.5 20h-19L12 4Z" /><path d="M12 10v4.5M12 17.5h.01" /></Icon>
+);
+export const CopyIcon = (p: P) => (
+  <Icon {...p}><rect x="8.5" y="8.5" width="11" height="11" rx="2" /><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5" /></Icon>
+);
 export const CheckIcon = (p: P) => (
   <Icon {...p}><path d="m5 12.5 4.5 4.5L19 7.5" /></Icon>
 );

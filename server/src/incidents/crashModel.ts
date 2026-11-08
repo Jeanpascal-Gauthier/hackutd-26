@@ -29,6 +29,15 @@ const MAX_SNAP = 150; // metres from the crash to the nearest road
 const MIN_PRESSURE = 0.1; // a queue thinner than this has dissolved into the network
 const CHUNK = 75; // metres; the longest stretch drawn as one step
 const MAX_SEGMENTS = 500;
+/** Assumed minute the road reopens. Illustrative: real clearance depends on the response. */
+const REOPEN_MINUTES: Record<LanesBlocked, number> = { all: 30, some: 20, unknown: 20 };
+const SATURATION_FLOW = 1800; // vehicles/hour/lane a queue discharges at once the road reopens
+const MAX_CLEARANCE_MINUTES = 120; // constant typical demand stops being a fair guess past this
+const MAX_ALTERNATES = 5;
+const ALTERNATE_RADIUS = 1000; // metres from the crash, for a road that does not touch the queue
+const JUNCTION_BONUS = 2; // class ranks a road gains by meeting a junction the queue reaches
+/** Worst to best, for ranking alternates. */
+const CLASS_RANK = ["residential", "unclassified", "tertiary", "secondary", "primary", "trunk", "motorway"];
 export const ROAD_RADIUS_METERS = 1500;
 
 const classOf = (highway: string) => CLASSES[highway.replace(/_link$/, "")] ?? CLASSES.unclassified!;
@@ -79,13 +88,49 @@ function nearestEdge(edges: Edge[]) {
   return best;
 }
 
+const startPressureOf = (lanes: LanesBlocked) => (lanes === "all" ? 1 : 0.6);
+
+/** Point queue at the crash: vehicles held until the reopening, then discharged against continuing demand. */
+function clearanceOf(way: RoadWay, lanes: LanesBlocked): NonNullable<CrashForecast["clearance"]> {
+  const reopenMinute = REOPEN_MINUTES[lanes];
+  const { demand } = classOf(way.highway);
+  const queued = (demand / 60) * reopenMinute * startPressureOf(lanes);
+  const discharge = (SATURATION_FLOW - demand) / 60;
+  const cleared = discharge > 0 ? Math.round(reopenMinute + queued / discharge) : Infinity;
+  return { reopenMinute, clearedMinute: cleared <= MAX_CLEARANCE_MINUTES ? cleared : null };
+}
+
+/** Named roads the queue does not use, best first. `queueNodes` are the junctions the queue reaches. */
+function alternatesOf(ways: RoadWay[], toMetres: (p: GeoPoint) => Metres, queueNodes: Set<number>, queuedNames: Set<string>): string[] {
+  const best = new Map<string, { score: number; connected: boolean; off: number }>();
+  for (const way of ways) {
+    // Ramps are not through routes, and a way the graph skipped has unreliable node positions.
+    if (!way.name || queuedNames.has(way.name) || way.highway.endsWith("_link") || way.nodes.length !== way.geometry.length) continue;
+    const points = way.geometry.map(toMetres);
+    const off = Math.min(...points.slice(1).map((p, i) => distance(project([0, 0], points[i]!, p), [0, 0])));
+    const connected = way.nodes.some((node) => queueNodes.has(node));
+    if (!connected && (way.highway === "residential" || off > ALTERNATE_RADIUS)) continue;
+    const score = Math.max(0, CLASS_RANK.indexOf(way.highway)) + (connected ? JUNCTION_BONUS : 0);
+    const known = best.get(way.name);
+    if (!known || score > known.score || (score === known.score && off < known.off)) best.set(way.name, { score, connected, off });
+  }
+  return [...best.entries()]
+    .sort(([, a], [, b]) => b.score - a.score || Number(b.connected) - Number(a.connected) || a.off - b.off)
+    .slice(0, MAX_ALTERNATES)
+    .map(([name]) => name);
+}
+
 function assumptions(lanes: LanesBlocked): string[] {
+  const reopen = REOPEN_MINUTES[lanes];
   return [
     "Illustrative queue model, not live traffic. Compare it with the map's live traffic layer.",
     "Traffic demand is a typical value per road class. Time of day and local counts are not used.",
     lanes === "all" ? "All lanes are treated as blocked." : "Part of the road is treated as blocked, because the caller did not say all lanes were.",
     "Both directions of a two-way road are treated as affected. Drivers diverting around the crash are not modeled.",
     `Roads come from OpenStreetMap data within about ${ROAD_RADIUS_METERS / 1000} km of the crash and may leave out minor streets, so a queue stops at that edge.`,
+    `Clearance assumes the road reopens at minute ${reopen}, which is a planning assumption and not a report from the scene. The queue then discharges at about ${SATURATION_FLOW} vehicles per hour per lane while typical demand keeps arriving.`,
+    ...(reopen < HORIZON_MINUTES ? [`Queue lengths shown up to 30 minutes do not shrink after the assumed reopening at minute ${reopen}.`] : []),
+    "Alternate roads come from the map's road network and do not account for their live traffic.",
   ];
 }
 
@@ -97,9 +142,9 @@ export function forecastCrash(origin: GeoPoint, ways: RoadWay[], lanesBlocked: L
   const named = nearestEdge(edges.filter((e) => e.way.name !== null));
   const crash = named && named.off <= MAX_SNAP ? named : nearestEdge(edges);
   if (!crash || crash.off > MAX_SNAP)
-    return { road: null, segments: [], steps: FORECAST_MINUTES.map((minute) => ({ minute, queueMeters: 0, roads: [] })), summary: "No mapped road near this location, so congestion is not forecast.", assumptions: assumptions(lanesBlocked) };
+    return { road: null, segments: [], steps: FORECAST_MINUTES.map((minute) => ({ minute, queueMeters: 0, roads: [] })), alternateRoads: [], summary: "No mapped road near this location, so congestion is not forecast.", assumptions: assumptions(lanesBlocked) };
 
-  const startPressure = lanesBlocked === "all" ? 1 : 0.6;
+  const startPressure = startPressureOf(lanesBlocked);
   const segments: (CongestionSegment & { length: number })[] = [];
   const levelOf = (pressure: number, crashRoad: boolean): CongestionSegment["level"] =>
     crashRoad && lanesBlocked === "all" ? "blocked" : pressure >= 0.45 ? "heavy" : "moderate";
@@ -163,11 +208,19 @@ export function forecastCrash(origin: GeoPoint, ways: RoadWay[], lanesBlocked: L
   const ten = steps.find((s) => s.minute === 10)!;
   const place = crashWay.name ?? "The road";
   const others = last.roads.filter((road) => road !== crashWay.name);
+  const clearance = clearanceOf(crashWay, lanesBlocked);
+  const queuedNames = new Set(segments.flatMap((s) => s.road ?? []));
+  if (crashWay.name) queuedNames.add(crashWay.name);
+  const clears = clearance.clearedMinute === null
+    ? `If the road reopens around minute ${clearance.reopenMinute}, the queue may take more than ${MAX_CLEARANCE_MINUTES / 60} hours from the start to clear.`
+    : `If the road reopens around minute ${clearance.reopenMinute}, the queue could clear by about minute ${clearance.clearedMinute}.`;
   return {
     road: crashWay.name,
     segments: kept.map(({ length: _length, ...segment }) => segment),
     steps,
-    summary: `${place} is ${lanesBlocked === "all" ? "blocked" : "partly blocked"}. Queues total about ${(ten.queueMeters / 1000).toFixed(1)} km by 10 minutes and ${(last.queueMeters / 1000).toFixed(1)} km by 30 minutes${others.length ? `, reaching ${others.slice(0, 4).join(", ")}` : ""}.`,
+    clearance,
+    alternateRoads: alternatesOf(ways, frame.toMetres, seen, queuedNames),
+    summary: `${place} is ${lanesBlocked === "all" ? "blocked" : "partly blocked"}. Queues total about ${(ten.queueMeters / 1000).toFixed(1)} km by 10 minutes and ${(last.queueMeters / 1000).toFixed(1)} km by 30 minutes${others.length ? `, reaching ${others.slice(0, 4).join(", ")}` : ""}. ${clears}`,
     assumptions: assumptions(lanesBlocked),
   };
 }
