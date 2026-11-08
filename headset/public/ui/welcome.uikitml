@@ -1,97 +1,77 @@
 <!--
-  Panel, Button, ButtonIcon, and ButtonLabel come from the bundled Horizon kit.
-  RectangleGoggles and LogIn are bundled Lucide icon components. The :dark
+  Room setup panel, mounted on the right wall facet beside "Resources & people".
+  Follows the same card pattern as the other wall panels: heading, status line,
+  full-width actions. Panel, Button, ButtonIcon and ButtonLabel come from the
+  bundled Horizon kit; RectangleGoggles and LogIn are Lucide icons. The :dark
   styles apply because iwsdk.config.json prefers the dark color scheme.
 -->
 <style>
   .panel-root {
     flex-direction: column;
-    width: 420px;
+    width: 360px;
   }
 
   .panel-content {
     flex-direction: column;
-    gap: 6px;
-    padding-top: 18px;
-    padding-right: 22px;
-    padding-bottom: 14px;
-    padding-left: 22px;
-  }
-
-  .eyebrow {
-    color: #6b5a00;
-    font-size: 16px;
-    font-weight: 700;
-  }
-
-  .eyebrow:dark {
-    color: #f5d90a;
+    gap: 12px;
+    padding-top: 24px;
+    padding-right: 24px;
+    padding-bottom: 24px;
+    padding-left: 24px;
   }
 
   .heading {
     color: #1c1d20;
-    font-size: 30px;
+    font-size: 28px;
     font-weight: 700;
-    line-height: 1.2;
   }
 
   .heading:dark {
     color: #fafaf7;
   }
 
-  .body {
-    color: #3a3b40;
-    font-size: 20px;
+  .status {
+    color: #49515e;
+    font-size: 18px;
     line-height: 1.25;
   }
 
-  .body:dark {
-    color: #dddfe3;
+  .status:dark {
+    color: #c3c6cc;
   }
 
-  .button {
-    justify-content: flex-start;
-    min-height: 46px;
-    margin-left: 22px;
-    margin-right: 22px;
-    margin-bottom: 10px;
+  .action {
+    width: 312px;
+    min-height: 48px;
+    justify-content: center;
   }
 
-  .button-label {
-    font-size: 20px;
+  .action-label {
+    font-size: 22px;
     font-weight: 700;
-  }
-
-  .setup-status {
-    width: 376px;
-    margin-left: 22px;
-    margin-right: 22px;
-    margin-bottom: 18px;
   }
 </style>
 <Panel class="panel-root">
   <div class="panel-content">
-    <div class="eyebrow">FIREWATCH SETUP</div>
-    <div class="heading">Your command room</div>
-    <div class="body">Face forward, then center the room.</div>
+    <span class="heading">Room setup</span>
+    <span id="setup-status" class="status">Face the front desk, then center the room.</span>
+    <Button id="xr-button" class="action">
+      <ButtonIcon>
+        <RectangleGoggles></RectangleGoggles>
+      </ButtonIcon>
+      <ButtonLabel class="action-label">Enter VR</ButtonLabel>
+    </Button>
+    <Button id="center-room-button" class="action">
+      <ButtonLabel class="action-label">Center room here</ButtonLabel>
+    </Button>
+    <Button id="bring-building-button" class="action">
+      <ButtonLabel class="action-label">Bring building closer</ButtonLabel>
+    </Button>
+    <Button id="exit-button" class="action" style="display: none">
+      <ButtonIcon>
+        <LogIn></LogIn>
+      </ButtonIcon>
+      <ButtonLabel class="action-label">Exit to browser</ButtonLabel>
+    </Button>
   </div>
-  <Button id="xr-button" class="button">
-    <ButtonIcon>
-      <RectangleGoggles></RectangleGoggles>
-    </ButtonIcon>
-    <ButtonLabel class="button-label">Enter VR</ButtonLabel>
-  </Button>
-  <Button id="center-room-button" class="button">
-    <ButtonLabel class="button-label">Center room here</ButtonLabel>
-  </Button>
-  <Button id="bring-building-button" class="button">
-    <ButtonLabel class="button-label">Bring building closer</ButtonLabel>
-  </Button>
-  <div id="setup-status" class="body setup-status">Pinch the building to grab. Use both hands to zoom.</div>
-  <Button id="exit-button" class="button" style="display: none">
-    <ButtonIcon>
-      <LogIn></LogIn>
-    </ButtonIcon>
-    <ButtonLabel class="button-label">Exit to browser</ButtonLabel>
-  </Button>
 </Panel>

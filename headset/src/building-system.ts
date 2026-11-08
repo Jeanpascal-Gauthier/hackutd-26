@@ -16,6 +16,7 @@ import {
 } from '@iwsdk/core';
 import { BuildingModel } from './components.js';
 import { fetchBuilding, IncidentSocket } from './incident-client.js';
+import { placeBuildingOnDesk } from './room-layout.js';
 import { createIncidentBuilding } from './scene-assets/incident-building.scene-asset.js';
 import type { Building, IncidentState } from './incident-types.js';
 
@@ -62,7 +63,7 @@ export class BuildingSystem extends createSystem({}) {
     const handle = new Group();
     handle.name = 'Incident Building';
     handle.add(model.root);
-    handle.position.set(-0.5, 1.05, -0.55);
+    placeBuildingOnDesk(handle);
     const entity = this.world.createTransformEntity(handle);
     entity.addComponent(BuildingModel);
     entity.addComponent(TwoHandsGrabbable, {

@@ -87,18 +87,23 @@
     },
     {
       "id": "welcome-panel",
-      "name": "Welcome Panel",
+      "name": "Room Setup Panel",
       "content": {
         "type": "asset",
         "asset": "welcome-panel"
       },
       "transform": {
         "position": [
-          0,
+          1.653,
           1.5,
-          -1
+          -0.377
         ],
-        "scale": 0.16
+        "rotationDeg": [
+          0,
+          -60,
+          0
+        ],
+        "scale": 0.2
       },
       "components": {
         "RayInteractable": {},
@@ -130,9 +135,9 @@
       },
       "transform": {
         "position": [
-          1.4,
+          1.203,
           1.45,
-          -0.85
+          -1.156
         ],
         "rotationDeg": [
           0,
