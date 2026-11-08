@@ -260,9 +260,7 @@ input[type=range]:disabled { opacity: .45; cursor: not-allowed; }
 .pending-label { display: inline-block; font-size: 12px; font-weight: 500; border: 1px dashed var(--line-strong); border-radius: 6px; padding: 4px 9px; color: var(--text-secondary); }
 .agent-empty p { font-size: 14px; line-height: 1.55; color: var(--text-secondary); margin: 10px 0 6px; }
 .tool-trail { list-style: none; padding: 0 20px 20px; margin: 0; max-height: 360px; overflow: auto; scrollbar-width: thin; }
-.tool-trail li { border-left: 3px solid var(--accent); padding: 8px 12px; margin-bottom: 8px; background: var(--surface-2); border-radius: 0 6px 6px 0; }
-.tool-trail li.failed { border-color: var(--fire); }
-.tool-trail li.running { border-color: var(--warn); }
+.tool-trail li { padding: 8px 12px; margin-bottom: 8px; background: var(--surface-2); border-radius: 6px; }
 .tool-trail li > div { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: 13px; }
 .tool-trail strong { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; font-size: 13px; }
 .tool-trail li > div > span { font-size: 12px; color: var(--text-muted); }

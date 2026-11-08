@@ -9,6 +9,7 @@ const WS_URL = endpoint.origin;
 
 export function useIncident() {
   const [state, setState] = useState<IncidentState | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [connected, setConnected] = useState(false);
   const [mode, setMode] = useState<"mock" | "live" | "unknown">("unknown");
   const socket = useRef<WebSocket | null>(null);
@@ -43,6 +44,7 @@ export function useIncident() {
           if (event.type !== "state" || !event.state || !Array.isArray(event.state.rooms) || !Array.isArray(event.state.reports) || !Array.isArray(event.state.occupants) || !Number.isFinite(event.state.simMinute)) return;
           // Preserve the authoritative history and analysis supplied by all clients.
           setState(event.state);
+          setLastUpdated(Date.now());
         } catch { /* Ignore malformed messages and keep the last valid incident state. */ }
       };
       ws.onerror = () => ws.close();
@@ -85,5 +87,5 @@ export function useIncident() {
     if (!response.ok || result.ok !== true) throw new Error(result.errors?.join("; ") ?? result.error ?? "Server could not complete the request.");
     return result;
   }, []);
-  return { state, connected, mode, send, request };
+  return { state, connected, mode, send, request, lastUpdated };
 }
