@@ -1,6 +1,10 @@
-import { useId, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useId, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import building from "@firewatch/shared/building.json";
 import type { IncidentState } from "@firewatch/shared/types";
+import { hasHeat, heatSources, type HeatRect } from "./heat/sources";
+
+// WebGL heat layer (three.js) loads in its own chunk, only once a floor has fire or smoke.
+const HeatOverlay = lazy(() => import("./heat/HeatOverlay"));
 
 interface FloorPlanProps {
   floor: number;
@@ -182,6 +186,59 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
   const dimY = py(maxZ) + 16;
   const dimX = px(maxX) + 16;
 
+  // Per-room geometry, state and label layout, shared by the stacked layers below.
+  const layout = rooms.map((room) => {
+    const current = state?.rooms.find((value) => value.roomId === room.id);
+    const fire = Math.min(1, Math.max(0, current?.fire ?? 0));
+    const smoke = Math.min(1, Math.max(0, current?.smoke ?? 0));
+    const selected = selectedRoom === room.id;
+    const stroke = selected ? "var(--accent)" : "transparent";
+    const count = state?.occupants.filter((item) => item.room === room.id).reduce((sum, item) => sum + item.count, 0) ?? 0;
+    const x = px(room.x);
+    const y = py(room.z);
+    const w = room.w * scale;
+    const d = room.d * scale;
+    // Retain forecast/acceptance animation, without marking hazardous or unknown segments green.
+    const onRoute = route.has(room.id) && current !== undefined && fire <= 0.01 && smoke < 0.3;
+    const isOrigin = origin?.roomId === room.id;
+    const isStair = /stair/.test(room.id);
+    const isLift = /elev/.test(room.id);
+    const label = room.name.replace(/^Floor \d+ /, "");
+    const status = current ? `fire ${Math.round(fire * 100)} percent, smoke ${Math.round(smoke * 100)} percent` : "awaiting incident data";
+    const wallInset = (INTERIOR_WALL * scale) / 2 + 1.5;
+
+    // Text layout: stack label + readings if they fit, else one joined line, else label only, else nothing.
+    const readings = [fire > 0.01 && `Fire ${Math.round(fire * 100)}%`, smoke > 0.01 && `Smoke ${Math.round(smoke * 100)}%`].filter(Boolean) as string[];
+    if (count > 0) readings.push(`${count} people`);
+    const innerW = w - inset * 2 - 4;
+    const innerH = d - inset * 2 - 4;
+    const fits = (text: string, size: number, em = CHAR_EM) => text.length * em * size <= innerW;
+    const name = fits(label, labelSize, LABEL_EM) ? label : fits(shortName(label), labelSize, LABEL_EM) ? shortName(label) : null;
+    let lines: { text: string; size: number; cls: string }[] = [];
+    if (name) {
+      const stacked = [{ text: name.toUpperCase(), size: labelSize, cls: "room-label" }];
+      for (const text of readings) if (fits(text, readingSize)) stacked.push({ text, size: readingSize, cls: text.endsWith("people") ? "room-occupants" : "room-reading" });
+      const stackH = (n: number) => stacked.slice(0, n).reduce((sum, line) => sum + line.size, 0) + gap * (n - 1);
+      let n = stacked.length;
+      while (n > 1 && stackH(n) > innerH) n--;
+      lines = stacked.slice(0, n);
+      const hazard = readings.filter((text) => !text.endsWith("people")).join(" · ");
+      if (lines.length === 1 && hazard && innerH >= labelSize && fits(`${name} · ${hazard}`, labelSize, LABEL_EM)) lines = [{ text: `${name.toUpperCase()} · ${hazard}`, size: labelSize, cls: "room-label" }];
+      if (lines.length === 1 && innerH < labelSize) lines = [];
+    }
+    const totalH = lines.reduce((sum, line) => sum + line.size, 0) + gap * Math.max(0, lines.length - 1);
+    let cursor = y + d / 2 - totalH / 2;
+    const placed = lines.map((line) => { const top = cursor; cursor += line.size + gap; return { ...line, y: top + line.size * 0.8 }; });
+
+    // Stair treads run across the flight's short side; the arrow points up the flight.
+    const along = w >= d ? "x" : "z";
+    const flight = along === "x" ? w : d;
+    const treads = Array.from({ length: Math.max(0, Math.floor((flight - 2 * wallInset) / (TREAD * scale))) }, (_, i) => wallInset + (i + 0.5) * TREAD * scale);
+    return { room, current, fire, smoke, selected, stroke, count, x, y, w, d, onRoute, isOrigin, isStair, isLift, status, wallInset, placed, along, treads };
+  });
+  const heat = heatSources(rooms, state);
+  const heatBounds: HeatRect = [minX - MARGIN.left / scale, minZ - MARGIN.top / scale, maxX + MARGIN.right / scale, maxZ + MARGIN.bottom / scale];
+
   return <div className="floor-plan">
     <p className="map-caption"><span>Floor {floor} plan · select a room to inspect</span>{originRoom && origin && <span>Likely origin: <strong>{originRoom.name.replace(/^Floor \d+ /, "")}</strong> ({Math.round(origin.confidence * 100)}%)</span>}</p>
     <svg ref={svgRef} className="map blueprint" viewBox={`0 0 ${viewW} ${viewH}`} role="group" aria-label={`Floor ${floor} interactive room map`}>
@@ -192,12 +249,6 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
         <pattern id={`${uid}-major`} width={scale * 5} height={scale * 5} x={MARGIN.left} y={MARGIN.top} patternUnits="userSpaceOnUse">
           <rect width={scale * 5} height={scale * 5} fill={`url(#${uid}-minor)`} />
           <path d={`M ${scale * 5} 0 H 0 V ${scale * 5}`} className="bp-grid-major" />
-        </pattern>
-        <pattern id={`${uid}-hatch-fire`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-          <line x1="0" y1="0" x2="0" y2="6" className="bp-hatch-fire" />
-        </pattern>
-        <pattern id={`${uid}-hatch-smoke`} width="7" height="7" patternUnits="userSpaceOnUse">
-          <circle cx="3.5" cy="3.5" r="0.9" className="bp-hatch-smoke" />
         </pattern>
       </defs>
       <rect width="100%" height="100%" fill={`url(#${uid}-major)`} />
@@ -216,60 +267,11 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
         </g>)}
       </g>
 
-      {rooms.map((room) => {
-        const current = state?.rooms.find((value) => value.roomId === room.id);
-        const fire = Math.min(1, Math.max(0, current?.fire ?? 0));
-        const smoke = Math.min(1, Math.max(0, current?.smoke ?? 0));
-        const selected = selectedRoom === room.id;
-        const stroke = selected ? "var(--accent)" : "transparent";
-        const count = state?.occupants.filter((item) => item.room === room.id).reduce((sum, item) => sum + item.count, 0) ?? 0;
-        const x = px(room.x);
-        const y = py(room.z);
-        const w = room.w * scale;
-        const d = room.d * scale;
-        // Retain forecast/acceptance animation, without marking hazardous or unknown segments green.
-        const onRoute = route.has(room.id) && current !== undefined && fire <= 0.01 && smoke < 0.3;
-        const isOrigin = origin?.roomId === room.id;
-        const isStair = /stair/.test(room.id);
-        const isLift = /elev/.test(room.id);
-        const label = room.name.replace(/^Floor \d+ /, "");
-        const status = current ? `fire ${Math.round(fire * 100)} percent, smoke ${Math.round(smoke * 100)} percent` : "awaiting incident data";
-        const wallInset = (INTERIOR_WALL * scale) / 2 + 1.5;
-
-        // Text layout: stack label + readings if they fit, else one joined line, else label only, else nothing.
-        const readings = [fire > 0.01 && `Fire ${Math.round(fire * 100)}%`, smoke > 0.01 && `Smoke ${Math.round(smoke * 100)}%`].filter(Boolean) as string[];
-        if (count > 0) readings.push(`${count} people`);
-        const innerW = w - inset * 2 - 4;
-        const innerH = d - inset * 2 - 4;
-        const fits = (text: string, size: number, em = CHAR_EM) => text.length * em * size <= innerW;
-        const name = fits(label, labelSize, LABEL_EM) ? label : fits(shortName(label), labelSize, LABEL_EM) ? shortName(label) : null;
-        let lines: { text: string; size: number; cls: string }[] = [];
-        if (name) {
-          const stacked = [{ text: name.toUpperCase(), size: labelSize, cls: "room-label" }];
-          for (const text of readings) if (fits(text, readingSize)) stacked.push({ text, size: readingSize, cls: text.endsWith("people") ? "room-occupants" : "room-reading" });
-          const stackH = (n: number) => stacked.slice(0, n).reduce((sum, line) => sum + line.size, 0) + gap * (n - 1);
-          let n = stacked.length;
-          while (n > 1 && stackH(n) > innerH) n--;
-          lines = stacked.slice(0, n);
-          const hazard = readings.filter((text) => !text.endsWith("people")).join(" · ");
-          if (lines.length === 1 && hazard && innerH >= labelSize && fits(`${name} · ${hazard}`, labelSize, LABEL_EM)) lines = [{ text: `${name.toUpperCase()} · ${hazard}`, size: labelSize, cls: "room-label" }];
-          if (lines.length === 1 && innerH < labelSize) lines = [];
-        }
-        const totalH = lines.reduce((sum, line) => sum + line.size, 0) + gap * Math.max(0, lines.length - 1);
-        let cursor = y + d / 2 - totalH / 2;
-
-        // Stair treads run across the flight's short side; the arrow points up the flight.
-        const along = w >= d ? "x" : "z";
-        const flight = along === "x" ? w : d;
-        const treads = Array.from({ length: Math.max(0, Math.floor((flight - 2 * wallInset) / (TREAD * scale))) }, (_, i) => wallInset + (i + 0.5) * TREAD * scale);
-
-        return <g key={room.id} role="button" tabIndex={0} data-room-id={room.id} data-origin={isOrigin || undefined} data-route={onRoute && routeActive || undefined} aria-pressed={selected} aria-label={`${room.name}, ${status}, ${count} recorded occupants${isOrigin ? ", suspected fire origin" : ""}${onRoute ? routeActive ? ", accepted route segment" : ", forecast route segment" : ""}`} className={`map-room ${selected ? "is-selected" : ""}`} onClick={() => onSelect(room.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(room.id); } }}>
+      {layout.map(({ room, current, fire, smoke, selected, stroke, count, x, y, w, d, onRoute, isOrigin, isStair, isLift, status, wallInset, along, treads }) =>
+        <g key={room.id} role="button" tabIndex={0} data-room-id={room.id} data-origin={isOrigin || undefined} data-route={onRoute && routeActive || undefined} aria-pressed={selected} aria-label={`${room.name}, ${status}, ${count} recorded occupants${isOrigin ? ", suspected fire origin" : ""}${onRoute ? routeActive ? ", accepted route segment" : ", forecast route segment" : ""}`} className={`map-room ${selected ? "is-selected" : ""}`} onClick={() => onSelect(room.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(room.id); } }}>
           <title>{room.name} · {room.id}{current ? ` · fire ${Math.round(fire * 100)}% · smoke ${Math.round(smoke * 100)}%` : " · No incident data"}{count ? ` · ${count} people` : ""}{onRoute ? " · evacuation route" : ""}</title>
           {/* Fill and stroke as styles so scrubbing the timeline cross-fades them; :hover / :focus-visible override the stroke. Walls are drawn over this separately. */}
           <rect className="room-shape" x={x + wallInset} y={y + wallInset} width={Math.max(1, w - wallInset * 2)} height={Math.max(1, d - wallInset * 2)} strokeWidth={selected ? 2.5 : 1} style={{ fill: roomFill(fire, smoke), stroke }} />
-          {/* Hazard hatching (fire: 45° section hatch, smoke: stipple) so state also reads without colour. */}
-          {fire > 0.01 && <rect className="room-hatch" x={x} y={y} width={w} height={d} fill={`url(#${uid}-hatch-fire)`} style={{ opacity: 0.35 + fire * 0.55 }} />}
-          {fire <= 0.01 && smoke >= 0.1 && <rect className="room-hatch" x={x} y={y} width={w} height={d} fill={`url(#${uid}-hatch-smoke)`} style={{ opacity: 0.35 + smoke * 0.55 }} />}
           {isStair && <g className="bp-fixture" aria-hidden="true">
             {treads.map((t) => along === "x"
               ? <line key={t} x1={x + t} y1={y + wallInset} x2={x + t} y2={y + d - wallInset} />
@@ -283,17 +285,12 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
             <rect x={x + wallInset + 3} y={y + wallInset + 3} width={Math.max(1, w - wallInset * 2 - 6)} height={Math.max(1, d - wallInset * 2 - 6)} />
             <path d={`M ${x + wallInset + 3} ${y + wallInset + 3} L ${x + w - wallInset - 3} ${y + d - wallInset - 3} M ${x + w - wallInset - 3} ${y + wallInset + 3} L ${x + wallInset + 3} ${y + d - wallInset - 3}`} />
           </g>}
-          {/* Forecast: static dashed outline. Accepted: solid. Just accepted: draws on once via a normalised dash (pathLength 1). */}
-          {onRoute && (drawing
-            ? <rect key={`draw-${drawRoute}`} className="room-route active draw" pathLength={1} style={{ "--order": route.get(room.id) ?? 0 } as CSSProperties} x={x + 6} y={y + 6} width={Math.max(1, w - 12)} height={Math.max(1, d - 12)} rx={1} />
-            : <rect key="route" className={`room-route ${routeActive ? "active" : ""}`} x={x + 6} y={y + 6} width={Math.max(1, w - 12)} height={Math.max(1, d - 12)} rx={1} />)}
-          {lines.map((line, index) => {
-            const top = cursor;
-            cursor += line.size + gap;
-            return <text key={index} x={x + w / 2} y={top + line.size * 0.8} textAnchor="middle" className={`${line.cls}${isStair || isLift ? " haloed" : ""}`} fontSize={line.size} aria-hidden="true">{line.text}</text>;
-          })}
-        </g>;
-      })}
+        </g>)}
+
+      {/* Radar-style heat field, floating over the rooms; pointer events pass through to them. */}
+      {hasHeat(heat) && <foreignObject x={0} y={0} width={viewW} height={viewH} pointerEvents="none" aria-hidden="true">
+        <Suspense fallback={null}><HeatOverlay sources={heat} bounds={heatBounds} clip={[minX, minZ, maxX, maxZ]} width={viewW * k} height={viewH * k} /></Suspense>
+      </foreignObject>}
 
       {/* Walls (solid poché, heavier on the envelope) and doors with swing arcs, drawn over the rooms. */}
       <g className="bp-walls" aria-hidden="true">
@@ -320,6 +317,22 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
             <path className="bp-door-swing" d={`M ${tip.x} ${tip.y} A ${size} ${size} 0 0 ${cross > 0 ? 1 : 0} ${jamb.x} ${jamb.y}`} />
           </g>;
         })}
+      </g>
+
+      {/* Route, selection and labels sit above the heat field so they stay readable. */}
+      <g className="map-overlays" aria-hidden="true">
+        {/* A dark casing under each route outline keeps the green route distinct from green radar smoke. */}
+        {layout.map(({ room, x, y, w, d, onRoute }) => onRoute && (drawing
+          ? <rect key={`draw-casing-${room.id}-${drawRoute}`} className="room-route active draw casing" pathLength={1} style={{ "--order": route.get(room.id) ?? 0 } as CSSProperties} x={x + 6} y={y + 6} width={Math.max(1, w - 12)} height={Math.max(1, d - 12)} rx={1} />
+          : <rect key={`casing-${room.id}`} className={`room-route casing ${routeActive ? "active" : ""}`} x={x + 6} y={y + 6} width={Math.max(1, w - 12)} height={Math.max(1, d - 12)} rx={1} />))}
+        {layout.map(({ room, x, y, w, d, onRoute }) => onRoute && (drawing
+          // Forecast: static dashed outline. Accepted: solid. Just accepted: draws on once via a normalised dash (pathLength 1).
+          ? <rect key={`draw-${room.id}-${drawRoute}`} className="room-route active draw" pathLength={1} style={{ "--order": route.get(room.id) ?? 0 } as CSSProperties} x={x + 6} y={y + 6} width={Math.max(1, w - 12)} height={Math.max(1, d - 12)} rx={1} />
+          : <rect key={`route-${room.id}`} className={`room-route ${routeActive ? "active" : ""}`} x={x + 6} y={y + 6} width={Math.max(1, w - 12)} height={Math.max(1, d - 12)} rx={1} />))}
+        {layout.filter((entry) => entry.selected).map(({ room, x, y, w, d, wallInset }) =>
+          <rect key={`sel-${room.id}`} className="room-selection" x={x + wallInset} y={y + wallInset} width={Math.max(1, w - wallInset * 2)} height={Math.max(1, d - wallInset * 2)} />)}
+        {layout.flatMap(({ room, x, w, placed }) => placed.map((line, index) =>
+          <text key={`${room.id}-${index}`} x={x + w / 2} y={line.y} textAnchor="middle" className={line.cls} fontSize={line.size}>{line.text}</text>))}
       </g>
 
       {/* Chain dimensions along the bottom (bays + overall) and right side, with architectural tick marks. */}
