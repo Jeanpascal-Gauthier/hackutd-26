@@ -10,7 +10,27 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [iwsdkDev()],
-  server: { host: '0.0.0.0', port: 8081, open: false },
+  server: {
+    host: '0.0.0.0',
+    port: 8081,
+    open: false,
+    // The headset loads over https (dev cert); browsers block a secure page
+    // from talking to the FireSight server's plain http/ws on :8080 (mixed
+    // content). Proxy it through Vite's own origin instead of exposing the
+    // server directly, so the browser only ever sees https/wss to :8081.
+    proxy: {
+      '/fs-api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/fs-api/, ''),
+      },
+      '/fs-ws': {
+        target: 'ws://localhost:8080',
+        ws: true,
+        rewrite: (path) => path.replace(/^\/fs-ws/, ''),
+      },
+    },
+  },
   build: {
     outDir: 'dist',
     sourcemap: process.env.NODE_ENV !== 'production',

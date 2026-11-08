@@ -6,10 +6,7 @@
  */
 
 import { AssetType, defineAssets } from '@iwsdk/core';
-import {
-  createBuildingFloorSlab,
-  createCommandDesk,
-} from './scene-assets/command-room.scene-asset.js';
+import { createCommandDesk } from './scene-assets/command-room.scene-asset.js';
 
 const publicAssetUrl = (filePath: string): string =>
   `${import.meta.env.BASE_URL}${filePath.replace(/^\/+/u, '')}`;
@@ -22,7 +19,6 @@ const uikitml = (fileName: string, name: string) => ({
 
 export default defineAssets({
   'command-desk': createCommandDesk(),
-  'building-floor-slab': createBuildingFloorSlab(),
   'welcome-panel': uikitml('welcome.uikitml', 'Welcome Panel'),
   'voice-panel': uikitml('voice-panel.uikitml', 'Voice Panel'),
   'resources-panel': uikitml('resources-panel.uikitml', 'Resources Panel'),

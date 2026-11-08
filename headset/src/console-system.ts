@@ -6,113 +6,43 @@
  */
 
 import { createSystem, UIKitMLAsset } from '@iwsdk/core';
-import { FloorState } from './floor-component.js';
-
-type ParticipantKind = 'caller' | 'firefighter';
-
-interface Participant {
-  kind: ParticipantKind;
-  label: string;
-  status: string;
-  speaking: boolean;
-}
+import { IncidentSocket } from './incident-client.js';
+import type { IncidentState, Report } from './incident-types.js';
 
 const MAX_SLOTS = 8;
-const AT_RISK_THRESHOLD = 0.3;
-const PEOPLE_PER_AT_RISK_FLOOR = 8;
-
 const CALLER_BORDER = '#3a7bd5';
-const CALLER_BORDER_SPEAKING = '#8fc2ff';
 const CALLER_BG = '#1a2430';
 const FIREFIGHTER_BORDER = '#c2502f';
 const FIREFIGHTER_BORDER_ACTIVE = '#ff8f6b';
 const FIREFIGHTER_BG = '#2a1c17';
 
-interface ScriptStep {
-  at: number;
-  run: (system: ConsoleSystem) => void;
-}
-
-const CYCLE_LENGTH = 30;
-
-const SCRIPT: ScriptStep[] = [
-  {
-    at: 0,
-    run: (s) => {
-      s.resetRoster();
-      s.resetFloors();
-      s.addParticipant('caller', 'Caller - Floor 7 Break Rm', 'reporting smoke');
-      s.reportFloor(6, 0, 0.5);
-    },
-  },
-  {
-    at: 4,
-    run: (s) => {
-      s.addParticipant('caller', 'Caller - Floor 7 Hallway', 'coughing heard');
-      s.reportFloor(6, 0.35, 0.2);
-    },
-  },
-  {
-    at: 8,
-    run: (s) => {
-      s.addParticipant('firefighter', 'Engine 3', 'dispatched');
-    },
-  },
-  {
-    at: 11,
-    run: (s) => {
-      s.updateParticipantStatus('Engine 3', 'en route');
-    },
-  },
-  {
-    at: 16,
-    run: (s) => {
-      s.updateParticipantStatus('Engine 3', 'on scene');
-    },
-  },
-  {
-    at: 20,
-    run: (s) => {
-      s.addParticipant('caller', 'Caller - Floor 9', 'smoke in stairwell');
-      s.reportFloor(8, 0, 0.4);
-    },
-  },
-  {
-    at: 24,
-    run: (s) => {
-      s.addParticipant('firefighter', 'Ladder 1', 'dispatched');
-    },
-  },
-  {
-    at: 27,
-    run: (s) => {
-      s.updateParticipantStatus('Ladder 1', 'en route');
-    },
-  },
+type FirefighterStatus = 'dispatched' | 'en route' | 'on scene';
+const FIREFIGHTER_PROGRESSION: { status: FirefighterStatus; afterMs: number }[] = [
+  { status: 'dispatched', afterMs: 0 },
+  { status: 'en route', afterMs: 3000 },
+  { status: 'on scene', afterMs: 9000 },
 ];
 
 /**
- * Owns the voice/comms panel roster and the resources panel stats. Drives a
- * looping scripted demo (callers reporting on specific floors, firefighters
- * progressing dispatched -> en route -> on scene) so the full data pipeline
- * is visible before real Photon/agent data exists. A later integration swaps
- * this script for real incident-state events over the WebSocket; the panel
- * rendering and slot/stat wiring below stays the same either way.
+ * Owns the voice/comms panel roster and the resources panel stats, driven by
+ * the real FireSight server over its WebSocket: callers from state.reports,
+ * people-at-risk from state.exits. There is no "firefighter unit" concept in
+ * the shared contract (server/API.md: dispatch is logged only, for now), so
+ * that half stays a simulated single-unit dispatch, triggered by a real
+ * state.recommendation appearing rather than a fixed timer.
  */
-export class ConsoleSystem extends createSystem({
-  floors: { required: [FloorState] },
-}) {
-  private roster: (Participant | null)[] = new Array(MAX_SLOTS).fill(null);
-  private elapsed = 0;
-  private scriptIndex = 0;
-  private speakingSlot = -1;
-  private speakingElapsed = 0;
-
+export class ConsoleSystem extends createSystem({}) {
   private voicePanel: UIKitMLAsset | null = null;
   private resourcesPanel: UIKitMLAsset | null = null;
   private slotRoots: ReturnType<UIKitMLAsset['getElementById']>[] = [];
   private slotLabels: ReturnType<UIKitMLAsset['getElementById']>[] = [];
   private slotStatuses: ReturnType<UIKitMLAsset['getElementById']>[] = [];
+
+  private socket: IncidentSocket | null = null;
+  private latestState: IncidentState | null = null;
+  private lastRecommendationKey: string | null = null;
+  private firefighterStatus: FirefighterStatus | null = null;
+  private firefighterTimers: ReturnType<typeof setTimeout>[] = [];
 
   init(): void {
     this.voicePanel =
@@ -130,160 +60,124 @@ export class ConsoleSystem extends createSystem({
       );
     }
 
-    this.runScriptStep(0);
-    this.renderVoicePanel();
-    this.renderResourcesPanel();
+    this.socket = new IncidentSocket((state) => this.onState(state));
+    this.socket.connect();
+    this.render();
   }
 
-  update(delta: number): void {
-    this.elapsed += delta;
-    if (this.elapsed >= CYCLE_LENGTH) {
-      this.elapsed -= CYCLE_LENGTH;
-      this.scriptIndex = 0;
-    }
-    while (
-      this.scriptIndex < SCRIPT.length &&
-      this.elapsed >= SCRIPT[this.scriptIndex].at
-    ) {
-      this.runScriptStep(this.scriptIndex);
-      this.scriptIndex++;
-    }
-
-    this.speakingElapsed += delta;
-    if (this.speakingElapsed >= 1.4) {
-      this.speakingElapsed = 0;
-      this.advanceSpeaker();
-      this.renderVoicePanel();
+  stop(): void {
+    this.socket?.close();
+    for (const timer of this.firefighterTimers) {
+      clearTimeout(timer);
     }
   }
 
-  private runScriptStep(index: number): void {
-    const step = SCRIPT[index];
-    if (step == null) {
-      return;
+  private onState(state: IncidentState): void {
+    this.latestState = state;
+
+    const recommendationKey = state.recommendation
+      ? JSON.stringify(state.recommendation)
+      : null;
+    if (recommendationKey != null && recommendationKey !== this.lastRecommendationKey) {
+      this.lastRecommendationKey = recommendationKey;
+      this.startFirefighterDispatch(state.origin?.roomId);
     }
-    step.run(this);
-    this.renderVoicePanel();
-    this.renderResourcesPanel();
+
+    this.render();
   }
 
-  resetRoster(): void {
-    this.roster.fill(null);
-    this.speakingSlot = -1;
-  }
-
-  addParticipant(kind: ParticipantKind, label: string, status: string): void {
-    const freeSlot = this.roster.findIndex((entry) => entry == null);
-    if (freeSlot === -1) {
-      return;
+  private startFirefighterDispatch(roomId: string | undefined): void {
+    for (const timer of this.firefighterTimers) {
+      clearTimeout(timer);
     }
-    this.roster[freeSlot] = { kind, label, status, speaking: false };
-  }
+    this.firefighterTimers = [];
 
-  updateParticipantStatus(label: string, status: string): void {
-    const participant = this.roster.find((entry) => entry?.label === label);
-    if (participant == null) {
-      return;
+    for (const step of FIREFIGHTER_PROGRESSION) {
+      const timer = setTimeout(() => {
+        this.firefighterStatus = step.status;
+        this.render();
+      }, step.afterMs);
+      this.firefighterTimers.push(timer);
     }
-    participant.status = status;
-  }
 
-  resetFloors(): void {
-    for (const entity of this.queries.floors.entities) {
-      entity.setValue(FloorState, 'fireLevel', 0);
-      entity.setValue(FloorState, 'smokeLevel', 0);
+    if (roomId != null) {
+      this.socket?.send({ type: 'dispatch', roomId });
     }
   }
 
-  reportFloor(floorIndex: number, fireDelta: number, smokeDelta: number): void {
-    const entity = [...this.queries.floors.entities].find(
-      (candidate) =>
-        (candidate.getValue(FloorState, 'floorIndex') ?? -1) === floorIndex,
-    );
-    if (entity == null) {
-      return;
-    }
-    const fire = entity.getValue(FloorState, 'fireLevel') ?? 0;
-    const smoke = entity.getValue(FloorState, 'smokeLevel') ?? 0;
-    entity.setValue(FloorState, 'fireLevel', Math.min(1, fire + fireDelta));
-    entity.setValue(FloorState, 'smokeLevel', Math.min(1, smoke + smokeDelta));
-  }
-
-  private advanceSpeaker(): void {
-    const occupiedSlots: number[] = [];
-    for (let i = 0; i < MAX_SLOTS; i++) {
-      if (this.roster[i] != null) {
-        occupiedSlots.push(i);
+  private recentCallers(): Report[] {
+    const reports = this.latestState?.reports ?? [];
+    const byCallerMostRecent = new Map<string, Report>();
+    for (const report of reports) {
+      const existing = byCallerMostRecent.get(report.caller);
+      if (existing == null || report.time >= existing.time) {
+        byCallerMostRecent.set(report.caller, report);
       }
     }
-    if (occupiedSlots.length === 0) {
-      this.speakingSlot = -1;
-      return;
-    }
-    const currentPosition = occupiedSlots.indexOf(this.speakingSlot);
-    const nextPosition = (currentPosition + 1) % occupiedSlots.length;
-    this.speakingSlot = occupiedSlots[nextPosition];
+    return [...byCallerMostRecent.values()]
+      .sort((a, b) => b.time - a.time)
+      .slice(0, this.firefighterStatus != null ? MAX_SLOTS - 1 : MAX_SLOTS);
+  }
+
+  private render(): void {
+    this.renderVoicePanel();
+    this.renderResourcesPanel();
   }
 
   private renderVoicePanel(): void {
-    for (let i = 0; i < MAX_SLOTS; i++) {
-      const root = this.slotRoots[i];
-      const label = this.slotLabels[i];
-      const status = this.slotStatuses[i];
-      const participant = this.roster[i];
+    const callers = this.recentCallers();
+    let slot = 0;
 
-      if (participant == null) {
-        root?.setProperties({ display: 'none' });
-        continue;
-      }
-
-      const speaking = i === this.speakingSlot;
-      const isFirefighter = participant.kind === 'firefighter';
-      const borderColor = isFirefighter
-        ? speaking
-          ? FIREFIGHTER_BORDER_ACTIVE
-          : FIREFIGHTER_BORDER
-        : speaking
-          ? CALLER_BORDER_SPEAKING
-          : CALLER_BORDER;
-
-      root?.setProperties({
-        display: 'flex',
-        borderColor,
-        backgroundColor: isFirefighter ? FIREFIGHTER_BG : CALLER_BG,
+    for (const report of callers) {
+      this.setSlot(slot, {
+        isFirefighter: false,
+        label: report.roomId ?? report.caller,
+        status: report.text.length > 40 ? `${report.text.slice(0, 40)}...` : report.text,
       });
-      label?.setProperties({ text: participant.label });
-      status?.setProperties({
-        text: speaking ? `${participant.status} - speaking` : participant.status,
+      slot++;
+    }
+
+    if (this.firefighterStatus != null) {
+      this.setSlot(slot, {
+        isFirefighter: true,
+        label: 'Engine 3',
+        status: this.firefighterStatus,
       });
+      slot++;
+    }
+
+    for (; slot < MAX_SLOTS; slot++) {
+      this.slotRoots[slot]?.setProperties({ display: 'none' });
     }
   }
 
-  private renderResourcesPanel(): void {
-    let dispatched = 0;
-    let enRoute = 0;
-    let onScene = 0;
-    for (const participant of this.roster) {
-      if (participant?.kind !== 'firefighter') {
-        continue;
-      }
-      if (participant.status === 'dispatched') {
-        dispatched++;
-      } else if (participant.status === 'en route') {
-        enRoute++;
-      } else if (participant.status === 'on scene') {
-        onScene++;
-      }
-    }
+  private setSlot(
+    index: number,
+    entry: { isFirefighter: boolean; label: string; status: string },
+  ): void {
+    const active = entry.isFirefighter && entry.status === 'on scene';
+    this.slotRoots[index]?.setProperties({
+      display: 'flex',
+      borderColor: entry.isFirefighter
+        ? active
+          ? FIREFIGHTER_BORDER_ACTIVE
+          : FIREFIGHTER_BORDER
+        : CALLER_BORDER,
+      backgroundColor: entry.isFirefighter ? FIREFIGHTER_BG : CALLER_BG,
+    });
+    this.slotLabels[index]?.setProperties({ text: entry.label });
+    this.slotStatuses[index]?.setProperties({ text: entry.status });
+  }
 
-    let atRiskFloors = 0;
-    for (const entity of this.queries.floors.entities) {
-      const fire = entity.getValue(FloorState, 'fireLevel') ?? 0;
-      const smoke = entity.getValue(FloorState, 'smokeLevel') ?? 0;
-      if (fire > AT_RISK_THRESHOLD || smoke > AT_RISK_THRESHOLD) {
-        atRiskFloors++;
-      }
-    }
+  private renderResourcesPanel(): void {
+    const dispatched = this.firefighterStatus === 'dispatched' ? 1 : 0;
+    const enRoute = this.firefighterStatus === 'en route' ? 1 : 0;
+    const onScene = this.firefighterStatus === 'on scene' ? 1 : 0;
+
+    const peopleAtRisk = (this.latestState?.exits ?? []).reduce(
+      (sum, exit) => (exit.atRiskAt != null ? sum + exit.people : sum),
+      0,
+    );
 
     this.resourcesPanel
       ?.getElementById('stat-dispatched-count')
@@ -296,6 +190,6 @@ export class ConsoleSystem extends createSystem({
       ?.setProperties({ text: String(onScene) });
     this.resourcesPanel
       ?.getElementById('stat-people-at-risk')
-      ?.setProperties({ text: String(atRiskFloors * PEOPLE_PER_AT_RISK_FLOOR) });
+      ?.setProperties({ text: String(peopleAtRisk) });
   }
 }

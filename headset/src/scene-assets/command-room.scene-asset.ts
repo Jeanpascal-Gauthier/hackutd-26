@@ -14,8 +14,8 @@ import {
 
 /**
  * Procedural pieces for the command-console room: a bare console desk for
- * the seated operator and one glass floor slab, cloned and stacked by the
- * scene to form a miniature building tower.
+ * the seated operator. The building model itself is generated at runtime by
+ * BuildingSystem from the live server's room data, not authored here.
  */
 
 const consoleDeskMaterial = createSceneMaterial({
@@ -24,21 +24,6 @@ const consoleDeskMaterial = createSceneMaterial({
   baseColor: '#3A4047',
   roughness: 0.55,
   metalness: 0.35,
-});
-
-// Pale, slightly translucent glass. Emissive starts dark so a later system
-// can recolor per floor (fire/smoke state) by writing emissive/emissiveIntensity
-// on a per-clone material instance.
-const buildingFloorGlassMaterial = createSceneMaterial({
-  id: 'building-floor-glass',
-  model: 'standard',
-  baseColor: '#BFE8F2',
-  opacity: 0.45,
-  roughness: 0.15,
-  metalness: 0,
-  emissive: '#000000',
-  emissiveIntensity: 0,
-  side: 'double',
 });
 
 /** Bare console desk: a slab top on a single pedestal base. Origin at floor contact. */
@@ -62,15 +47,4 @@ export function createCommandDesk(): Object3D {
   const desk = new Group();
   desk.add(top, pedestal);
   return desk;
-}
-
-/**
- * One floor of a tabletop building model, as a flat glass slab. Origin at
- * its own center so stacking a tower is a simple per-clone y-offset.
- */
-export function createBuildingFloorSlab(): Object3D {
-  return createScenePrimitiveObject(
-    { geometry: { type: 'box', size: [0.4, 0.03, 0.4] } },
-    buildingFloorGlassMaterial,
-  );
 }

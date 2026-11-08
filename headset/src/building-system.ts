@@ -7,67 +7,109 @@
 
 import {
   Color,
+  createSceneMaterial,
+  createScenePrimitiveObject,
   createSystem,
-  Entity,
+  Group,
   Mesh,
   MeshStandardMaterial,
 } from '@iwsdk/core';
-import { FloorState } from './floor-component.js';
+import { fetchBuilding, IncidentSocket } from './incident-client.js';
+import type { Building, IncidentState } from './incident-types.js';
+
+// Real building footprint is ~38m wide x ~14m deep over 12 floors; this scale
+// brings that down to a tabletop model a bit over half a meter wide.
+const MODEL_SCALE = 0.0145;
+const ASSUMED_FLOOR_HEIGHT_M = 3.5; // not in building.json; a display-only assumption
+const ROOM_FOOTPRINT_INSET = 0.9; // shrink each room slightly so neighbors show a gap
+const FLOOR_GAP_INSET = 0.85; // shrink room height so floors show a gap
 
 /**
- * Tints each building-floor slab from fire/smoke levels on its FloorState,
- * and lets both decay slowly over time. Another system (ConsoleSystem) writes
- * fireLevel/smokeLevel when a report lands on a floor; this system only
- * reads that state and turns it into color, same as the real spread model
- * would feed a live incident instead of the demo script.
+ * Builds one box per room from the real shared/building.json (fetched live
+ * from the FireSight server, not hand-authored in scene JSON, since this
+ * must track whatever data/ actually generates) and tints each from the
+ * live IncidentState.rooms stream.
  */
-export class BuildingSystem extends createSystem({
-  floors: { required: [FloorState] },
-}) {
-  private materials = new Map<Entity, MeshStandardMaterial>();
+export class BuildingSystem extends createSystem({}) {
+  private roomMaterials = new Map<string, MeshStandardMaterial>();
   private baseColor = new Color('#bfe8f2');
   private smokeColor = new Color('#555555');
   private fireColor = new Color('#ff5a1f');
   private mixColor = new Color();
+  private socket: IncidentSocket | null = null;
 
-  init(): void {
-    this.queries.floors.subscribe('qualify', (entity) => {
-      const object3D = entity.object3D;
-      if (!(object3D instanceof Mesh)) {
-        return;
-      }
-      const source = Array.isArray(object3D.material)
-        ? object3D.material[0]
-        : object3D.material;
-      const clone = (source as MeshStandardMaterial).clone();
-      object3D.material = clone;
-      this.materials.set(entity, clone);
-    });
+  async init(): Promise<void> {
+    const anchor = this.world.createTransformEntity(new Group());
+    anchor.object3D!.position.set(-0.75, 0.78, -0.75);
+
+    let building: Building;
+    try {
+      building = (await fetchBuilding()).building;
+    } catch (error) {
+      console.error('[BuildingSystem] failed to load /fs-api/building', error);
+      return;
+    }
+    this.buildRoomModel(building, anchor);
+
+    this.socket = new IncidentSocket((state) => this.onState(state));
+    this.socket.connect();
   }
 
-  update(delta: number): void {
-    for (const entity of this.queries.floors.entities) {
-      const material = this.materials.get(entity);
+  stop(): void {
+    this.socket?.close();
+  }
+
+  private buildRoomModel(
+    building: Building,
+    anchor: ReturnType<typeof this.world.createTransformEntity>,
+  ): void {
+    for (const room of building.rooms) {
+      const material = createSceneMaterial({
+        id: `room-material-${room.id}`,
+        model: 'standard',
+        baseColor: '#bfe8f2',
+        opacity: 0.45,
+        roughness: 0.15,
+        metalness: 0,
+        emissive: '#000000',
+        emissiveIntensity: 0,
+        side: 'double',
+      }) as unknown as MeshStandardMaterial;
+
+      const mesh = createScenePrimitiveObject(
+        { geometry: { type: 'box', size: [1, 1, 1] } },
+        material,
+      ) as unknown as Mesh;
+
+      const w = room.w * MODEL_SCALE * ROOM_FOOTPRINT_INSET;
+      const d = room.d * MODEL_SCALE * ROOM_FOOTPRINT_INSET;
+      const h = ASSUMED_FLOOR_HEIGHT_M * MODEL_SCALE * FLOOR_GAP_INSET;
+      mesh.scale.set(w, h, d);
+      mesh.position.set(
+        (room.x + room.w / 2) * MODEL_SCALE,
+        (room.floor - 1) * ASSUMED_FLOOR_HEIGHT_M * MODEL_SCALE,
+        (room.z + room.d / 2) * MODEL_SCALE,
+      );
+
+      this.world.createTransformEntity(mesh, anchor);
+      this.roomMaterials.set(room.id, material);
+    }
+  }
+
+  private onState(state: IncidentState): void {
+    for (const roomState of state.rooms) {
+      const material = this.roomMaterials.get(roomState.roomId);
       if (material == null) {
         continue;
       }
-      const fire = entity.getValue(FloorState, 'fireLevel') ?? 0;
-      const smoke = entity.getValue(FloorState, 'smokeLevel') ?? 0;
-
       this.mixColor.copy(this.baseColor);
-      this.mixColor.lerp(this.smokeColor, smoke);
-      this.mixColor.lerp(this.fireColor, fire);
+      this.mixColor.lerp(this.smokeColor, roomState.smoke);
+      this.mixColor.lerp(this.fireColor, roomState.fire);
       material.emissive.copy(this.mixColor);
-      material.emissiveIntensity = Math.max(fire, smoke * 0.6);
-
-      const nextFire = Math.max(0, fire - delta * 0.015);
-      const nextSmoke = Math.max(0, smoke - delta * 0.01);
-      if (nextFire !== fire) {
-        entity.setValue(FloorState, 'fireLevel', nextFire);
-      }
-      if (nextSmoke !== smoke) {
-        entity.setValue(FloorState, 'smokeLevel', nextSmoke);
-      }
+      material.emissiveIntensity = Math.max(
+        roomState.fire,
+        roomState.smoke * 0.6,
+      );
     }
   }
 }
