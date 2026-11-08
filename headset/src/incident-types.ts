@@ -3,7 +3,7 @@
 import type { Building, IncidentState, Occupant } from '../../shared/types';
 export type {
   Building, Room, Link, Vertical, Occupant, Report, RoomState,
-  Recommendation, FloorExit, TrailStep, IncidentState, LogEntry,
+  Recommendation, FloorExit, TrailStep, IncidentState, LogEntry, MapIncident,
 } from '../../shared/types';
 export type { ClientEvent, ServerEvent } from '../../shared/events';
 export type Dispatch = NonNullable<IncidentState['dispatches']>[number];

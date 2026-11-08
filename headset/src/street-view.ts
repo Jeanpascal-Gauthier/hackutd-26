@@ -1,6 +1,6 @@
 import {
-  type BufferGeometry, CanvasTexture, CircleGeometry, Color, Group, LinearFilter, LinearMipmapLinearFilter, Mesh, MeshBasicMaterial,
-  RingGeometry, Shape, ShapeGeometry, SphereGeometry, SRGBColorSpace, type Raycaster, type Vector3,
+  BufferGeometry, BufferAttribute, CanvasTexture, CircleGeometry, Color, Group, LinearFilter, LinearMipmapLinearFilter, LineSegments, LineBasicMaterial, Mesh, MeshBasicMaterial,
+  RingGeometry, Shape, ShapeGeometry, SphereGeometry, SRGBColorSpace, Vector3, type Raycaster,
 } from '@iwsdk/core';
 import { STREET_VIEW_PREVIEW_ZOOM, STREET_VIEW_ZOOM, type PanoLink, type PanoMetadata, type StreetViewClient } from './street-view-client.js';
 
@@ -182,11 +182,15 @@ export class StreetViewScene {
   }
 }
 
-/** Aim marker on the city: a ring that fills as the pull progresses. */
+/** Aim marker on the city: a ring that fills as the pull progresses, plus a ray from hand to target. */
 export class AimReticle {
   readonly root = new Group();
   private readonly fill: Mesh<CircleGeometry, MeshBasicMaterial>;
   private readonly ring: Mesh<RingGeometry, MeshBasicMaterial>;
+  private readonly ray: LineSegments<BufferGeometry, LineBasicMaterial>;
+  private readonly rayPositions: Float32Array;
+  private target!: Vector3;
+  private hand!: Vector3;
 
   constructor() {
     this.root.name = 'Street View aim';
@@ -194,19 +198,44 @@ export class AimReticle {
     this.fill = new Mesh(new CircleGeometry(0.75, 40), new MeshBasicMaterial({ color: '#27d8ef', depthTest: false, transparent: true, opacity: 0.55, fog: false }));
     this.ring.renderOrder = 30; this.fill.renderOrder = 31;
     this.fill.scale.setScalar(0.001);
-    this.root.add(this.ring, this.fill);
+    // Ray from hand to target: two vertices (hand and target)
+    const rayGeom = new BufferGeometry();
+    this.rayPositions = new Float32Array(6);
+    rayGeom.setAttribute('position', new BufferAttribute(this.rayPositions, 3));
+    this.ray = new LineSegments(rayGeom, new LineBasicMaterial({ color: '#27d8ef', depthTest: false, transparent: true, opacity: 0.9, fog: false, linewidth: 3 }));
+    this.ray.renderOrder = 29;
+    this.root.add(this.ring, this.fill, this.ray);
     this.root.visible = false;
+    this.target = new Vector3();
+    this.hand = new Vector3();
   }
 
   /** Face the viewer at a constant apparent size; `progress` 0..1 fills the ring. */
   place(point: Vector3, eye: Vector3, progress: number, locked: boolean): void {
     this.root.visible = true;
+    this.target.copy(point);
     this.root.position.copy(point);
     this.root.lookAt(eye);
     this.root.scale.setScalar(Math.max(0.05, point.distanceTo(eye) * 0.022));
     this.fill.scale.setScalar(Math.max(0.001, progress));
-    this.ring.material.color.set(locked ? '#ffd166' : '#27d8ef');
-    this.fill.material.color.set(locked ? '#ffd166' : '#27d8ef');
+    const color = locked ? '#ffd166' : '#27d8ef';
+    this.ring.material.color.set(color);
+    this.fill.material.color.set(color);
+    (this.ray.material as LineBasicMaterial).color.set(color);
+  }
+
+  /** Update the ray position from hand to target. Call every frame during aiming. */
+  update(handPosition: Vector3): void {
+    if (!this.root.visible) return;
+    this.hand.copy(handPosition);
+    // Set ray vertices: from hand to target
+    this.rayPositions[0] = this.hand.x;
+    this.rayPositions[1] = this.hand.y;
+    this.rayPositions[2] = this.hand.z;
+    this.rayPositions[3] = this.target.x;
+    this.rayPositions[4] = this.target.y;
+    this.rayPositions[5] = this.target.z;
+    (this.ray.geometry.attributes.position as any).needsUpdate = true;
   }
 
   hide(): void { this.root.visible = false; }
@@ -214,5 +243,6 @@ export class AimReticle {
   dispose(): void {
     this.ring.geometry.dispose(); this.ring.material.dispose();
     this.fill.geometry.dispose(); this.fill.material.dispose();
+    this.ray.geometry.dispose(); this.ray.material.dispose();
   }
 }
