@@ -52,3 +52,23 @@ curl -XPOST localhost:8080/map-incidents -H 'content-type: application/json' \
 ```
 
 Forecasts appear within about 15 seconds. `npm run demo:reset` clears the map.
+
+## Portfolio impact (CBRE)
+
+The server also says which buildings of the CBRE portfolio the incidents hit, what fails in them, the $ at risk and what to do. All fields are optional: draw them when present. Details and types: `server/API.md` → Portfolio impact.
+
+| Field | Use |
+|---|---|
+| `GET /portfolio` → `buildings[]` | Draw every portfolio building (grey marker at `location`) even with no incident |
+| `incident.impact` | Impact circle: `radiusMeters` around `center`. With `stretch`, draw it as an oval reaching `radiusMeters * stretch.factor` toward `stretch.towardDegrees`. `reasons` go in the pin card |
+| `incident.affectedProperties[]` | Color those buildings by `risk` (high red, moderate amber, low yellow) |
+| `incident.affectedRoads[]` | Red polylines along `path`, from `fromMinute <= simMinute` |
+| `incident.related[]` | A dashed line to each linked incident |
+| `incident.reports.length` | "N calls" on the pin |
+| `state.portfolioImpact` | The whole picture, below |
+
+**Impact card:** `portfolioImpact.summary.headline` as the title, `briefing` under it, and `usdAtRiskAfterActions` next to `usdAtRisk` so Execute visibly lowers the number. Show "AI" when `mode` is `llm`; the rules card arrives first and is replaced within seconds.
+
+**Drill-down** (click a building): its `chain` as a timeline (`minute`, `label`; `causedBy` links each step to the one before), then its `actions` by `deadlineMinute`, each with `text`, `reason`, "saves $" from `savesUsd`, and an **Execute** button: `POST /portfolio/actions/<encodeURIComponent(action.id)>/execute` (`/undo` to take it back). The new state arrives on the WebSocket; show `status: "done"` as checked.
+
+Try it: post the crash and fire curls above (Campbell & Coit), then `curl localhost:8080/portfolio/impact`.

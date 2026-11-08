@@ -1,0 +1,1042 @@
+[
+  {
+    "id": "dc-lookout",
+    "name": "Lookout Ridge Data Center",
+    "address": "W Campbell Rd, just west of Coit Rd, Richardson, TX 75080",
+    "use": "data_center",
+    "location": {
+      "lat": 32.97953,
+      "lon": -96.76608
+    },
+    "elevationM": 186,
+    "occupancy": {
+      "day": 40,
+      "night": 12
+    },
+    "systems": [
+      {
+        "id": "utility_power",
+        "kind": "utility_power",
+        "label": "Utility feed",
+        "dependsOn": [],
+        "level": "ground",
+        "restoreHours": 6,
+        "damageUsd": 0
+      },
+      {
+        "id": "electrical_room",
+        "kind": "electrical_room",
+        "label": "Electrical room",
+        "dependsOn": [
+          "utility_power"
+        ],
+        "level": "basement",
+        "restoreHours": 18,
+        "damageUsd": 38000
+      },
+      {
+        "id": "fuel_supply",
+        "kind": "fuel_supply",
+        "label": "Diesel fuel deliveries",
+        "dependsOn": [],
+        "level": "ground",
+        "restoreHours": 4,
+        "damageUsd": 0
+      },
+      {
+        "id": "generator",
+        "kind": "generator",
+        "label": "Backup generator",
+        "dependsOn": [
+          "fuel_supply"
+        ],
+        "level": "ground",
+        "runtimeHours": 4,
+        "restoreHours": 2,
+        "damageUsd": 0
+      },
+      {
+        "id": "ups",
+        "kind": "ups",
+        "label": "UPS battery room",
+        "dependsOn": [
+          "electrical_room"
+        ],
+        "backups": [
+          "generator"
+        ],
+        "level": "ground",
+        "lagMinutes": 10,
+        "restoreHours": 2,
+        "damageUsd": 0
+      },
+      {
+        "id": "air_intake",
+        "kind": "air_intake",
+        "label": "Outside-air intake",
+        "dependsOn": [],
+        "level": "ground",
+        "facingDegrees": 225,
+        "restoreHours": 1,
+        "damageUsd": 2000
+      },
+      {
+        "id": "hvac",
+        "kind": "hvac",
+        "label": "Air handlers",
+        "dependsOn": [
+          "air_intake"
+        ],
+        "level": "roof",
+        "lagMinutes": 1,
+        "restoreHours": 6,
+        "damageUsd": 9000
+      },
+      {
+        "id": "cooling",
+        "kind": "cooling",
+        "label": "CRAH cooling units",
+        "dependsOn": [
+          "ups",
+          "hvac"
+        ],
+        "level": "ground",
+        "lagMinutes": 2,
+        "restoreHours": 4,
+        "damageUsd": 5000
+      },
+      {
+        "id": "servers",
+        "kind": "servers",
+        "label": "Server halls",
+        "dependsOn": [
+          "cooling",
+          "ups"
+        ],
+        "level": "ground",
+        "lagMinutes": 15,
+        "restoreHours": 3,
+        "damageUsd": 12000
+      },
+      {
+        "id": "life_safety",
+        "kind": "life_safety",
+        "label": "Fire alarm and VESDA",
+        "dependsOn": [],
+        "level": "ground",
+        "restoreHours": 1,
+        "damageUsd": 0
+      }
+    ],
+    "tenants": [
+      {
+        "name": "Meridian Cloud Services",
+        "slaPenaltyPerHour": 38000,
+        "rentPerMonth": 210000,
+        "dependsOn": [
+          "servers"
+        ]
+      },
+      {
+        "name": "Lonestar Payments",
+        "slaPenaltyPerHour": 22000,
+        "rentPerMonth": 120000,
+        "dependsOn": [
+          "servers"
+        ]
+      },
+      {
+        "name": "Brazos Health Records",
+        "slaPenaltyPerHour": 15000,
+        "rentPerMonth": 70000,
+        "dependsOn": [
+          "servers"
+        ]
+      }
+    ],
+    "access": {
+      "roads": [
+        "Coit Rd",
+        "Lookout Dr"
+      ],
+      "fuelRoute": "Coit Rd"
+    }
+  },
+  {
+    "id": "retail-campbell-plaza",
+    "name": "Campbell Coit Plaza",
+    "address": "Campbell Rd, west of Coit Rd, Dallas, TX 75248",
+    "use": "retail",
+    "location": {
+      "lat": 32.9771,
+      "lon": -96.77047
+    },
+    "elevationM": 191,
+    "occupancy": {
+      "day": 165,
+      "night": 10
+    },
+    "systems": [
+      {
+        "id": "utility_power",
+        "kind": "utility_power",
+        "label": "Utility feed",
+        "dependsOn": [],
+        "level": "ground",
+        "restoreHours": 4,
+        "damageUsd": 0
+      },
+      {
+        "id": "electrical_room",
+        "kind": "electrical_room",
+        "label": "Rear electrical room",
+        "dependsOn": [
+          "utility_power"
+        ],
+        "level": "ground",
+        "facingDegrees": 180,
+        "restoreHours": 16,
+        "damageUsd": 14000
+      },
+      {
+        "id": "air_intake",
+        "kind": "air_intake",
+        "label": "Rooftop unit intakes",
+        "dependsOn": [],
+        "level": "roof",
+        "facingDegrees": 180,
+        "restoreHours": 1,
+        "damageUsd": 1000
+      },
+      {
+        "id": "hvac",
+        "kind": "hvac",
+        "label": "Rooftop HVAC units",
+        "dependsOn": [
+          "air_intake",
+          "electrical_room"
+        ],
+        "level": "roof",
+        "lagMinutes": 1,
+        "restoreHours": 8,
+        "damageUsd": 7000
+      },
+      {
+        "id": "refrigeration",
+        "kind": "refrigeration",
+        "label": "Restaurant walk-in coolers",
+        "dependsOn": [
+          "electrical_room"
+        ],
+        "level": "ground",
+        "lagMinutes": 60,
+        "restoreHours": 8,
+        "damageUsd": 6000
+      },
+      {
+        "id": "life_safety",
+        "kind": "life_safety",
+        "label": "Fire alarm and sprinklers",
+        "dependsOn": [],
+        "level": "ground",
+        "restoreHours": 2,
+        "damageUsd": 0
+      }
+    ],
+    "tenants": [
+      {
+        "name": "Pho Coit Kitchen",
+        "slaPenaltyPerHour": 0,
+        "rentPerMonth": 9000,
+        "dependsOn": [
+          "electrical_room",
+          "hvac",
+          "refrigeration"
+        ]
+      },
+      {
+        "name": "Bluebonnet Pharmacy",
+        "slaPenaltyPerHour": 0,
+        "rentPerMonth": 14000,
+        "dependsOn": [
+          "electrical_room",
+          "hvac"
+        ]
+      },
+      {
+        "name": "Campbell Cleaners",
+        "slaPenaltyPerHour": 0,
+        "rentPerMonth": 6000,
+        "dependsOn": [
+          "electrical_room"
+        ]
+      },
+      {
+        "name": "Lone Star Nails",
+        "slaPenaltyPerHour": 0,
+        "rentPerMonth": 5000,
+        "dependsOn": [
+          "electrical_room",
+          "hvac"
+        ]
+      },
+      {
+        "name": "Prairie Insurance Agency",
+        "slaPenaltyPerHour": 0,
+        "rentPerMonth": 4500,
+        "dependsOn": [
+          "electrical_room"
+        ]
+      }
+    ],
+    "access": {
+      "roads": [
+        "Campbell Rd"
+      ]
+    }
+  },
+  {
+    "id": "office-campbell-point",
+    "name": "Campbell Point Tower",
+    "address": "Campbell Rd at Coit Rd (SW), Richardson, TX 75248",
+    "use": "office",
+    "location": {
+      "lat": 32.97863,
+      "lon": -96.76854
+    },
+    "elevationM": 192,
+    "occupancy": {
+      "day": 430,
+      "night": 25
+    },
+    "systems": [
+      {
+        "id": "utility_power",
+        "kind": "utility_power",
+        "label": "Utility feed",
+        "dependsOn": [],
+        "level": "ground",
+        "restoreHours": 4,
+        "damageUsd": 0
+      },
+      {
+        "id": "electrical_room",
+        "kind": "electrical_room",
+        "label": "Electrical room",
+        "dependsOn": [
+          "utility_power"
+        ],
+        "level": "ground",
+        "restoreHours": 12,
+        "damageUsd": 25000
+      },
+      {
+        "id": "generator",
+        "kind": "generator",
+        "label": "Life-safety generator",
+        "dependsOn": [],
+        "level": "ground",
+        "runtimeHours": 8,
+        "restoreHours": 2,
+        "damageUsd": 0
+      },
+      {
+        "id": "air_intake",
+        "kind": "air_intake",
+        "label": "Outside-air louvers",
+        "dependsOn": [],
+        "level": "roof",
+        "facingDegrees": 225,
+        "restoreHours": 1,
+        "damageUsd": 1500
+      },
+      {
+        "id": "hvac",
+        "kind": "hvac",
+        "label": "Air handlers",
+        "dependsOn": [
+          "air_intake",
+          "electrical_room"
+        ],
+        "level": "roof",
+        "lagMinutes": 1,
+        "restoreHours": 6,
+        "damageUsd": 12000
+      },
+      {
+        "id": "elevators",
+        "kind": "elevators",
+        "label": "Elevators",
+        "dependsOn": [
+          "electrical_room"
+        ],
+        "backups": [
+          "generator"
+        ],
+        "level": "ground",
+        "restoreHours": 1,
+        "damageUsd": 0
+      },
+      {
+        "id": "access_control",
+        "kind": "access_control",
+        "label": "Badge access",
+        "dependsOn": [
+          "electrical_room"
+        ],
+        "level": "ground",
+        "restoreHours": 2,
+        "damageUsd": 0
+      },
+      {
+        "id": "life_safety",
+        "kind": "life_safety",
+        "label": "Fire alarm and sprinklers",
+        "dependsOn": [
+          "electrical_room"
+        ],
+        "backups": [
+          "generator"
+        ],
+        "level": "ground",
+        "restoreHours": 1,
+        "damageUsd": 0
+      }
+    ],
+    "tenants": [
+      {
+        "name": "Halberd Software",
+        "slaPenaltyPerHour": 2000,
+        "rentPerMonth": 95000,
+        "dependsOn": [
+          "electrical_room",
+          "elevators",
+          "access_control"
+        ]
+      },
+      {
+        "name": "Trinity Ridge Engineering",
+        "slaPenaltyPerHour": 1500,
+        "rentPerMonth": 70000,
+        "dependsOn": [
+          "electrical_room",
+          "elevators"
+        ]
+      },
+      {
+        "name": "Caddo Benefits Group",
+        "slaPenaltyPerHour": 800,
+        "rentPerMonth": 45000,
+        "dependsOn": [
+          "electrical_room",
+          "access_control"
+        ]
+      },
+      {
+        "name": "Pecan Street Coworking",
+        "slaPenaltyPerHour": 0,
+        "rentPerMonth": 30000,
+        "dependsOn": [
+          "electrical_room"
+        ]
+      }
+    ],
+    "access": {
+      "roads": [
+        "Campbell Rd",
+        "Coit Rd"
+      ]
+    }
+  },
+  {
+    "id": "res-prairie-creek",
+    "name": "Prairie Creek Residences",
+    "address": "Coit Rd at Jonsson Blvd, Richardson, TX 75080",
+    "use": "residential",
+    "location": {
+      "lat": 32.97944,
+      "lon": -96.76398
+    },
+    "elevationM": 187,
+    "occupancy": {
+      "day": 150,
+      "night": 410
+    },
+    "systems": [
+      {
+        "id": "utility_power",
+        "kind": "utility_power",
+        "label": "Utility feed",
+        "dependsOn": [],
+        "level": "ground",
+        "restoreHours": 4,
+        "damageUsd": 0
+      },
+      {
+        "id": "electrical_room",
+        "kind": "electrical_room",
+        "label": "Electrical room",
+        "dependsOn": [
+          "utility_power"
+        ],
+        "level": "ground",
+        "restoreHours": 10,
+        "damageUsd": 15000
+      },
+      {
+        "id": "air_intake",
+        "kind": "air_intake",
+        "label": "Make-up air intake",
+        "dependsOn": [],
+        "level": "roof",
+        "facingDegrees": 225,
+        "restoreHours": 1,
+        "damageUsd": 500
+      },
+      {
+        "id": "hvac",
+        "kind": "hvac",
+        "label": "Corridor make-up air units",
+        "dependsOn": [
+          "air_intake",
+          "electrical_room"
+        ],
+        "level": "roof",
+        "lagMinutes": 1,
+        "restoreHours": 4,
+        "damageUsd": 3000
+      },
+      {
+        "id": "water",
+        "kind": "water",
+        "label": "Domestic water booster pumps",
+        "dependsOn": [
+          "electrical_room"
+        ],
+        "level": "ground",
+        "restoreHours": 3,
+        "damageUsd": 0
+      },
+      {
+        "id": "elevators",
+        "kind": "elevators",
+        "label": "Elevators",
+        "dependsOn": [
+          "electrical_room"
+        ],
+        "level": "ground",
+        "restoreHours": 1,
+        "damageUsd": 0
+      },
+      {
+        "id": "life_safety",
+        "kind": "life_safety",
+        "label": "Fire alarm and sprinklers",
+        "dependsOn": [],
+        "level": "ground",
+        "restoreHours": 1,
+        "damageUsd": 0
+      }
+    ],
+    "tenants": [
+      {
+        "name": "Residents (296 units)",
+        "slaPenaltyPerHour": 0,
+        "rentPerMonth": 430000,
+        "dependsOn": [
+          "electrical_room",
+          "water",
+          "elevators"
+        ]
+      }
+    ],
+    "access": {
+      "roads": [
+        "Coit Rd",
+        "Prairie Creek Dr"
+      ]
+    }
+  },
+  {
+    "id": "office-lookout-commons",
+    "name": "Lookout Commons",
+    "address": "Coit Rd, north of Campbell Rd, Dallas, TX 75248",
+    "use": "office",
+    "location": {
+      "lat": 32.9835,
+      "lon": -96.771
+    },
+    "elevationM": 189,
+    "occupancy": {
+      "day": 290,
+      "night": 15
+    },
+    "systems": [
+      {
+        "id": "utility_power",
+        "kind": "utility_power",
+        "label": "Utility feed",
+        "dependsOn": [],
+        "level": "ground",
+        "restoreHours": 4,
+        "damageUsd": 0
+      },
+      {
+        "id": "electrical_room",
+        "kind": "electrical_room",
+        "label": "Basement electrical room",
+        "dependsOn": [
+          "utility_power"
+        ],
+        "level": "basement",
+        "restoreHours": 10,
+        "damageUsd": 14000
+      },
+      {
+        "id": "hvac",
+        "kind": "hvac",
+        "label": "Rooftop air handlers",
+        "dependsOn": [
+          "electrical_room"
+        ],
+        "level": "roof",
+        "restoreHours": 4,
+        "damageUsd": 0
+      },
+      {
+        "id": "elevators",
+        "kind": "elevators",
+        "label": "Elevators",
+        "dependsOn": [
+          "electrical_room"
+        ],
+        "level": "ground",
+        "restoreHours": 1,
+        "damageUsd": 0
+      },
+      {
+        "id": "access_control",
+        "kind": "access_control",
+        "label": "Badge access",
+        "dependsOn": [
+          "electrical_room"
+        ],
+        "level": "ground",
+        "restoreHours": 2,
+        "damageUsd": 0
+      },
+      {
+        "id": "life_safety",
+        "kind": "life_safety",
+        "label": "Fire alarm and emergency lighting",
+        "dependsOn": [],
+        "level": "ground",
+        "restoreHours": 1,
+        "damageUsd": 0
+      }
+    ],
+    "tenants": [
+      {
+        "name": "Mesquite Analytics",
+        "slaPenaltyPerHour": 900,
+        "rentPerMonth": 60000,
+        "dependsOn": [
+          "electrical_room",
+          "hvac",
+          "access_control"
+        ]
+      },
+      {
+        "name": "Hollis & Pryor LLP",
+        "slaPenaltyPerHour": 400,
+        "rentPerMonth": 40000,
+        "dependsOn": [
+          "electrical_room",
+          "elevators"
+        ]
+      },
+      {
+        "name": "Northgate Staffing",
+        "slaPenaltyPerHour": 0,
+        "rentPerMonth": 25000,
+        "dependsOn": [
+          "electrical_room"
+        ]
+      }
+    ],
+    "access": {
+      "roads": [
+        "Lookout Dr",
+        "Glenville Dr"
+      ]
+    }
+  },
+  {
+    "id": "med-coit-creek",
+    "name": "Coit Creek Medical Center",
+    "address": "N Coit Rd, south of Campbell Rd, Richardson, TX 75080",
+    "use": "hospital",
+    "location": {
+      "lat": 32.97403,
+      "lon": -96.76351
+    },
+    "elevationM": 190,
+    "occupancy": {
+      "day": 660,
+      "night": 420
+    },
+    "systems": [
+      {
+        "id": "utility_power",
+        "kind": "utility_power",
+        "label": "Utility feed",
+        "dependsOn": [],
+        "level": "ground",
+        "restoreHours": 4,
+        "damageUsd": 0
+      },
+      {
+        "id": "electrical_room",
+        "kind": "electrical_room",
+        "label": "Electrical room",
+        "dependsOn": [
+          "utility_power"
+        ],
+        "backups": [
+          "generator"
+        ],
+        "level": "basement",
+        "restoreHours": 24,
+        "damageUsd": 90000
+      },
+      {
+        "id": "fuel_supply",
+        "kind": "fuel_supply",
+        "label": "Diesel fuel deliveries",
+        "dependsOn": [],
+        "level": "ground",
+        "restoreHours": 4,
+        "damageUsd": 0
+      },
+      {
+        "id": "generator",
+        "kind": "generator",
+        "label": "Emergency generators",
+        "dependsOn": [
+          "fuel_supply"
+        ],
+        "level": "ground",
+        "runtimeHours": 24,
+        "restoreHours": 2,
+        "damageUsd": 0
+      },
+      {
+        "id": "air_intake",
+        "kind": "air_intake",
+        "label": "Outside-air intake",
+        "dependsOn": [],
+        "level": "roof",
+        "facingDegrees": 270,
+        "restoreHours": 1,
+        "damageUsd": 2000
+      },
+      {
+        "id": "hvac",
+        "kind": "hvac",
+        "label": "Air handlers",
+        "dependsOn": [
+          "air_intake",
+          "electrical_room"
+        ],
+        "level": "roof",
+        "lagMinutes": 1,
+        "restoreHours": 6,
+        "damageUsd": 15000
+      },
+      {
+        "id": "medical_gas",
+        "kind": "medical_gas",
+        "label": "Medical gas plant",
+        "dependsOn": [
+          "electrical_room"
+        ],
+        "level": "ground",
+        "lagMinutes": 20,
+        "restoreHours": 4,
+        "damageUsd": 0
+      },
+      {
+        "id": "elevators",
+        "kind": "elevators",
+        "label": "Elevators",
+        "dependsOn": [
+          "electrical_room"
+        ],
+        "level": "ground",
+        "restoreHours": 1,
+        "damageUsd": 0
+      },
+      {
+        "id": "life_safety",
+        "kind": "life_safety",
+        "label": "Fire alarm and sprinklers",
+        "dependsOn": [
+          "electrical_room"
+        ],
+        "level": "ground",
+        "restoreHours": 1,
+        "damageUsd": 0
+      }
+    ],
+    "tenants": [
+      {
+        "name": "Coit Creek Health (hospital operator)",
+        "slaPenaltyPerHour": 0,
+        "rentPerMonth": 520000,
+        "dependsOn": [
+          "electrical_room",
+          "medical_gas",
+          "hvac"
+        ]
+      },
+      {
+        "name": "North Texas Imaging",
+        "slaPenaltyPerHour": 1200,
+        "rentPerMonth": 48000,
+        "dependsOn": [
+          "electrical_room",
+          "hvac"
+        ]
+      }
+    ],
+    "access": {
+      "roads": [
+        "Coit Rd",
+        "Campbell Rd"
+      ],
+      "fuelRoute": "Campbell Rd"
+    }
+  },
+  {
+    "id": "grocery-campbell-fresh",
+    "name": "Campbell Fresh Market",
+    "address": "Campbell Rd, west of Lauder Ln, Dallas, TX 75248",
+    "use": "retail",
+    "location": {
+      "lat": 32.97863,
+      "lon": -96.77743
+    },
+    "elevationM": 193,
+    "occupancy": {
+      "day": 120,
+      "night": 15
+    },
+    "systems": [
+      {
+        "id": "utility_power",
+        "kind": "utility_power",
+        "label": "Utility feed",
+        "dependsOn": [],
+        "level": "ground",
+        "restoreHours": 4,
+        "damageUsd": 0
+      },
+      {
+        "id": "electrical_room",
+        "kind": "electrical_room",
+        "label": "Electrical room",
+        "dependsOn": [
+          "utility_power"
+        ],
+        "level": "ground",
+        "restoreHours": 12,
+        "damageUsd": 20000
+      },
+      {
+        "id": "air_intake",
+        "kind": "air_intake",
+        "label": "Rooftop unit intakes",
+        "dependsOn": [],
+        "level": "roof",
+        "facingDegrees": 90,
+        "restoreHours": 1,
+        "damageUsd": 1000
+      },
+      {
+        "id": "hvac",
+        "kind": "hvac",
+        "label": "Rooftop HVAC units",
+        "dependsOn": [
+          "air_intake",
+          "electrical_room"
+        ],
+        "level": "roof",
+        "lagMinutes": 1,
+        "restoreHours": 6,
+        "damageUsd": 6000
+      },
+      {
+        "id": "refrigeration",
+        "kind": "refrigeration",
+        "label": "Refrigerated cases",
+        "dependsOn": [
+          "electrical_room"
+        ],
+        "level": "ground",
+        "lagMinutes": 90,
+        "restoreHours": 6,
+        "damageUsd": 45000
+      },
+      {
+        "id": "life_safety",
+        "kind": "life_safety",
+        "label": "Fire alarm and sprinklers",
+        "dependsOn": [],
+        "level": "ground",
+        "restoreHours": 1,
+        "damageUsd": 0
+      }
+    ],
+    "tenants": [
+      {
+        "name": "Campbell Fresh Market",
+        "slaPenaltyPerHour": 0,
+        "rentPerMonth": 38000,
+        "dependsOn": [
+          "electrical_room",
+          "refrigeration",
+          "hvac"
+        ]
+      }
+    ],
+    "access": {
+      "roads": [
+        "Campbell Rd",
+        "Mimosa Dr"
+      ]
+    }
+  },
+  {
+    "id": "lab-telecom-ridge",
+    "name": "Telecom Ridge Labs",
+    "address": "La Manga Dr area, Dallas, TX 75248",
+    "use": "industrial",
+    "location": {
+      "lat": 32.97178,
+      "lon": -96.77582
+    },
+    "elevationM": 194,
+    "occupancy": {
+      "day": 85,
+      "night": 10
+    },
+    "systems": [
+      {
+        "id": "utility_power",
+        "kind": "utility_power",
+        "label": "Utility feed",
+        "dependsOn": [],
+        "level": "ground",
+        "restoreHours": 4,
+        "damageUsd": 0
+      },
+      {
+        "id": "electrical_room",
+        "kind": "electrical_room",
+        "label": "Electrical room",
+        "dependsOn": [
+          "utility_power"
+        ],
+        "backups": [
+          "generator"
+        ],
+        "level": "ground",
+        "restoreHours": 12,
+        "damageUsd": 30000
+      },
+      {
+        "id": "fuel_supply",
+        "kind": "fuel_supply",
+        "label": "Diesel fuel deliveries",
+        "dependsOn": [],
+        "level": "ground",
+        "restoreHours": 4,
+        "damageUsd": 0
+      },
+      {
+        "id": "generator",
+        "kind": "generator",
+        "label": "Backup generator",
+        "dependsOn": [
+          "fuel_supply"
+        ],
+        "level": "ground",
+        "runtimeHours": 12,
+        "restoreHours": 2,
+        "damageUsd": 0
+      },
+      {
+        "id": "air_intake",
+        "kind": "air_intake",
+        "label": "Lab exhaust and make-up air intake",
+        "dependsOn": [],
+        "level": "roof",
+        "facingDegrees": 45,
+        "restoreHours": 1,
+        "damageUsd": 3000
+      },
+      {
+        "id": "hvac",
+        "kind": "hvac",
+        "label": "Lab air handlers",
+        "dependsOn": [
+          "air_intake",
+          "electrical_room"
+        ],
+        "level": "roof",
+        "lagMinutes": 1,
+        "restoreHours": 8,
+        "damageUsd": 20000
+      },
+      {
+        "id": "refrigeration",
+        "kind": "refrigeration",
+        "label": "Sample freezers",
+        "dependsOn": [
+          "electrical_room"
+        ],
+        "level": "ground",
+        "lagMinutes": 120,
+        "restoreHours": 4,
+        "damageUsd": 60000
+      },
+      {
+        "id": "life_safety",
+        "kind": "life_safety",
+        "label": "Fire alarm and gas detection",
+        "dependsOn": [],
+        "level": "ground",
+        "restoreHours": 1,
+        "damageUsd": 0
+      }
+    ],
+    "tenants": [
+      {
+        "name": "Quanta Photonics",
+        "slaPenaltyPerHour": 1500,
+        "rentPerMonth": 85000,
+        "dependsOn": [
+          "electrical_room",
+          "hvac",
+          "refrigeration"
+        ]
+      }
+    ],
+    "access": {
+      "roads": [
+        "Collins Blvd"
+      ],
+      "fuelRoute": "Collins Blvd"
+    }
+  }
+]

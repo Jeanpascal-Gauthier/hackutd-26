@@ -1,5 +1,29 @@
 # FireSight demo runbook
 
+## CBRE map and action demo (no server required)
+
+Run `npm run dev -w console` and open <http://localhost:5173/?fixture=map>.
+For a fully offline schematic map, use <http://localhost:5173/?fixture=map&map=offline>.
+Fixtures only run in the Vite development server.
+
+1. Start with **6 buildings · 1,240 people · ~$380K at risk in the next 30 min**.
+2. Scrub the forecast from Now to +30 min, or press **Play forecast**. Fire, smoke, flood water,
+   crash queues and flooded roads advance together. Dashed links show related incidents; the fire
+   pin has **3 calls** merged into one incident. The gas leak has a **140 m blast radius**.
+3. Click **Main Street Lofts** on the map or in the prioritized list. Inspect its failure chain.
+4. Press **Execute** on **Isolate gas supply & shut down HVAC**. It becomes **Done**, the chain
+   step becomes **Interrupted**, and the timestamped execution appears in history. The building's
+   risk score drops **100 → 40** and total exposure drops **$380K → $323K**.
+5. Execute the evacuation action to reduce exposed people **1,240 → 1,060**. The impact card
+   stays visible while working in the building drill-down.
+6. **Reset scenario** clears local execution history and restores the starting forecast. Actions
+   otherwise survive refresh in the same tab through session storage.
+
+All scenario data and action reductions are illustrative, defined in `console/src/devFixture.ts`.
+Execute records a local simulated action; it does not send commands to building equipment or dispatch
+services. Google Maps and the schematic use the same forecast geometry. Google Maps automatically
+falls back to the schematic while loading or when unavailable.
+
 ## Once, before demo day
 1. Root `.env` has `NVIDIA_API_KEY=...` (the agent needs it). For phone calls also `VOICE_TOKEN` and `GEOAPIFY_API_KEY` (see [Phone calls](#phone-calls-elevenlabs)).
 2. `npm install` (repo root).
@@ -166,6 +190,28 @@ This clears the incident (`POST /live/reset`: no fire, no reports, an empty map)
 The console has no reset button in live mode (its Reset/Replay buttons only appear in mock mode).
 Reload the Quest tab if it looks stale (the Engine 3 progress shown there is simulated locally).
 Note: with the headset open, a new recommendation is **accepted and dispatched automatically** by the headset.
+
+## CBRE portfolio impact (90 seconds)
+Live numbers depend on real wind and the time of day (one run gave ~$5K), so the judged run is **scripted**: the same
+three calls with hand-built forecasts, assessed at a weekday 2 pm. Server running (`npm run demo`), console open, then
+in a second terminal (any shell):
+
+| Say | Run | The console shows |
+|---|---|---|
+| "A fire behind the strip mall on Campbell." | `npm run demo:cbre` | Radius, ~4 buildings light up; data center: smoke hits the HVAC intake in 8 min |
+| "Now a crash on Coit." | `npm run demo:cbre` | Linked (not merged) to the fire; the data center's fuel road turns red |
+| "And a water main bursts." | `npm run demo:cbre` | Water spreads toward the data center's basement electrical room |
+| "Here's the whole picture." | (card) | "6 buildings · 1,240 people · ~$380K at risk in the next 30 min" |
+| "Close the dampers, deploy flood barriers." | `npm run demo:cbre -- --execute` (or Execute on the console) | ~$90K |
+
+Each run prints the headline, top building, first failure and top action. `-- --all` puts all three in at once;
+`-- --reset` clears the map and starts over (so does `npm run demo:reset`). Same thing over HTTP:
+`POST /portfolio/demo/step`, `/run`, `/reset` (server/API.md, "Scripted CBRE demo").
+
+**Live alternative** (real geocoding, wind and elevation; numbers vary): report these, in order, by phone or the console's
+"Add a report": fire at `7651 Campbell Rd, Dallas, TX 75248`, crash at `Campbell Rd and Coit Rd, Richardson, TX`
+(all lanes blocked), flooding at `2210 N Coit Rd, Richardson, TX` (type other, what "flooding", "water main burst").
+Run `npm run demo:reset` before switching back to the script.
 
 ## If something breaks
 - **Agent slow or down (NVIDIA API):** nothing to do. Each report that errors or takes over 20 s falls back to the

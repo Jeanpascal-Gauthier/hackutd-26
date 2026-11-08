@@ -9,6 +9,8 @@
 //   POST /voice/incident phone-call webhook: any emergency, placed on the map (incidents/service.ts)
 //   POST /map-incidents  the same report from a screen or script, without the voice token
 //   POST /incident/address, /incident/building, /incident/building/demo  building lookup (live/lookup.ts)
+//   GET  /portfolio, /portfolio/impact   POST /portfolio/actions/:id/execute|undo  portfolio impact (portfolio/service.ts)
+//   POST /portfolio/demo/step|run|reset  the scripted CBRE demo (portfolio/demo.ts)
 //   GET  /health      POST /live/reset      POST /mock/reset, /mock/replay (mock mode)
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { Building, IncidentState, LanesBlocked, Occupant, Recommendation, TrailStep } from "@firewatch/shared/types";
@@ -21,6 +23,8 @@ import type { MapIncidents, MapIncidentInput } from "../incidents/service.ts";
 import type { LookupResult } from "../live/lookup.ts";
 import { createBuildingRoutes } from "../buildings/routes.ts";
 import type { BuildingService } from "../buildings/service.ts";
+import type { PortfolioImpactService } from "../portfolio/service.ts";
+import type { CbreDemo } from "../portfolio/demo.ts";
 
 const MAX_BODY = 256 * 1024; // room for an agent trail
 const MAX_TRAIL = 50;
@@ -51,6 +55,10 @@ export interface HttpDeps {
   };
   /** Emergencies on the map (POST /voice/incident, /map-incidents). */
   mapIncidents?: Pick<MapIncidents, "report">;
+  /** Portfolio impact: the buildings, state.portfolioImpact, and Execute/Undo on a planned action. */
+  portfolio?: Pick<PortfolioImpactService, "enabled" | "buildings" | "impact" | "execute" | "undo">;
+  /** The scripted CBRE demo: the fixture fire, crash and flood one call at a time. */
+  cbreDemo?: Pick<CbreDemo, "next" | "all" | "reset">;
 }
 
 export interface BuildingInfo {
@@ -215,7 +223,7 @@ async function readJson(req: IncomingMessage, res: ServerResponse): Promise<{ ok
   }
 }
 
-export function createHttpServer({ ingest, getState, getBuildingInfo, forecast, resetLive, mock, voiceToken, buildings, lookups, mapIncidents }: HttpDeps) {
+export function createHttpServer({ ingest, getState, getBuildingInfo, forecast, resetLive, mock, voiceToken, buildings, lookups, mapIncidents, portfolio, cbreDemo }: HttpDeps) {
   // The active building can change (address lookup), so room ids are read per request.
   const activeRoomIds = () => new Set(getBuildingInfo().building.rooms.map((r) => r.id));
   const lookupReply = (res: ServerResponse, r: LookupResult | undefined) =>
@@ -235,6 +243,37 @@ export function createHttpServer({ ingest, getState, getBuildingInfo, forecast, 
       const query = new URLSearchParams((req.url ?? "").split("?")[1] ?? "");
       const r = filterInspections(getBuildingInfo().inspections, query);
       return json(res, r.ok ? 200 : 400, r);
+    }
+
+    if (method === "GET" && url === "/portfolio") {
+      if (!portfolio) return json(res, 404, { ok: false, error: "portfolio is not available" });
+      return json(res, 200, { ok: true, enabled: portfolio.enabled, buildings: portfolio.buildings() });
+    }
+    if (method === "GET" && url === "/portfolio/impact") {
+      if (!portfolio) return json(res, 404, { ok: false, error: "portfolio is not available" });
+      return json(res, 200, { ok: true, enabled: portfolio.enabled, portfolioImpact: portfolio.impact() ?? null });
+    }
+    const portfolioAction = method === "POST" ? /^\/portfolio\/actions\/([^/]+)\/(execute|undo)$/.exec(url) : null;
+    if (portfolioAction) {
+      if (!portfolio) return json(res, 404, { ok: false, error: "portfolio is not available" });
+      let actionId: string;
+      try {
+        actionId = decodeURIComponent(portfolioAction[1]!);
+      } catch {
+        return json(res, 400, { ok: false, error: "bad action id" });
+      }
+      const out = portfolioAction[2] === "execute" ? portfolio.execute(actionId) : portfolio.undo(actionId);
+      return out.ok ? json(res, 200, out) : json(res, out.status, { ok: false, error: out.error });
+    }
+    const demoRoute = method === "POST" ? /^\/portfolio\/demo\/(step|run|reset)$/.exec(url) : null;
+    if (demoRoute) {
+      if (!cbreDemo) return json(res, 404, { ok: false, error: "the scripted demo is not available" });
+      if (demoRoute[1] === "reset") {
+        cbreDemo.reset();
+        return json(res, 200, { ok: true, step: 0 });
+      }
+      const out = await (demoRoute[1] === "step" ? cbreDemo.next() : cbreDemo.all());
+      return out.ok ? json(res, 200, out) : json(res, out.status, { ok: false, error: out.error });
     }
 
     if (method === "POST" && url === "/forecast") {

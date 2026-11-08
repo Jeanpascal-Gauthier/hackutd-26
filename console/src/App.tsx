@@ -97,7 +97,7 @@ export function App() {
       <header className="app-header">
         <a className="brand" href="#main"><span className="brand-mark" aria-hidden="true"><SceneIcon size={22} /></span><span>{BRAND_NAME}<small>Dispatch</small></span></a>
         <div className="header-meta">
-          <span className="mode-badge">{mode === "mock" ? "Scripted demo" : mode === "live" ? "Server connected" : "Connecting"}</span>
+          <span className="mode-badge">{fixture ? "Fixture demo" : mode === "mock" ? "Scripted demo" : mode === "live" ? "Server connected" : "Connecting"}</span>
           <span className={`connection ${connected ? "online" : "offline"}`} role="status"><i aria-hidden="true" />{connected ? "Connected" : "Disconnected"}</span>
           <button className="icon-button" onClick={toggleTheme} aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}>{theme === "dark" ? <SunIcon size={20} /> : <MoonIcon size={20} />}</button>
         </div>
@@ -123,7 +123,7 @@ export function App() {
           </aside>
 
           <div className="workspace-column">
-            <MapPanel incidents={incidents} selected={selected} onSelect={(id) => setSelection({ kind: "map", id })} />
+            <MapPanel key={fixture?.mapScenario?.id ?? "live"} incidents={incidents} selected={selected} scenario={fixture?.mapScenario} onSelect={(id) => setSelection({ kind: "map", id })} />
             {selected && <IncidentTools key={selected.id} incident={selected} />}
             {buildingSelected && <div className="notice info" role="status">This report uses the legacy building-fire intake. Its caller reports and decisions remain available.</div>}
           </div>

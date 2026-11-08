@@ -3,6 +3,7 @@
 //   npx tsx --test core/impact/assess.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
 import type OpenAI from "openai";
 import type { MapIncident } from "@firewatch/shared/types";
 import { assessIncident, assessIncidentRules, formatUsd, headlineFor, summarize, type ImpactImpl } from "./assess.ts";
@@ -210,7 +211,8 @@ test("summarize: totals, and usdAtRiskAfterActions uses residualCost with the do
   assert.equal(before.usdAtRiskAfterActions, DC_COST.totalUsd);
   const after = summarize(props, 30, ["dc-1:close-dampers"], PORTFOLIO);
   assert.equal(after.usdAtRiskAfterActions, 0, "dampers stop hvac, and servers follow from it");
-  assert.equal(after.headline, before.headline);
+  assert.equal(after.usdAtRisk, before.usdAtRisk, "usdAtRisk stays the do-nothing baseline");
+  assert.equal(after.headline, "2 buildings · 340 people · $0 at risk in the next 30 min", "the headline shows what is still at risk");
   // Without the portfolio: savesUsd subtracted instead.
   assert.equal(summarize(props, 30, ["dc-1:close-dampers"]).usdAtRiskAfterActions, 0);
 });
@@ -409,4 +411,44 @@ test("fromMapIncident: wind from the fire forecast; Step 0 fields pass through",
   assert.deepEqual(flood?.related, ["m9"]);
   assert.equal(flood?.zoneId, "z1");
   assert.equal(flood?.wind, undefined);
+});
+
+// ---- The real tools on the demo story (skipped until the fixtures exist) ----
+
+const fixtures = new URL("../../fixtures/", import.meta.url);
+const haveFixtures = existsSync(new URL("portfolio.json", fixtures)) && existsSync(new URL("demoIncidents.ts", fixtures));
+
+test("integration: DEMO_INCIDENTS on the portfolio, before and after the data center's actions", { skip: !haveFixtures && "fixtures not written yet" }, async () => {
+  const portfolio = JSON.parse(readFileSync(new URL("portfolio.json", fixtures), "utf8")) as PortfolioBuilding[];
+  const demo = (await import(new URL("demoIncidents.ts", fixtures).href)) as { DEMO_INCIDENTS: AgentIncident[]; DEMO_NOW: number };
+  const r = assessIncidentRules(demo.DEMO_INCIDENTS, portfolio, { now: demo.DEMO_NOW });
+  assert.equal(r.mode, "rules");
+  assert.equal(Object.keys(r.impacts).length, demo.DEMO_INCIDENTS.length);
+  assert.ok(r.affectedProperties.length > 0);
+  for (const p of r.affectedProperties) assert.ok(Array.isArray(p.actions));
+  assert.deepEqual(
+    r.affectedProperties.map((p) => p.cost.totalUsd),
+    [...r.affectedProperties.map((p) => p.cost.totalUsd)].sort((a, b) => b - a),
+    "highest cost first",
+  );
+  const dc = r.affectedProperties.find((p) => p.use === "data_center");
+  assert.ok(dc, "the data center is hit");
+  const done = dc.actions.filter((a) => /damper|generator|barrier/i.test(a.id)).map((a) => a.id);
+  assert.ok(done.length > 0, "the data center has damper / generator / barrier actions");
+  const after = assessIncidentRules(demo.DEMO_INCIDENTS, portfolio, { now: demo.DEMO_NOW, doneActionIds: done });
+  console.log(`  before: ${r.summary.headline}`);
+  console.log(`  after ${done.join(", ")}: ${headlineFor(after.summary.buildings, after.summary.people, after.summary.usdAtRiskAfterActions, 30)}`);
+  assert.ok(after.summary.usdAtRiskAfterActions < r.summary.usdAtRisk);
+  assert.equal(after.summary.usdAtRisk, r.summary.usdAtRisk, "same baseline: deterministic");
+
+  // The model path with a fake model that runs the real tools.
+  const { llm } = fakeLlm([
+    demo.DEMO_INCIDENTS.map((i) => ({ name: "classify_blast_radius", args: { incident_id: i.id } })),
+    [{ name: "assess_property_impact", args: {} }],
+    [{ name: "plan_actions", args: {} }],
+    "briefing",
+  ]);
+  const viaLlm = await assessIncident(demo.DEMO_INCIDENTS, portfolio, { llm, now: demo.DEMO_NOW });
+  assert.equal(viaLlm.mode, "llm");
+  assert.deepEqual(viaLlm.summary, r.summary, "same numbers either way");
 });

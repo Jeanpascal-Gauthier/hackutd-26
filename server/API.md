@@ -369,7 +369,7 @@ The webhook tool `report_incident`: any emergency, placed on the map as `state.m
 - **One emergency, one incident:** a report joins an existing incident of the same kind from the same caller in the last 30 minutes, at the same stated address, or within 150 m once geocoded. A sole caller giving a different address moves the pin. A resolved incident is never joined: a new report there opens a new incident. For `other`, a report that names a `what` joins only the same (normalized) label; one with no `what` can still attach.
 - **Phases:** `phase` starts `open` and moves by `dispatchIncident` and `setIncidentPhase`. Resolved incidents stay in `mapIncidents`, and their pending recommendation is cleared. Over 50 incidents, the oldest resolved go first.
 - **Recommendations:** each incident has its own `recommendation`, which moves to `accepted` when the operator accepts it. The newest also fills the global `state.recommendation` (the same object), unless a building's plan is showing.
-- **Forecasts** run in the background (`forecastStatus`). `fire` has wind-driven fire and smoke areas and nearby building exposures. `crash` has congestion segments by minute. `other` has none. Forecasts are modeled: `assumptions` must be shown with them. `forecastAt` is when the current one was built.
+- **Forecasts** run in the background (`forecastStatus`). `fire` has wind-driven fire and smoke areas and nearby building exposures. `crash` has congestion segments by minute. `other` has none, except floods (see [Zones, links, floods, red roads](#zones-links-floods-red-roads)). Forecasts are modeled: `assumptions` must be shown with them. `forecastAt` is when the current one was built.
 - **Refresh:** located, unresolved fires and crashes re-run their forecast every 5 minutes. The previous forecast and `forecastStatus` stay until the new one is ready, a failed refresh changes nothing, and a pending recommendation is updated silently (an accepted one is left alone).
 - `reports[].reply` on the incident and on `state.reports[]` keeps what the caller was told. The responder brief uses only `query` (the stated location) and `reports[].text` (caller words); it excludes replies, forecasts, inferred fields, recommendations, dispatch records, and operator notes.
 - **Voice follow-ups:** use the current ElevenLabs system prompt in [DEMO.md](../DEMO.md#phone-calls-elevenlabs). Report what happened and where immediately, then ask one short question at a time about missing details such as people hurt or trapped, floor/room, hazards, or access. Submit each caller answer through `report_incident`; preserve uncertainty and corrections, and never fill missing answers with guesses.
@@ -378,6 +378,17 @@ The webhook tool `report_incident`: any emergency, placed on the map as `state.m
 
 ### `POST /map-incidents`
 The same body and behavior as `/voice/incident` (`type`, `what`, `address`, `description`, `severity`, `lanes_blocked`, `in_building`, `caller`), without the voice token, for the console and for testing. Reports are `channel: "console"`. One operator types many reports, so only the same place ties a console report to an earlier incident, never the caller. Answers `{ ok, incident, reply }`, or 400 with `errors` when `description` is missing.
+
+### Zones, links, floods, red roads
+Optional fields on each map incident (types in `src/incidents/stepZero.ts` until they move to shared/types.ts). Clients that ignore them keep working.
+
+- **`zoneId`**: `"z:<row>:<col>"`, a ~500 m grid cell (500 m of latitude by 500 m of longitude at 33°N; fixed grid, so ids are stable). Set on every located incident. "Close by" = the same or a neighbouring cell (3×3) **and** within 700 m.
+- **Grouping:** fires, crashes and floods of the same kind close by merge into one incident when the existing one had a report in the last 30 minutes (on top of the 150 m rule, which still applies to everything). `reports.length` is the number of calls.
+- **`related`**: ids of open, located incidents close by of a *different* kind (fire, crash, flood, or another named emergency). Always symmetric, in report order, and recomputed when an incident is placed, moved, merged, resolved or reopened. Resolved incidents have none and appear in none.
+- **Floods:** an `other` report whose `what` (or, with no `what`, the description) says flood, flooding, water main, burst pipe or street flooding. It stays `kind: "other"` with `label: "Flood"` until shared types gain `"flood"`; check `label === "Flood"` or the presence of `flood`. It gets a forecast like fires and crashes (`forecastStatus` running → ready/failed) but no 5-minute refresh. A worse severity from a later call re-runs it.
+- **`flood`**: `{ steps: [{ minute, water }], summary, assumptions }`, minutes 2, 5, 10, 15, 20, 25, 30; `water` is a closed ring without the first point repeated. Radius grows with √t to about 150 m (minor), 300 m (serious, and unknown) or 450 m (critical) by minute 30 on flat ground. With Open-Meteo elevation (16 bearings × 100/250/450 m) water reaches farther downhill and less far uphill; without it, an even circle, and `assumptions` say so.
+- **`affectedRoads`**: red road sections `{ path, road, reason: "crash"|"flood", fromMinute }`. Draw a section when the forecast minute ≥ `fromMinute`. Crashes: the blocked and heavy queue, joined into runs (≤ 80). Floods: road pieces under water, red from the first step the water covers them (≤ 120). Fires have none.
+- `impact` and `affectedProperties` on the same objects come from the portfolio service; incident updates here keep them.
 
 ### `POST /voice/address`
 The webhook tool `report_address`: the caller said the building's address. Same auth as `/voice/report` (503 without `VOICE_TOKEN`, 401 with a wrong token).
@@ -396,6 +407,46 @@ The webhook tool `report_address`: the caller said the building's address. Same 
    - Tool `report_address` (webhook): `POST https://<tunnel>/voice/address`, header `x-firesight-token`, body `address` (string, the address as the caller said it) and `caller` (as above), timeout about 10 s. It returns immediately.
    - Link the agent to the Photon SIP number.
 5. **Test:** `curl -XPOST https://<tunnel>/voice/report -H 'x-firesight-token: <token>' -H 'content-type: application/json' -d '{"text":"smoke in the break room on 7","caller":"+15555550100"}'`, then the ElevenLabs in-browser test call, then a real phone.
+
+## Portfolio impact
+
+CBRE "Invisible Network": which buildings of the portfolio (`data/portfolio.json`, 8 buildings near Campbell Rd & Coit Rd, Richardson TX) the open map incidents hit, which systems fail in what order, the $ at risk, and the actions to take. Code: `src/portfolio/` (the agent's `agent/core/impact/` does the assessment).
+
+- **When:** every time the located, unresolved map incidents change (id, kind, location, severity, `forecastStatus`, `updated`), debounced 300 ms. The agent's deterministic rules path runs and is published at once (`mode: "rules"`). With `AGENT=1`, Nemotron then runs in the background (15 s budget) and its result replaces the rules one (`mode: "llm"`, model-written `briefing`) if the incidents haven't changed meanwhile; a stale result is dropped.
+- **Off:** if the agent can't be loaded, or `data/portfolio.json` is missing, the server logs it once and keeps running; `GET /portfolio` reports `enabled: false`.
+- **Resets** (`/live/reset`, `/mock/reset`, `/mock/replay`, `/portfolio/demo/reset`) clear it and the executed actions.
+
+### State fields
+Types: `server/src/incidents/stepZero.ts` (they move to `shared/types.ts` with Step 0).
+- `state.portfolioImpact`: `{summary, affectedProperties, briefing, mode, done, updated}`. `summary` is `{buildings, people, usdAtRisk, usdAtRiskAfterActions, horizonMinutes, headline}`, e.g. "6 buildings · 1,240 people · ~$380K at risk in the next 30 min". `affectedProperties[]` is highest $ first, each `{id, name, use, location, risk, incidentIds, chain, people, downtimeHours, cost, accessCut, actions, reasons}`. `chain[]` is the time-ordered failure steps `{id, minute, systemId, label, hazard, causedBy, incidentId}`. `actions[]` is `{id, text, deadlineMinute, prevents, savesUsd, reason, status}`. `done` is the executed action ids, oldest first. Absent when nothing is assessed.
+- On each map incident: `impact` (`{center, radiusMeters, stretch?, reasons}`, the blast radius; `stretch` reaches `radiusMeters * factor` toward `towardDegrees`) and `affectedProperties` (the buildings this incident touches, alone or with its linked incidents).
+- `log[]` gets `recommendation` entries: "Portfolio impact: …" when the headline changes, and "Executed: Close outside-air dampers (Lookout Ridge Data Center) → ~$130K at risk" / "Undone: …".
+
+### `GET /portfolio`
+`{ok: true, enabled, buildings: PortfolioBuilding[]}`: the whole portfolio, for drawing it with no incident.
+
+### `GET /portfolio/impact`
+`{ok: true, enabled, portfolioImpact}` (`null` when nothing is assessed).
+
+### `POST /portfolio/actions/:actionId/execute`, `.../undo`
+The operator pressed Execute (or took it back). URL-encode the id (`dc-lookout%3Aclose-dampers`; a raw `:` also works). Marks the action `done` on `state.portfolioImpact` and on the incidents, lowers `summary.usdAtRiskAfterActions`, and logs it. Executed actions stay done across recomputes. Answers `{ok: true, portfolioImpact}`; 404 for an unknown action id, 503 when the feature is off. No body needed.
+
+A WebSocket `executeAction` event would need a `shared/events.ts` change (Step 0), so this is HTTP for now.
+
+### Scripted CBRE demo
+Live numbers depend on today's wind and time of day. For the judged run, these routes put the agent's three demo incidents (`agent/fixtures/demoIncidents.ts`) on the map with their hand-built forecasts, so the story is the same every time. Code: `src/portfolio/demo.ts`. Root script: `npm run demo:cbre` (DEMO.md).
+
+| Endpoint | Does |
+|---|---|
+| `POST /portfolio/demo/step` | Adds the next call: 1 fire behind the strip mall on Campbell Rd, 2 crash on Coit Rd (all lanes), 3 water main burst on Lookout Dr. Answers `{ok: true, step, of: 3, added: [{id, label}], portfolioImpact}`; after the third, `{ok: true, done: true, step: 3, ...}` and nothing is added. |
+| `POST /portfolio/demo/run` | Adds every call not yet in, at once. Same answer. |
+| `POST /portfolio/demo/reset` | Same as `/live/reset` (empty map, no impact, no executed actions), and the script starts over. Works even when the fixtures can't load. |
+
+- Each call is a complete map incident: `status: "located"`, `forecastStatus: "ready"`, `forecastAt` = now, one caller report (also in `state.reports`), the fixture's `fire` / `crash` / `flood` + `affectedRoads`, `zoneId`, and `related`. Floods are kind `"other"`, label `"Flood"`, with `flood` and `source`. The three are linked to each other as one scenario (the flood is ~650 m from the fire, one grid cell too far for the normal rule).
+- Injected incidents never start, re-run or refresh a forecast, and live reports never merge into or follow up on them; a live report of another kind close by is linked as usual.
+- While the script is in, occupancy is assessed at the fixture's weekday 2 pm (`DEMO_NOW`), and a Nemotron result replaces the rules one only if its totals (buildings, people, $) agree. Every reset restores the real clock.
+- After step 3: "6 buildings · 1,240 people · ~$380K at risk in the next 30 min". Executing `dc-lookout:close-dampers` and `dc-lookout:flood-barriers` leaves ~$90K.
+- 503 (`{ok: false, error}`) on step and run when the fixtures can't be loaded; nothing else is affected.
 
 ## Control
 
