@@ -1,4 +1,4 @@
-# FirstSight dispatch console
+# Firewatch dispatch console
 
 Run `npm run dev` from the repository root and open http://localhost:5173. The root script starts the server and the React/Vite console. On Windows, use `npm.cmd` if required by your shell.
 

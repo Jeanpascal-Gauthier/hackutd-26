@@ -57,7 +57,7 @@ export function createIngest(
     if (result.trail?.length) store.patch({ trail: [...(store.get().trail ?? []), ...result.trail] });
     if (!holdReply) live.onReport(result);
 
-    // Keep what FireSight told the caller on the report itself, so clients can show a transcript.
+    // Keep what Firewatch told the caller on the report itself, so clients can show a transcript.
     const reply = result.reply ?? store.get().recommendation?.callerReply;
     if (!reply) return { report, result, ...(holdReply && { held: true }) };
     const answered = { ...report, reply };

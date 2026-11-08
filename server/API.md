@@ -1,4 +1,4 @@
-# FireSight server API
+# Firewatch server API
 
 One port (default `8080`) serves both HTTP and the WebSocket. All bodies are JSON. CORS is open.
 
@@ -337,11 +337,11 @@ The same records, filtered. Query parameters are all optional and combine: `floo
 - `recommendation`: pending actions for the commander. On `acceptRecommendation` it moves to `accepted: {recommendation, time}`, so keep the route lit while `accepted` is set.
 - `dispatches[]`: `{roomId, time}`.
 - `trail[]`: agent tool calls `{tool, input, output, ms}`.
-- `reports[]`: each `{id, caller, text, roomId?, confidence?, time, reply?, channel?, incidentId?}`. `reply` is what FireSight told that caller (follow-up question or advice), so a console can show "caller said / FireSight replied" transcripts. `channel` is `voice` for phone calls. `incidentId` is the map incident the report belongs to.
+- `reports[]`: each `{id, caller, text, roomId?, confidence?, time, reply?, channel?, incidentId?}`. `reply` is what Firewatch told that caller (follow-up question or advice), so a console can show "caller said / Firewatch replied" transcripts. `channel` is `voice` for phone calls. `incidentId` is the map incident the report belongs to.
 - `building`: `{id, name, version, layoutEstimated}` of the active building; `buildingLookup`: the address lookup (see [Building from an address](#building-from-an-address-live-mode)).
 - `log[]`: a ready-made incident log, `{time, kind, text, incidentId?}` (`incidentId` when the entry is about a map incident), where `kind` is report, origin, recommendation, accepted, dispatch or building (replies to callers are logged as `report` entries starting "Replied to"). Last 200 entries.
 
-## Phone calls (Photon → ElevenLabs → FireSight)
+## Phone calls (Photon → ElevenLabs → Firewatch)
 
 ```
 judge's phone -> Photon number -SIP-> ElevenLabs voice agent (speech-to-text, talking, text-to-speech)
@@ -401,7 +401,7 @@ The webhook tool `report_address`: the caller said the building's address. Same 
 2. **Tunnel:** `npx -y cloudflared tunnel --url http://localhost:8080` gives `https://<name>.trycloudflare.com`. The URL changes when the tunnel restarts; update the tool URL then.
 3. **Photon:** a purchased (voice-capable) number; Voice page → SIP profile, inbound on, target `sips:sip.rtc.elevenlabs.io:5061` (TLS).
 4. **ElevenLabs → ElevenAgents:** create an agent.
-   - First message: "FireSight. What is the address of the building?" (or keep "Where is the fire or smoke?" for demo-building calls)
+   - First message: "Firewatch. What is the address of the building?" (or keep "Where is the fire or smoke?" for demo-building calls)
    - System prompt: ask for the building's address and call `report_address` with exactly what the caller said, then read its `reply`; ask where the fire or smoke is; say "One moment, locating you" and call `report_fire` with exactly what the caller said; read the tool's `reply` back word for word; if the reply is a question, ask it and call the tool again with the answer; never give your own evacuation advice.
    - Tool `report_fire` (webhook): `POST https://<tunnel>/voice/report`, header `x-firesight-token`, body `text` (string, what the caller said) and `caller` (the caller's number from ElevenLabs' system dynamic variable, likely `system__caller_id`; check their docs), timeout 20 s (above the server's `AGENT_TIMEOUT_MS`, default 12 s).
    - Tool `report_address` (webhook): `POST https://<tunnel>/voice/address`, header `x-firesight-token`, body `address` (string, the address as the caller said it) and `caller` (as above), timeout about 10 s. It returns immediately.

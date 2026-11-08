@@ -1,4 +1,4 @@
-// Registers a person on FireSight's shared iMessage line (Photon 2.0), so they can text reports.
+// Registers a person on Firewatch's shared iMessage line (Photon 2.0), so they can text reports.
 //
 //   npm run photon:assign -- "+1 415 555 0123" --first Ada --last Lovelace   # uses one seat (reused if already registered)
 //   npm run photon:assign -- someone@icloud.com
@@ -86,9 +86,9 @@ async function main(): Promise<number> {
   console.log(
     a.reused
       ? `${formatHandle(a.handle)} was already registered (no new seat used).`
-      : `Registered ${formatHandle(a.handle)} on FireSight's shared iMessage line (used 1 seat).`,
+      : `Registered ${formatHandle(a.handle)} on Firewatch's shared iMessage line (used 1 seat).`,
   );
-  console.log(`\nTell them: "Text FireSight on iMessage at ${formatHandle(a.assignedPhoneNumber)}"`);
+  console.log(`\nTell them: "Text Firewatch on iMessage at ${formatHandle(a.assignedPhoneNumber)}"`);
   console.log(
     a.handle.includes("@")
       ? `  (from the Apple ID ${a.handle}: that is the handle registered)`

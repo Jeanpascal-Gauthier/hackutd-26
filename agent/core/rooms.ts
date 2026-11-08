@@ -64,7 +64,7 @@ export function describeBuilding(building: Building): {
   const p = building.profile;
   return {
     id: p?.id ?? "demo",
-    name: p?.name ?? "FireSight demo building",
+    name: p?.name ?? "Firewatch demo building",
     ...(p?.address ? { address: p.address } : {}),
     use: p?.use ?? "office",
     floors: p?.floors ?? floorSpan(building).highest,

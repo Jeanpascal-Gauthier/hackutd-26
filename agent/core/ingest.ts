@@ -1,4 +1,4 @@
-// The one way a caller's message enters FireSight from outside the server process: the Photon
+// The one way a caller's message enters Firewatch from outside the server process: the Photon
 // adapter and the QR form both call ingest(), which hands the report to the server's
 // POST /ingest (server/API.md). The server runs the agent (AGENT=1) or its rule-based locator,
 // updates the incident, and returns the text to send back to the caller.

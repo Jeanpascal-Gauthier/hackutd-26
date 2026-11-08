@@ -1,4 +1,4 @@
-// `npm run demo`: the real FireSight demo in one terminal.
+// `npm run demo`: the real Firewatch demo in one terminal.
 //   server  : live mode with the Nemotron agent (AGENT=1 MOCK=0), port 8080
 //   console : Vite dev server, port 5173
 //   headset : headset/ Vite dev server (IWSDK plugin, self-signed HTTPS), port 8081, all interfaces

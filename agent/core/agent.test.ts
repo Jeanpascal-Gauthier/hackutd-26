@@ -127,7 +127,7 @@ test("systemPrompt names the active building, its use and floors; no fixed 12-fl
   assert.match(p, /estimated/);
   assert.doesNotMatch(p, /12-floor/);
   const d = systemPrompt(demo);
-  assert.match(d, /Active building: FireSight demo building\. An office building with 12 floors \(floors 1-12\)\./);
+  assert.match(d, /Active building: Firewatch demo building\. An office building with 12 floors \(floors 1-12\)\./);
   assert.doesNotMatch(d, /estimated/);
   assert.match(d, /find_building/);
 });

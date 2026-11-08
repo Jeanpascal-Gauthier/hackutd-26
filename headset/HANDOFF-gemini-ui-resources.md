@@ -1,4 +1,4 @@
-# Handoff for Gemini: open-source assets and UI kits for the FireSight VR command room
+# Handoff for Gemini: open-source assets and UI kits for the Firewatch VR command room
 
 > **How to use this file:** paste the whole file into Gemini. Gemini has no access to the
 > repository, so everything it needs is in this file. Gemini does research only and writes
@@ -18,7 +18,7 @@ section 6 so the owner can choose quickly.
 
 ## 2. What the project is
 
-FireSight is a hackathon project (HackUTD 2026). A 911/fire dispatcher wears a **Meta Quest 2**
+Firewatch is a hackathon project (HackUTD 2026). A 911/fire dispatcher wears a **Meta Quest 2**
 headset and sits in a virtual **command room**:
 
 - A **hexagonal room** with a **continuous desk wrapping around the front half** of the room.

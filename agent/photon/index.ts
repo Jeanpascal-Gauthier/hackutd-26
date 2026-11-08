@@ -1,4 +1,4 @@
-// Photon 2.0 line -> FireSight. Each inbound text goes through ingest() to the server, and the
+// Photon 2.0 line -> Firewatch. Each inbound text goes through ingest() to the server, and the
 // reply is texted back into the same conversation.
 //
 //   npm run photon -w agent                # needs PHOTON_PROJECT_ID (pho_prj_...) + PHOTON_API_KEY (pho_sk_...)
