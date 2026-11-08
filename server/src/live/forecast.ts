@@ -1,5 +1,5 @@
-// One forecast from a given origin: 0..30 min spread, exits per floor, a draft recommendation and
-// a compact summary. Pure: used by the live incident and by POST /forecast (agent tools).
+// One forecast from one or more fire origins: 0..30 min spread, exits per floor, a draft
+// recommendation and a compact summary. Pure: used by the live incident and by POST /forecast.
 import type { Building, FloorExit, Occupant, Recommendation } from "@firewatch/shared/types";
 import { findExits, simulateSpread, type SpreadSnapshot } from "../simulation/index.ts";
 import { recommend } from "./recommend.ts";
@@ -23,7 +23,10 @@ export interface ForecastSummary {
 }
 
 export interface Forecast {
+  /** The primary origin (first of `origins`). */
   origin: string;
+  /** Every fire, all ignited at minute 0. */
+  origins: string[];
   minutes: number;
   snapshots: SpreadSnapshot[];
   exits: FloorExit[];
@@ -31,14 +34,15 @@ export interface Forecast {
   summary: ForecastSummary;
 }
 
-export function forecast(origin: string, data: ForecastData, minutes = FORECAST_MINUTES): Forecast {
+export function forecast(origin: string | readonly string[], data: ForecastData, minutes = FORECAST_MINUTES): Forecast {
   const { building, sprinklerRooms, occupants } = data;
-  const snapshots = simulateSpread(building, origin, minutes, { sprinklerRooms });
+  const origins = [...new Set(typeof origin === "string" ? [origin] : origin)];
+  const snapshots = simulateSpread(building, origins, minutes, { sprinklerRooms });
   const exits = findExits(building, snapshots, occupants);
-  const originFloor = building.rooms.find((r) => r.id === origin)?.floor;
+  const fireFloors = new Set(building.rooms.filter((r) => origins.includes(r.id)).map((r) => r.floor));
 
   const atRisk = exits.filter(
-    (e) => e.floor === originFloor || e.atRiskAt !== null || Object.values(e.blockedAt).some((m) => m !== null),
+    (e) => fireFloors.has(e.floor) || e.atRiskAt !== null || Object.values(e.blockedAt).some((m) => m !== null),
   );
   const stairBlocked: Record<string, Record<number, number>> = {};
   for (const e of exits)
@@ -46,11 +50,12 @@ export function forecast(origin: string, data: ForecastData, minutes = FORECAST_
       if (m !== null) (stairBlocked[stair] ??= {})[e.floor] = m;
 
   return {
-    origin,
+    origin: origins[0],
+    origins,
     minutes,
     snapshots,
     exits,
-    recommendation: recommend(exits, origin, building),
+    recommendation: recommend(exits, origins, building),
     summary: {
       floorsAtRisk: atRisk.map((e) => e.floor),
       peopleAtRisk: atRisk.reduce((n, e) => n + e.people, 0),
