@@ -132,7 +132,7 @@ export function fakeApp(options: Partial<AppOptions> = {}, service: Partial<Buil
   const app = createApp({
     mock: false,
     buildings: createBuildingService({
-      fetch: fakeFetch(world), geoapifyApiKey: "test-key", overpassApiUrl: "https://overpass.test/api/interpreter",
+      fetch: fakeFetch(world), geoapifyApiKey: "test-key", buildingProvider: "overpass", overpassApiUrl: "https://overpass.test/api/interpreter",
       snapshotDir: false, offline: false, ...service,
     }),
     synthesize: f.synthesize,

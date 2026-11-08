@@ -1,8 +1,8 @@
 // Address lookup -> confirmed building -> active incident building (live mode). See server/API.md,
 // "Building from an address".
 //
-//   lookupAddress(address)  status "searching": geocode (Geoapify, top result), then the OSM
-//                           outlines near it (Overpass). Outlines -> "needs_confirmation" with
+//   lookupAddress(address)  status "searching": geocode (Geoapify, top result), then OSM
+//                           outlines via the configured building provider. Outlines -> "needs_confirmation" with
 //                           summarized candidates (the operator ALWAYS confirms, even one). No
 //                           outlines -> build from the location-only record and activate it.
 //   confirmBuilding(id)     "loading": load the record, synthesize a Building, estimate occupants,
@@ -187,10 +187,10 @@ export class BuildingLookups {
         this.deps.store.log("building", `${summaries.length} building outline${summaries.length === 1 ? "" : "s"} near ${top.address}: confirm the building`);
         return;
       }
-      // No mapped outline: nothing to choose, so build from the location-only record directly.
+      // The provider returned no outline: build from the location-only record directly.
       if (gen !== this.gen) return;
       this.update(gen, { status: "loading" });
-      this.deps.store.log("building", `No building outline mapped near ${top.address}: using an estimated building at that point`);
+      this.deps.store.log("building", `No building outline returned for ${top.address}: using an estimated building at that point`);
       await this.build(gen, record);
     } catch (err) {
       this.fail(gen, err);

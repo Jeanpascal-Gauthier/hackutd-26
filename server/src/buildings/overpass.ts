@@ -3,17 +3,14 @@ import { BuildingApiError, isObject, providerJson, type RequestOptions } from ".
 
 export const DEFAULT_OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 export const SEARCH_RADIUS_METERS = 150;
+// Leave time for the public server's queue and response transfer after query execution.
+const REQUEST_TIMEOUT_MS = 60000;
+const QUERY_TIMEOUT_SECONDS = 45;
 /**
  * Public instances ask clients to identify themselves: overpass-api.de answers 406 and
  * overpass.kumi.systems 429 to Node's default "node" user agent, so every live lookup failed.
  */
 export const OVERPASS_USER_AGENT = "FireSight/0.1 (HackUTD 2026 incident-response prototype; +https://github.com/Jeanpascal-Gauthier/hackutd-26)";
-/**
- * Client timeout per Overpass request, unless the caller sets one. The queries run with
- * `[timeout:8]` on the server, but a busy public instance queues them first and the geometry
- * response can be large on venue Wi-Fi, so the shared 10 s provider default left ~2 s of margin.
- */
-export const OVERPASS_TIMEOUT_MS = 15000;
 export interface Bounds { south: number; west: number; north: number; east: number }
 
 export function validateLocation(value: unknown): Coordinates {
@@ -75,18 +72,19 @@ export function validOverpassUrl(input: string): string {
 }
 
 async function queryOverpass(query: string, url: string, options: RequestOptions): Promise<OsmElement[]> {
+  // Public instances may queue a request before its query execution timeout starts.
   const body = await providerJson(validOverpassUrl(url), "OpenStreetMap", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json", "user-agent": OVERPASS_USER_AGENT },
     body: new URLSearchParams({ data: query }).toString(),
-  }, { ...options, timeoutMs: options.timeoutMs ?? OVERPASS_TIMEOUT_MS });
+  }, { ...options, timeoutMs: options.timeoutMs ?? REQUEST_TIMEOUT_MS });
   return elements(body);
 }
 
 export async function nearbyBuildings(location: Coordinates, url = DEFAULT_OVERPASS_URL, options: RequestOptions = {}): Promise<OsmElement[]> {
   const { lat, lon } = validateLocation(location);
   const around = `(around:${SEARCH_RADIUS_METERS},${lat},${lon})`;
-  return queryOverpass(`[out:json][timeout:8];(way["building"]${around};relation["building"]${around};);out meta geom;`, url, options);
+  return queryOverpass(`[out:json][timeout:${QUERY_TIMEOUT_SECONDS}];(way["building"]${around};relation["building"]${around};);out meta geom;`, url, options);
 }
 
 /** Fetch indoor features plus child/member nodes required to preserve rooms and shared doors. */
@@ -97,5 +95,5 @@ export async function buildingInteriors(bounds: Bounds, url = DEFAULT_OVERPASS_U
     throw new BuildingApiError(422, "building_area_too_large", "Interior lookup is unavailable for this building's geographic bounds.");
   const box = `(${south},${west},${north},${east})`;
   const indoor = `["indoor"]${box};nwr["room"]${box};nwr["stairs"]${box};nwr["highway"="steps"]${box};nwr["highway"="corridor"]${box};nwr["highway"="elevator"]${box};nwr["door"]${box};nwr["entrance"]${box}`;
-  return queryOverpass(`[out:json][timeout:8];(nwr${indoor};);(._;>;);out meta geom;`, url, options);
+  return queryOverpass(`[out:json][timeout:${QUERY_TIMEOUT_SECONDS}];(nwr${indoor};);(._;>;);out meta geom;`, url, options);
 }

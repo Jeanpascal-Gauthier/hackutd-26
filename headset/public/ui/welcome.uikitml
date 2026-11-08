@@ -67,6 +67,11 @@
     <Button id="bring-building-button" class="action">
       <ButtonLabel class="action-label">Bring building closer</ButtonLabel>
     </Button>
+    <span class="heading">Building floors</span>
+    <span id="floor-cut-status" class="status">All floors</span>
+    <Button id="floor-up-button" class="action"><ButtonLabel class="action-label">Floor up</ButtonLabel></Button>
+    <Button id="floor-down-button" class="action"><ButtonLabel class="action-label">Floor down</ButtonLabel></Button>
+    <Button id="show-all-floors-button" class="action"><ButtonLabel class="action-label">Show all floors</ButtonLabel></Button>
     <Button id="exit-button" class="action" style="display: none">
       <ButtonIcon>
         <LogIn></LogIn>

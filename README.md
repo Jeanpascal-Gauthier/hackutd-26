@@ -30,7 +30,9 @@ npm run demo                   # everything: server + agent, console, headset, Q
 
 `npm run demo -- --mock` plays a scripted incident with no agent or API key. See [DEMO.md](DEMO.md) for the full runbook: opening the headset on the Quest, registering phones for the iMessage line, resetting between judges, and what to do if something breaks.
 
-For development, `npm run dev` starts only the server (mock mode) and the console.
+For development, `npm run dev` starts the server in live mode and the console, with address entry
+enabled. Set `GEOAPIFY_API_KEY` in the root `.env` for building lookup, then restart the dev process.
+Use `npm run demo -- --mock` for scripted calls on the demo building.
 
 ## Layout
 
@@ -58,7 +60,7 @@ npm run demo                   # start everything (options in DEMO.md)
 npm run demo:check             # is everything up?
 npm run demo:urls              # print the URLs again, including the Quest URL
 npm run demo:reset             # clear the incident
-npm run dev                    # server (mock mode) + console
+npm run dev                    # server (live mode, address lookup) + console
 npm run typecheck              # tsc across all workspaces
 
 npm test -w agent              # agent tests

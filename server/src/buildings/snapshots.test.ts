@@ -48,7 +48,7 @@ function overpassRateLimited(calls: { overpass: number }): typeof fetch {
 
 test("an Overpass 429 serves the saved outlines and interiors, marked as an offline copy", quiet(async () => {
   const calls = { overpass: 0 };
-  const service = createBuildingService({ fetch: overpassRateLimited(calls), geoapifyApiKey: "k", snapshotDir: snapshotDir(), offline: false });
+  const service = createBuildingService({ buildingProvider: "overpass", fetch: overpassRateLimited(calls), geoapifyApiKey: "k", snapshotDir: snapshotDir(), offline: false });
   await assert.rejects(service.resolve(LOCATION), (e: unknown) => {
     assert.ok(e instanceof BuildingApiError);
     assert.equal(e.code, "building_selection_required", "candidates and confirmation still work");
@@ -68,6 +68,50 @@ test("an Overpass 429 serves the saved outlines and interiors, marked as an offl
   assert.equal(calls.overpass, 1, "right after a failure the snapshot is used without waiting on Overpass again");
   assert.equal(service.providers().snapshots.saved, 1);
 }));
+
+test("a failed Geoapify building lookup serves the saved outlines and interiors, marked as an offline copy", quiet(async () => {
+  let calls = 0;
+  const service = createBuildingService({
+    fetch: async () => { calls++; return new Response("", { status: 502 }); },
+    geoapifyApiKey: "k", buildingProvider: "geoapify", snapshotDir: snapshotDir(), offline: false,
+  });
+  await assert.rejects(service.resolve(LOCATION), (e: unknown) => {
+    assert.ok(e instanceof BuildingApiError);
+    assert.equal(e.code, "building_selection_required", "candidates and confirmation still work");
+    assert.deepEqual((e.details.candidates as { id: string }[]).map((c) => c.id), ["osm:way:100", "osm:way:200"]);
+    assert.equal((e.details.cache as { source: string }).source, "snapshot");
+    return true;
+  });
+  for (let i = 0; i < 2; i++) {
+    const { building, cache } = await service.resolve({ ...LOCATION, buildingId: "osm:way:100" });
+    assert.equal(cache.source, "snapshot");
+    assert.equal(cache.offlineReason, "provider_unavailable");
+    assert.equal(cache.fetchedAt, SAVED_AT);
+    assert.equal(building.rooms[0].name, "Server Room", "interiors come from the snapshot too");
+    assert.equal(building.warnings.filter((w) => w === "Offline copy saved 2026-11-07; live lookup unavailable (provider_unavailable).").length, 1);
+  }
+  assert.equal(calls, 1, "the saved lookup is reused without calling Geoapify again");
+}));
+
+test("a failed Geoapify building lookup with no matching snapshot keeps the provider error", quiet(async () => {
+  for (const dir of [snapshotDir(), false as const]) {
+    const service = createBuildingService({
+      fetch: async () => new Response("", { status: 502 }), geoapifyApiKey: "k", buildingProvider: "geoapify", snapshotDir: dir, offline: false,
+    });
+    await assert.rejects(service.resolve({ lat: 33, lon: -97 }), (e: unknown) => e instanceof BuildingApiError && e.status === 502 && e.code === "provider_unavailable");
+  }
+}));
+
+test("offline mode never calls Geoapify for a building, even with a key configured", async () => {
+  const service = createBuildingService({
+    fetch: async () => { throw new Error("offline mode must not contact a provider"); },
+    geoapifyApiKey: "k", buildingProvider: "geoapify", snapshotDir: snapshotDir(), offline: true,
+  });
+  const { building, cache } = await service.resolve({ ...LOCATION, buildingId: "osm:way:100" });
+  assert.equal(cache.offlineReason, "offline_mode");
+  assert.equal(building.rooms.length, 1);
+  await assert.rejects(service.resolve({ lat: 10, lon: 10 }), (e: unknown) => e instanceof BuildingApiError && e.code === "offline_no_snapshot");
+});
 
 test("a Geoapify timeout serves the saved search; other spellings of the address find it", quiet(async () => {
   const world = fakeWorld();
@@ -105,7 +149,7 @@ test("offline mode never calls fetch; an address without a snapshot fails clearl
 test("with no matching snapshot the provider error is unchanged", quiet(async () => {
   for (const dir of [snapshotDir(), false as const]) {
     const calls = { overpass: 0 };
-    const service = createBuildingService({ fetch: overpassRateLimited(calls), geoapifyApiKey: "k", snapshotDir: dir, offline: false });
+    const service = createBuildingService({ buildingProvider: "overpass", fetch: overpassRateLimited(calls), geoapifyApiKey: "k", snapshotDir: dir, offline: false });
     await assert.rejects(service.resolve({ lat: 33, lon: -97 }),
       (e: unknown) => e instanceof BuildingApiError && e.status === 503 && e.code === "provider_rate_limited");
     const world = fakeWorld();
@@ -125,7 +169,7 @@ test("order: live, then the stale in-memory copy, then the snapshot", quiet(asyn
   world.outlines.set(`${LOCATION.lat},${LOCATION.lon}`, [ELEMENTS[0]]); // live has one outline, the snapshot two
   const live = fakeFetch(world);
   const service = createBuildingService({
-    now: () => clock, lookupTtlMs: 10, snapshotDir: snapshotDir(), offline: false, geoapifyApiKey: "k",
+    now: () => clock, lookupTtlMs: 10, snapshotDir: snapshotDir(), offline: false, geoapifyApiKey: "k", buildingProvider: "overpass",
     fetch: async (input, init) => down ? new Response("", { status: 502 }) : live(input, init),
   });
   const ids = (e: unknown) => ((e as BuildingApiError).details.candidates as { id: string }[]).map((c) => c.id);
