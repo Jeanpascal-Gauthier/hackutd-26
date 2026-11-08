@@ -133,6 +133,31 @@ briefing, recommendation delivery, countdown, screen movement, map reveal,
 attribution, texture budget and application errors. This browser check does not
 establish physical Quest frame rate.
 
+### Street View
+
+In the city view, **Street View** on the panel arms aiming. Point a hand (or
+controller) at the city: a cyan ring marks the spot. Pinch (or hold the trigger)
+and pull the hand back toward you: the ring locks amber and fills, and at about
+15 cm of pull you drop to street level there. Pinching at the sky lands
+at the incident coordinate. Letting go early, or pushing forward, cancels.
+
+At street level the nearest Google Street View panorama (within 50 m of the aimed
+point, 100 m of the incident) wraps around you, facing true compass directions
+consistent with the city. White chevrons on the floor lead to linked panoramas:
+point at one and pinch to move. **Exit Street View**, any North/East/South/West
+button, or Briefing returns to the city. Where Google has no imagery, you stand on
+the 3D city at that spot instead. In a flat browser (no XR) the button drops
+straight to the incident.
+
+Street View uses the same `GOOGLE_MAPS_API_KEY` (Map Tiles API, `streetview`
+session); panoramas bill separately from 3D tiles. Each panorama loads an 832 px
+preview, then a 3328 x 1664 texture. Copyright and capture date show in the
+panel's attribution line. Not yet shown: Google's per-panorama "Report a problem"
+link, and the small tilt/roll correction in panorama metadata.
+
+`node --test tests/street-view.test.mjs` covers the tile grid, metadata, session
+retry and the pull gesture. The hand gesture itself needs a headset check.
+
 To check **Exit to browser**, paused re-entry, and the existing **Briefing** control
 with an emulated headset and a local map fixture (no Maps key required):
 

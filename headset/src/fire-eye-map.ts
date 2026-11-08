@@ -156,6 +156,34 @@ export class FireEyeMap {
     this.preloadCamera.updateMatrixWorld(true);
   }
 
+  /** Yaw of the city frame; Street View shares it so north stays put. */
+  get yaw(): number { return this.pivot.rotation.y; }
+
+  /** First city surface under `raycaster`, in world space. */
+  hit(raycaster: Raycaster): Vector3 | null {
+    // The tiles renderer walks its bounding-volume tree and stops at the first hit.
+    (raycaster as Raycaster & { firstHitOnly?: boolean }).firstHitOnly = true;
+    this.hits.length = 0;
+    raycaster.intersectObject(this.tiles.group, true, this.hits);
+    return this.hits[0]?.point.clone() ?? null;
+  }
+
+  /** WGS84 latitude/longitude in degrees for a world-space point on the city. */
+  toLatLon(world: Vector3): { lat: number; lon: number } {
+    this.anchor.updateMatrixWorld(true);
+    const local = this.tiles.group.worldToLocal(world.clone());
+    const { lat, lon } = this.tiles.ellipsoid.getPositionToCartographic(local, {});
+    return { lat: lat / DEG, lon: lon / DEG };
+  }
+
+  /** Shift the city so world point `ground` lands on the floor under (x, z). */
+  standAt(ground: Vector3, x: number, z: number): void {
+    this.anchor.position.x += x - ground.x;
+    this.anchor.position.y -= ground.y;
+    this.anchor.position.z += z - ground.z;
+    this.anchor.updateMatrixWorld(true);
+  }
+
   attribution(): string {
     const entries: { type: string; value: string }[] = [];
     this.tiles.getAttributions(entries);
