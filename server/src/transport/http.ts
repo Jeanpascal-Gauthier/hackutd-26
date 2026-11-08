@@ -1,11 +1,14 @@
 // HTTP API (see server/API.md):
 //   POST /ingest      report in (optionally with the agent's own result) -> shared ingest path
-//   GET  /state       current IncidentState          GET /building  building + occupants + sprinklers
+//   GET  /state       current IncidentState
+//   GET  /building    building + occupants + sprinklers + doors + inspections
+//   GET  /inspections inspection records, filtered by ?floor= &system= &status=
 //   POST /forecast    what-if forecast from an origin, state unchanged (agent tools)
 //   GET  /health      POST /live/reset      POST /mock/reset, /mock/replay (mock mode)
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { Building, IncidentState, Occupant, Recommendation, TrailStep } from "@firewatch/shared/types";
 import type { Forecast } from "../live/forecast.ts";
+import type { DoorRating, InspectionRecord } from "../live/buildingData.ts";
 import type { IngestInput, ProcessResult } from "../state/processor.ts";
 import type { Ingest } from "../state/ingest.ts";
 
@@ -18,7 +21,13 @@ const MAX_CALLER = 100;
 export interface HttpDeps {
   ingest: Ingest;
   getState(): IncidentState;
-  buildingInfo: { building: Building; occupants: Occupant[]; sprinklers: Record<string, string> };
+  buildingInfo: {
+    building: Building;
+    occupants: Occupant[];
+    sprinklers: Record<string, string>;
+    doors: DoorRating[];
+    inspections: InspectionRecord[];
+  };
   /** Runs a forecast without touching incident state. Throws on an unknown origin. */
   forecast(origin: string, minutes: number): Forecast;
   /** POST /live/reset: clear the incident (no fire, no reports). Also stops a running demo. */
@@ -105,6 +114,29 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
+/** GET /inspections query: optional floor, system, status (exact match). Returns errors as string[]. */
+export function filterInspections(
+  records: InspectionRecord[],
+  query: URLSearchParams,
+): { ok: true; inspections: InspectionRecord[] } | { ok: false; errors: string[] } {
+  const errors: string[] = [];
+  const floorQ = query.get("floor");
+  const floor = floorQ === null ? undefined : Number(floorQ);
+  if (floor !== undefined && !(Number.isInteger(floor) && records.some((r) => r.floor === floor)))
+    errors.push("`floor` must be a floor number that has inspection records");
+  const system = query.get("system");
+  if (system !== null && !records.some((r) => r.system === system)) errors.push("`system` must be sprinkler, fire-door, fire-alarm or standpipe");
+  const status = query.get("status");
+  if (status !== null && !["pass", "overdue", "deficient"].includes(status)) errors.push("`status` must be pass, overdue or deficient");
+  if (errors.length) return { ok: false, errors };
+  return {
+    ok: true,
+    inspections: records.filter(
+      (r) => (floor === undefined || r.floor === floor) && (system === null || r.system === system) && (status === null || r.status === status),
+    ),
+  };
+}
+
 async function readJson(req: IncomingMessage, res: ServerResponse): Promise<{ ok: true; body: unknown } | { ok: false }> {
   let raw: string;
   try {
@@ -130,6 +162,11 @@ export function createHttpServer({ ingest, getState, buildingInfo, forecast, res
     if (method === "GET" && url === "/health") return json(res, 200, { ok: true, mock: !!mock });
     if (method === "GET" && url === "/state") return json(res, 200, getState());
     if (method === "GET" && url === "/building") return json(res, 200, buildingInfo);
+    if (method === "GET" && url === "/inspections") {
+      const query = new URLSearchParams((req.url ?? "").split("?")[1] ?? "");
+      const r = filterInspections(buildingInfo.inspections, query);
+      return json(res, r.ok ? 200 : 400, r);
+    }
 
     if (method === "POST" && url === "/forecast") {
       const r = await readJson(req, res);

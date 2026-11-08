@@ -1,27 +1,20 @@
 // Live-mode end-to-end check: starts the server with MOCK=0, sends demo reports, checks st().
-//   npm run verify:live -w server
-import { spawn } from "node:child_process";
+//   npm run verify:live -w server   (or from the repo root: npx tsx server/src/live/verify.ts)
 import assert from "node:assert/strict";
 import { WebSocket } from "ws";
 import type { ServerEvent } from "@firewatch/shared/events";
 import type { IncidentState } from "@firewatch/shared/types";
+import { startServer, verifyPort } from "../testing/startServer.ts";
 
-const PORT = 18081;
+const PORT = verifyPort(18081);
 const base = `http://localhost:${PORT}`;
-const server = spawn("npx", ["tsx", "src/index.ts"], {
-  env: { ...process.env, PORT: String(PORT), MOCK: "0" },
-  stdio: "ignore",
-});
+const server = await startServer(PORT, { MOCK: "0" });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const post = async (path: string, body?: unknown) =>
   (await fetch(base + path, { method: "POST", headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) })).json() as Promise<Record<string, any>>;
 const room = (s: IncidentState, id: string) => s.rooms.find((r) => r.roomId === id)!;
 
 async function main() {
-  for (let i = 0; i < 50; i++) {
-    try { if ((await fetch(base + "/health")).ok) break; } catch { /* not up yet */ }
-    await sleep(100);
-  }
   let latest!: IncidentState;
   const st = () => latest; // a function, so TypeScript doesn't keep earlier narrowing
   const ws = new WebSocket(`ws://localhost:${PORT}`);

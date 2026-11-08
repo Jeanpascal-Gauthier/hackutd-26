@@ -1,17 +1,14 @@
 // Mock-mode end-to-end check: scripted calls replay through the real pipeline.
-//   npm run verify -w server
-import { spawn } from "node:child_process";
+//   npm run verify -w server   (or from the repo root: npx tsx server/src/mock/verify.ts)
 import assert from "node:assert/strict";
 import { WebSocket } from "ws";
 import type { ServerEvent } from "@firewatch/shared/events";
 import type { IncidentState } from "@firewatch/shared/types";
+import { startServer, verifyPort } from "../testing/startServer.ts";
 
-const PORT = 18080;
+const PORT = verifyPort(18080);
 const base = `http://localhost:${PORT}`;
-const server = spawn("npx", ["tsx", "src/index.ts"], {
-  env: { ...process.env, PORT: String(PORT), AUTOPLAY: "0", MOCK: "1", TICK_MS: "60" },
-  stdio: "ignore",
-});
+const server = await startServer(PORT, { AUTOPLAY: "0", MOCK: "1", TICK_MS: "60" });
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -35,11 +32,6 @@ const post = (path: string, body?: unknown) =>
 const room = (s: IncidentState, id: string) => s.rooms.find((r) => r.roomId === id)!;
 
 async function main() {
-  for (let i = 0; i < 50; i++) {
-    try { if ((await fetch(base + "/health")).ok) break; } catch { /* not up yet */ }
-    await sleep(100);
-  }
-
   const a = await client("A");
   const b = await client("B");
   assert.equal(a.states.length, 1, "A gets full state on connect");

@@ -7,7 +7,7 @@ import { createHttpServer } from "./transport/http.ts";
 import { attachWebSocket } from "./transport/ws.ts";
 import { LiveIncident } from "./live/incident.ts";
 import { forecast } from "./live/forecast.ts";
-import { sprinklers } from "./live/buildingData.ts";
+import { doors, inspections, sprinklers } from "./live/buildingData.ts";
 import { MockIncident } from "./mock/controller.ts";
 import { AGENT_EXPORT, guardAgent, loadAgentProcessor, loadAgentReset } from "./agent/bridge.ts";
 
@@ -46,7 +46,7 @@ const mock = MOCK ? new MockIncident(store, live, ingest, TICK_MS) : undefined;
 const httpServer = createHttpServer({
   ingest,
   getState: () => store.get(),
-  buildingInfo: { building: live.data.building, occupants: live.data.occupants, sprinklers },
+  buildingInfo: { building: live.data.building, occupants: live.data.occupants, sprinklers, doors, inspections },
   forecast: (origin, minutes) => forecast(origin, live.data, minutes),
   resetLive: () => {
     resetAgent();
