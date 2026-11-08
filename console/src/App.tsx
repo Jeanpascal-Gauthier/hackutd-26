@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type Reac
 import building from "@firewatch/shared/building.json";
 import type { FloorExit, IncidentState, Report, TrailStep } from "@firewatch/shared/types";
 import { FloorPlan } from "./FloorPlan";
+import { Building3DPanel } from "./building3d";
 import { AgentTrail, type AgentStep } from "./AgentTrail";
 import { CheckIcon, FlameIcon, MoonIcon, PauseIcon, PinIcon, PlayIcon, PulseIcon, ReplayIcon, SendIcon, StairsIcon, SunIcon, UsersIcon } from "./Icons";
 import { useIncident } from "./useIncident";
@@ -180,6 +181,7 @@ export function App() {
               <p className="subtle">{selectedReports.length} report{selectedReports.length === 1 ? "" : "s"} linked to this room.</p>
             </> : <Empty title="Inspect a room" text="Select a room on the floor plan or a location in the report feed." />}</div>
           </section>
+          <Building3DPanel state={state} floor={floor} selectedRoom={selectedRoom} onSelectRoom={setSelectedRoom} onSelectFloor={(f) => setFloor(f)} />
           <section className="panel timeline-panel" aria-labelledby="timeline-heading">
             <div className="timeline-heading"><div><h2 id="timeline-heading">Forecast timeline</h2><p className="subtle">Shared with every connected screen</p></div><div className="timeline-controls"><button className="button secondary play-button" disabled={!connected || !state} onClick={togglePlayback} aria-label={playing ? "Pause forecast playback" : `Play forecast from minute ${minute >= PLAY_END ? 0 : minute}`}>{playing ? <><PauseIcon size={15} />Pause</> : <><PlayIcon size={15} />Play</>}</button><span className="minute-readout"><strong>{minute}</strong>of {maxMinute} min</span></div></div>
             <label className="sr-only" htmlFor="timeline">Forecast minute</label><input id="timeline" type="range" min={0} max={maxMinute} step={1} value={Math.min(minute, maxMinute)} disabled={!connected || !state} onChange={(event) => { setPlaying(false); transmit({ type: "setSimMinute", minute: Number(event.target.value) }); }} aria-valuetext={`${minute} minutes`} />
