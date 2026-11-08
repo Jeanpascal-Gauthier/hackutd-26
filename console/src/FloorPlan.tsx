@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useId, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import building from "@firewatch/shared/building.json";
 import type { IncidentState } from "@firewatch/shared/types";
 
@@ -12,12 +12,28 @@ interface FloorPlanProps {
 }
 
 /** On-screen text sizes (CSS px). SVG font sizes are derived from the measured map scale so text never renders smaller. */
-const LABEL_PX = 13;
+const LABEL_PX = 12;
 const READING_PX = 12;
 const LINE_GAP_PX = 4;
 const PAD_PX = 6;
-/** Rough average glyph width for DM Sans, as a fraction of the font size (slightly generous so text never clips). */
+/** Rough average glyph width as a fraction of the font size (slightly generous so text never clips). */
 const CHAR_EM = 0.6;
+/** Labels are upper-case, letter-spaced drafting lettering, so they run wider. */
+const LABEL_EM = 0.76;
+
+/** Drawing conventions, in metres (building.json units). */
+const EXTERIOR_WALL = 0.3;
+const INTERIOR_WALL = 0.14;
+const DOOR_WIDTH = 0.9;
+const TREAD = 0.3;
+/** Rooms smaller than this (stairs, lifts) don't define structural grid lines. */
+const CORE_AREA = 12;
+/** Margin (SVG units) around the building for grid bubbles and dimension strings. */
+const MARGIN = { top: 34, left: 34, right: 40, bottom: 44 };
+
+type Room = (typeof building.rooms)[number];
+type Line = { orient: "h" | "v"; at: number; lo: number; hi: number };
+type Opening = Line & { into: Room; kind: "swing" | "slide" };
 
 /**
  * Rooms on this floor that are part of an evacuation route (hall + clear stairwell), mapped to their
@@ -41,17 +57,92 @@ function roomFill(fire: number, smoke: number) {
   return "var(--room-empty)";
 }
 
+const EPS = 1e-6;
+const same = (a: number, b: number) => Math.abs(a - b) < EPS;
+
+/** The four edges of a room, each with the rooms on its far side that touch it. */
+function edges(room: Room, rooms: Room[]) {
+  const right = room.x + room.w, bottom = room.z + room.d;
+  return [
+    { side: "top", line: { orient: "h", at: room.z, lo: room.x, hi: right }, across: rooms.filter((o) => same(o.z + o.d, room.z)) },
+    { side: "bottom", line: { orient: "h", at: bottom, lo: room.x, hi: right }, across: rooms.filter((o) => same(o.z, bottom)) },
+    { side: "left", line: { orient: "v", at: room.x, lo: room.z, hi: bottom }, across: rooms.filter((o) => same(o.x + o.w, room.x)) },
+    { side: "right", line: { orient: "v", at: right, lo: room.z, hi: bottom }, across: rooms.filter((o) => same(o.x, right)) },
+  ] as const satisfies readonly { side: string; line: Line; across: Room[] }[];
+}
+
+/** Span of a neighbour along an edge's direction. */
+const span = (line: Line, other: Room): [number, number] => line.orient === "h" ? [other.x, other.x + other.w] : [other.z, other.z + other.d];
+
+/** [lo, hi] minus a set of intervals. */
+function subtract(lo: number, hi: number, cuts: [number, number][]): [number, number][] {
+  let pieces: [number, number][] = [[lo, hi]];
+  for (const [a, b] of cuts) pieces = pieces.flatMap(([p, q]) => b <= p || a >= q ? [[p, q]] : [[p, Math.min(a, q)], [Math.max(b, p), q]].filter(([s, e]) => e - s > EPS) as [number, number][]);
+  return pieces;
+}
+
+/** [lo, hi] intersected with a set of intervals. */
+function intersect(lo: number, hi: number, spans: [number, number][]): [number, number][] {
+  return spans.map(([a, b]) => [Math.max(lo, a), Math.min(hi, b)] as [number, number]).filter(([a, b]) => b - a > EPS);
+}
+
+/**
+ * Wall centre-lines for one floor, split into exterior (no room across) and interior pieces, with door
+ * openings cut out. Interior walls come only from bottom/right edges so shared walls are drawn once.
+ */
+function floorWalls(rooms: Room[], floor: number) {
+  const byId = new Map(rooms.map((room) => [room.id, room]));
+  const openings: Opening[] = [];
+  for (const link of building.links) {
+    if (link.kind !== "door") continue;
+    const a = byId.get(link.a), b = byId.get(link.b);
+    if (!a || !b || a.floor !== floor) continue;
+    const shared = edges(a, rooms).find((edge) => edge.across.includes(b));
+    if (!shared) continue;
+    const [lo, hi] = intersect(shared.line.lo, shared.line.hi, [span(shared.line, b)])[0] ?? [];
+    if (lo === undefined || hi === undefined) continue;
+    const width = Math.min(DOOR_WIDTH, (hi - lo) * 0.6);
+    // Doors into wide rooms sit near a corner, as drawn on real plans; narrow cores get a centred door.
+    const start = hi - lo > 3 ? lo + 0.45 : (lo + hi - width) / 2;
+    openings.push({ ...shared.line, lo: start, hi: start + width, into: b, kind: /elev/.test(b.id) ? "slide" : "swing" });
+  }
+  const cut = (line: Line, pieces: [number, number][], thickness: number) => pieces.flatMap(([lo, hi]) =>
+    // Openings are widened by half a wall so square line caps land exactly on the jambs.
+    subtract(lo, hi, openings.filter((o) => o.orient === line.orient && same(o.at, line.at)).map((o) => [o.lo - thickness / 2, o.hi + thickness / 2])),
+  ).map(([lo, hi]) => ({ ...line, lo, hi }));
+
+  const exterior: Line[] = [];
+  const interior: Line[] = [];
+  for (const room of rooms) for (const { side, line, across } of edges(room, rooms)) {
+    const covered = across.map((other) => span(line, other));
+    exterior.push(...cut(line, subtract(line.lo, line.hi, covered), EXTERIOR_WALL));
+    if (side === "bottom" || side === "right") interior.push(...cut(line, intersect(line.lo, line.hi, covered), INTERIOR_WALL));
+  }
+  return { exterior, interior, openings };
+}
+
+/** Structural grid: distinct edge coordinates of the main (non-core) rooms. */
+function gridLines(rooms: Room[]) {
+  const main = rooms.filter((room) => room.w * room.d >= CORE_AREA);
+  const unique = (values: number[]) => [...new Set(values.map((v) => Math.round(v * 1000) / 1000))].sort((a, b) => a - b);
+  return { xs: unique(main.flatMap((room) => [room.x, room.x + room.w])), zs: unique(main.flatMap((room) => [room.z, room.z + room.d])) };
+}
+
+const metres = (value: number) => `${value.toFixed(value % 1 ? 1 : 0)} m`;
+
 export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = null }: FloorPlanProps) {
+  const uid = useId().replace(/:/g, "");
   const svgRef = useRef<SVGSVGElement>(null);
   const rooms = building.rooms.filter((room) => room.floor === floor);
   const minX = Math.min(...rooms.map((room) => room.x));
   const minZ = Math.min(...rooms.map((room) => room.z));
-  const width = Math.max(...rooms.map((room) => room.x + room.w)) - minX;
-  const depth = Math.max(...rooms.map((room) => room.z + room.d)) - minZ;
+  const maxX = Math.max(...rooms.map((room) => room.x + room.w));
+  const maxZ = Math.max(...rooms.map((room) => room.z + room.d));
+  const width = maxX - minX;
+  const depth = maxZ - minZ;
   const scale = Math.min(640 / Math.max(width, 1), 360 / Math.max(depth, 1));
-  const pad = 12;
-  const viewW = width * scale + pad * 2;
-  const viewH = depth * scale + pad * 2;
+  const viewW = width * scale + MARGIN.left + MARGIN.right;
+  const viewH = depth * scale + MARGIN.top + MARGIN.bottom;
   // Rendered CSS px per SVG unit. Text sizes divide by this so labels stay legible at any width.
   const [k, setK] = useState(1);
   useLayoutEffect(() => {
@@ -78,70 +169,180 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
   const gap = LINE_GAP_PX / k;
   const inset = PAD_PX / k;
 
+  const px = (x: number) => MARGIN.left + (x - minX) * scale;
+  const py = (z: number) => MARGIN.top + (z - minZ) * scale;
+  const { exterior, interior, openings } = floorWalls(rooms, floor);
+  const grid = gridLines(rooms);
+  // Annotation text is decorative: fixed to the margin so the viewBox never depends on the measured scale.
+  const annot = Math.min(11, Math.max(8, 9.5 / k));
+  const bubble = Math.min(10, Math.max(7.5, 8 / k));
+  const toSeg = (line: Line) => line.orient === "h"
+    ? { x1: px(line.lo), y1: py(line.at), x2: px(line.hi), y2: py(line.at) }
+    : { x1: px(line.at), y1: py(line.lo), x2: px(line.at), y2: py(line.hi) };
+  const dimY = py(maxZ) + 16;
+  const dimX = px(maxX) + 16;
+
   return <div className="floor-plan">
-    <p className="map-caption"><span>Floor {floor} · select a room to inspect</span>{originRoom && origin && <span>Likely origin: <strong>{originRoom.name.replace(/^Floor \d+ /, "")}</strong> ({Math.round(origin.confidence * 100)}%)</span>}</p>
-    <svg ref={svgRef} className="map" viewBox={`0 0 ${viewW} ${viewH}`} role="group" aria-label={`Floor ${floor} interactive room map`}>
-      <defs><pattern id="map-grid" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="0.9" style={{ fill: "var(--grid-dot)" }} /></pattern></defs>
-      <rect width="100%" height="100%" fill="url(#map-grid)" />
+    <p className="map-caption"><span>Floor {floor} plan · select a room to inspect</span>{originRoom && origin && <span>Likely origin: <strong>{originRoom.name.replace(/^Floor \d+ /, "")}</strong> ({Math.round(origin.confidence * 100)}%)</span>}</p>
+    <svg ref={svgRef} className="map blueprint" viewBox={`0 0 ${viewW} ${viewH}`} role="group" aria-label={`Floor ${floor} interactive room map`}>
+      <defs>
+        <pattern id={`${uid}-minor`} width={scale} height={scale} x={MARGIN.left} y={MARGIN.top} patternUnits="userSpaceOnUse">
+          <path d={`M ${scale} 0 H 0 V ${scale}`} className="bp-grid-minor" />
+        </pattern>
+        <pattern id={`${uid}-major`} width={scale * 5} height={scale * 5} x={MARGIN.left} y={MARGIN.top} patternUnits="userSpaceOnUse">
+          <rect width={scale * 5} height={scale * 5} fill={`url(#${uid}-minor)`} />
+          <path d={`M ${scale * 5} 0 H 0 V ${scale * 5}`} className="bp-grid-major" />
+        </pattern>
+        <pattern id={`${uid}-hatch-fire`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="6" className="bp-hatch-fire" />
+        </pattern>
+        <pattern id={`${uid}-hatch-smoke`} width="7" height="7" patternUnits="userSpaceOnUse">
+          <circle cx="3.5" cy="3.5" r="0.9" className="bp-hatch-smoke" />
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill={`url(#${uid}-major)`} />
+
+      {/* Structural grid: dash-dot centre lines with lettered/numbered bubbles, as on a GA plan. */}
+      <g className="bp-annotation" aria-hidden="true">
+        {grid.xs.map((x, index) => <g key={`gx${x}`}>
+          <line className="bp-gridline" x1={px(x)} y1={bubble * 2 + 4} x2={px(x)} y2={py(maxZ) + 4} />
+          <circle className="bp-bubble" cx={px(x)} cy={bubble + 3} r={bubble} />
+          <text className="bp-bubble-text" x={px(x)} y={bubble + 3} fontSize={bubble * 1.05}>{index + 1}</text>
+        </g>)}
+        {grid.zs.map((z, index) => <g key={`gz${z}`}>
+          <line className="bp-gridline" x1={bubble * 2 + 4} y1={py(z)} x2={px(maxX) + 4} y2={py(z)} />
+          <circle className="bp-bubble" cx={bubble + 3} cy={py(z)} r={bubble} />
+          <text className="bp-bubble-text" x={bubble + 3} y={py(z)} fontSize={bubble * 1.05}>{String.fromCharCode(65 + index)}</text>
+        </g>)}
+      </g>
+
       {rooms.map((room) => {
         const current = state?.rooms.find((value) => value.roomId === room.id);
         const fire = Math.min(1, Math.max(0, current?.fire ?? 0));
         const smoke = Math.min(1, Math.max(0, current?.smoke ?? 0));
         const selected = selectedRoom === room.id;
-        const stroke = selected ? "var(--accent)" : fire > 0.01 ? "var(--fire)" : smoke > 0.01 ? "var(--smoke)" : "var(--line-strong)";
+        const stroke = selected ? "var(--accent)" : "transparent";
         const count = state?.occupants.filter((item) => item.room === room.id).reduce((sum, item) => sum + item.count, 0) ?? 0;
-        const x = pad + (room.x - minX) * scale;
-        const y = pad + (room.z - minZ) * scale;
+        const x = px(room.x);
+        const y = py(room.z);
         const w = room.w * scale;
         const d = room.d * scale;
         // Retain forecast/acceptance animation, without marking hazardous or unknown segments green.
         const onRoute = route.has(room.id) && current !== undefined && fire <= 0.01 && smoke < 0.3;
         const isOrigin = origin?.roomId === room.id;
+        const isStair = /stair/.test(room.id);
+        const isLift = /elev/.test(room.id);
         const label = room.name.replace(/^Floor \d+ /, "");
         const status = current ? `fire ${Math.round(fire * 100)} percent, smoke ${Math.round(smoke * 100)} percent` : "awaiting incident data";
+        const wallInset = (INTERIOR_WALL * scale) / 2 + 1.5;
 
         // Text layout: stack label + readings if they fit, else one joined line, else label only, else nothing.
         const readings = [fire > 0.01 && `Fire ${Math.round(fire * 100)}%`, smoke > 0.01 && `Smoke ${Math.round(smoke * 100)}%`].filter(Boolean) as string[];
         if (count > 0) readings.push(`${count} people`);
         const innerW = w - inset * 2 - 4;
         const innerH = d - inset * 2 - 4;
-        const fits = (text: string, size: number) => text.length * CHAR_EM * size <= innerW;
-        const name = fits(label, labelSize) ? label : fits(shortName(label), labelSize) ? shortName(label) : null;
+        const fits = (text: string, size: number, em = CHAR_EM) => text.length * em * size <= innerW;
+        const name = fits(label, labelSize, LABEL_EM) ? label : fits(shortName(label), labelSize, LABEL_EM) ? shortName(label) : null;
         let lines: { text: string; size: number; cls: string }[] = [];
         if (name) {
-          const stacked = [{ text: name, size: labelSize, cls: "room-label" }];
+          const stacked = [{ text: name.toUpperCase(), size: labelSize, cls: "room-label" }];
           for (const text of readings) if (fits(text, readingSize)) stacked.push({ text, size: readingSize, cls: text.endsWith("people") ? "room-occupants" : "room-reading" });
           const stackH = (n: number) => stacked.slice(0, n).reduce((sum, line) => sum + line.size, 0) + gap * (n - 1);
           let n = stacked.length;
           while (n > 1 && stackH(n) > innerH) n--;
           lines = stacked.slice(0, n);
           const hazard = readings.filter((text) => !text.endsWith("people")).join(" · ");
-          if (lines.length === 1 && hazard && innerH >= labelSize && fits(`${name} · ${hazard}`, labelSize)) lines = [{ text: `${name} · ${hazard}`, size: labelSize, cls: "room-label" }];
+          if (lines.length === 1 && hazard && innerH >= labelSize && fits(`${name} · ${hazard}`, labelSize, LABEL_EM)) lines = [{ text: `${name.toUpperCase()} · ${hazard}`, size: labelSize, cls: "room-label" }];
           if (lines.length === 1 && innerH < labelSize) lines = [];
         }
         const totalH = lines.reduce((sum, line) => sum + line.size, 0) + gap * Math.max(0, lines.length - 1);
         let cursor = y + d / 2 - totalH / 2;
 
+        // Stair treads run across the flight's short side; the arrow points up the flight.
+        const along = w >= d ? "x" : "z";
+        const flight = along === "x" ? w : d;
+        const treads = Array.from({ length: Math.max(0, Math.floor((flight - 2 * wallInset) / (TREAD * scale))) }, (_, i) => wallInset + (i + 0.5) * TREAD * scale);
+
         return <g key={room.id} role="button" tabIndex={0} data-room-id={room.id} data-origin={isOrigin || undefined} data-route={onRoute && routeActive || undefined} aria-pressed={selected} aria-label={`${room.name}, ${status}, ${count} recorded occupants${isOrigin ? ", suspected fire origin" : ""}${onRoute ? routeActive ? ", accepted route segment" : ", forecast route segment" : ""}`} className={`map-room ${selected ? "is-selected" : ""}`} onClick={() => onSelect(room.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(room.id); } }}>
           <title>{room.name} · {room.id}{current ? ` · fire ${Math.round(fire * 100)}% · smoke ${Math.round(smoke * 100)}%` : " · No incident data"}{count ? ` · ${count} people` : ""}{onRoute ? " · evacuation route" : ""}</title>
-          {/* Fill and stroke as styles so scrubbing the timeline cross-fades them; :hover / :focus-visible override the stroke. */}
-          <rect className="room-shape" x={x + 2} y={y + 2} width={Math.max(1, w - 4)} height={Math.max(1, d - 4)} rx={4} strokeWidth={selected ? 2.5 : 1} style={{ fill: roomFill(fire, smoke), stroke }} />
+          {/* Fill and stroke as styles so scrubbing the timeline cross-fades them; :hover / :focus-visible override the stroke. Walls are drawn over this separately. */}
+          <rect className="room-shape" x={x + wallInset} y={y + wallInset} width={Math.max(1, w - wallInset * 2)} height={Math.max(1, d - wallInset * 2)} strokeWidth={selected ? 2.5 : 1} style={{ fill: roomFill(fire, smoke), stroke }} />
+          {/* Hazard hatching (fire: 45° section hatch, smoke: stipple) so state also reads without colour. */}
+          {fire > 0.01 && <rect className="room-hatch" x={x} y={y} width={w} height={d} fill={`url(#${uid}-hatch-fire)`} style={{ opacity: 0.35 + fire * 0.55 }} />}
+          {fire <= 0.01 && smoke >= 0.1 && <rect className="room-hatch" x={x} y={y} width={w} height={d} fill={`url(#${uid}-hatch-smoke)`} style={{ opacity: 0.35 + smoke * 0.55 }} />}
+          {isStair && <g className="bp-fixture" aria-hidden="true">
+            {treads.map((t) => along === "x"
+              ? <line key={t} x1={x + t} y1={y + wallInset} x2={x + t} y2={y + d - wallInset} />
+              : <line key={t} x1={x + wallInset} y1={y + t} x2={x + w - wallInset} y2={y + t} />)}
+            {along === "x"
+              // Kept off-centre so it doesn't run through the room label.
+              ? <path className="bp-flight" d={`M ${x + wallInset + 3} ${y + d * 0.8} H ${x + w - wallInset - 6} m -4 -3 l 4 3 l -4 3`} />
+              : <path className="bp-flight" d={`M ${x + w * 0.8} ${y + d - wallInset - 3} V ${y + wallInset + 6} m -3 4 l 3 -4 l 3 4`} />}
+          </g>}
+          {isLift && <g className="bp-fixture" aria-hidden="true">
+            <rect x={x + wallInset + 3} y={y + wallInset + 3} width={Math.max(1, w - wallInset * 2 - 6)} height={Math.max(1, d - wallInset * 2 - 6)} />
+            <path d={`M ${x + wallInset + 3} ${y + wallInset + 3} L ${x + w - wallInset - 3} ${y + d - wallInset - 3} M ${x + w - wallInset - 3} ${y + wallInset + 3} L ${x + wallInset + 3} ${y + d - wallInset - 3}`} />
+          </g>}
           {/* Forecast: static dashed outline. Accepted: solid. Just accepted: draws on once via a normalised dash (pathLength 1). */}
           {onRoute && (drawing
-            ? <rect key={`draw-${drawRoute}`} className="room-route active draw" pathLength={1} style={{ "--order": route.get(room.id) ?? 0 } as CSSProperties} x={x + 6} y={y + 6} width={Math.max(1, w - 12)} height={Math.max(1, d - 12)} rx={3} />
-            : <rect key="route" className={`room-route ${routeActive ? "active" : ""}`} x={x + 6} y={y + 6} width={Math.max(1, w - 12)} height={Math.max(1, d - 12)} rx={3} />)}
+            ? <rect key={`draw-${drawRoute}`} className="room-route active draw" pathLength={1} style={{ "--order": route.get(room.id) ?? 0 } as CSSProperties} x={x + 6} y={y + 6} width={Math.max(1, w - 12)} height={Math.max(1, d - 12)} rx={1} />
+            : <rect key="route" className={`room-route ${routeActive ? "active" : ""}`} x={x + 6} y={y + 6} width={Math.max(1, w - 12)} height={Math.max(1, d - 12)} rx={1} />)}
           {lines.map((line, index) => {
             const top = cursor;
             cursor += line.size + gap;
-            return <text key={index} x={x + w / 2} y={top + line.size * 0.8} textAnchor="middle" className={line.cls} fontSize={line.size} aria-hidden="true">{line.text}</text>;
+            return <text key={index} x={x + w / 2} y={top + line.size * 0.8} textAnchor="middle" className={`${line.cls}${isStair || isLift ? " haloed" : ""}`} fontSize={line.size} aria-hidden="true">{line.text}</text>;
           })}
         </g>;
       })}
+
+      {/* Walls (solid poché, heavier on the envelope) and doors with swing arcs, drawn over the rooms. */}
+      <g className="bp-walls" aria-hidden="true">
+        {interior.map((line, index) => <line key={`i${index}`} className="bp-wall" {...toSeg(line)} strokeWidth={INTERIOR_WALL * scale} />)}
+        {exterior.map((line, index) => <line key={`e${index}`} className="bp-wall" {...toSeg(line)} strokeWidth={EXTERIOR_WALL * scale} />)}
+        {openings.map((door, index) => {
+          const into = door.into;
+          // Unit normal pointing into the room the door opens into.
+          const sign = door.orient === "h" ? (into.z + into.d / 2 > door.at ? 1 : -1) : (into.x + into.w / 2 > door.at ? 1 : -1);
+          const size = (door.hi - door.lo) * scale;
+          const hinge = door.orient === "h" ? { x: px(door.lo), y: py(door.at) } : { x: px(door.at), y: py(door.lo) };
+          const jamb = door.orient === "h" ? { x: px(door.hi), y: py(door.at) } : { x: px(door.at), y: py(door.hi) };
+          const tip = door.orient === "h" ? { x: hinge.x, y: hinge.y + sign * size } : { x: hinge.x + sign * size, y: hinge.y };
+          if (door.kind === "slide") {
+            const off = 2 * sign;
+            return door.orient === "h"
+              ? <g key={`d${index}`} className="bp-door"><line x1={hinge.x} y1={hinge.y + off} x2={(hinge.x + jamb.x) / 2 + 1} y2={hinge.y + off} /><line x1={(hinge.x + jamb.x) / 2 - 1} y1={hinge.y - off} x2={jamb.x} y2={hinge.y - off} /></g>
+              : <g key={`d${index}`} className="bp-door"><line x1={hinge.x + off} y1={hinge.y} x2={hinge.x + off} y2={(hinge.y + jamb.y) / 2 + 1} /><line x1={hinge.x - off} y1={(hinge.y + jamb.y) / 2 - 1} x2={hinge.x - off} y2={jamb.y} /></g>;
+          }
+          // SVG sweep flag: 1 when turning from tip to jamb is clockwise on screen (y points down).
+          const cross = (tip.x - hinge.x) * (jamb.y - hinge.y) - (tip.y - hinge.y) * (jamb.x - hinge.x);
+          return <g key={`d${index}`} className="bp-door">
+            <line className="bp-door-leaf" x1={hinge.x} y1={hinge.y} x2={tip.x} y2={tip.y} />
+            <path className="bp-door-swing" d={`M ${tip.x} ${tip.y} A ${size} ${size} 0 0 ${cross > 0 ? 1 : 0} ${jamb.x} ${jamb.y}`} />
+          </g>;
+        })}
+      </g>
+
+      {/* Chain dimensions along the bottom (bays + overall) and right side, with architectural tick marks. */}
+      <g className="bp-annotation bp-dimensions" aria-hidden="true">
+        <line x1={px(grid.xs[0] ?? minX)} y1={dimY} x2={px(grid.xs.at(-1) ?? maxX)} y2={dimY} />
+        <line x1={px(minX)} y1={dimY + 16} x2={px(maxX)} y2={dimY + 16} />
+        {grid.xs.map((x) => <path key={`tx${x}`} className="bp-tick" d={`M ${px(x) - 3} ${dimY + 3} l 6 -6 M ${px(x)} ${py(maxZ) + 3} V ${dimY + 5}`} />)}
+        {[minX, maxX].map((x) => <path key={`to${x}`} className="bp-tick" d={`M ${px(x) - 3} ${dimY + 19} l 6 -6 M ${px(x)} ${dimY + 10} V ${dimY + 21}`} />)}
+        {grid.xs.slice(1).map((x, index) => <text key={`lx${x}`} x={(px(x) + px(grid.xs[index]!)) / 2} y={dimY - 3} fontSize={annot}>{metres(x - grid.xs[index]!)}</text>)}
+        <text x={(px(minX) + px(maxX)) / 2} y={dimY + 13} fontSize={annot}>{metres(width)} overall</text>
+        <line x1={dimX} y1={py(grid.zs[0] ?? minZ)} x2={dimX} y2={py(grid.zs.at(-1) ?? maxZ)} />
+        {grid.zs.map((z) => <path key={`tz${z}`} className="bp-tick" d={`M ${dimX - 3} ${py(z) + 3} l 6 -6 M ${px(maxX) + 3} ${py(z)} H ${dimX + 5}`} />)}
+        {grid.zs.slice(1).map((z, index) => {
+          const cy = (py(z) + py(grid.zs[index]!)) / 2;
+          return <text key={`lz${z}`} x={dimX + 4} y={cy} fontSize={annot} transform={`rotate(-90 ${dimX + 4} ${cy})`} dy={annot * 0.9}>{metres(z - grid.zs[index]!)}</text>;
+        })}
+      </g>
+
       {originRoom && (() => {
         // Static pin in the origin room's top-left corner; its label is in the caption above the map.
         const r = 10 / Math.max(k, 0.6);
-        const cx = pad + (originRoom.x - minX) * scale + 6 + r;
-        const cy = pad + (originRoom.z - minZ) * scale + 6 + r;
+        const cx = px(originRoom.x) + 6 + r;
+        const cy = py(originRoom.z) + 6 + r;
         return <g key={originRoom.id} transform={`translate(${cx} ${cy}) scale(${r / 9})`} aria-hidden="true">
           <g className="origin-pin">
             <circle r={9} />

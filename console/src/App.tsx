@@ -14,7 +14,7 @@ import { useTheme } from "./theme";
 import "./styles.css";
 import "./dispatch.css";
 
-const floors = [...new Set(building.rooms.map((room) => room.floor))].sort((a, b) => b - a);
+const floors = [...new Set(building.rooms.map((room) => room.floor))].sort((a, b) => a - b);
 const PLAY_END = 30;
 const PLAY_STEP_MS = 400;
 const logId = (entry: { time: number; kind: string; text: string }) => `${entry.time}-${entry.kind}-${entry.text}`;
@@ -40,7 +40,7 @@ function useFreshIds(ids: string[] | null): Set<string> {
 export function App() {
   const { state, connected, mode, send, request, lastUpdated } = useIncident();
   const { theme, toggle: toggleTheme } = useTheme();
-  const [floor, setFloor] = useState(floors.includes(7) ? 7 : floors[0]);
+  const [floor, setFloor] = useState(floors.includes(7) ? 7 : floors[floors.length - 1]);
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
   const [view, setView] = useState<"plan" | "3d">("3d");
   const [showAllReports, setShowAllReports] = useState(false);
@@ -196,8 +196,8 @@ export function App() {
               <div className="panel-heading map-heading">
                 <h2 id="building-heading">Building · Floor {floor}</h2>
                 <div className="view-switch" role="group" aria-label="Building view">
-                  <button aria-pressed={view === "plan"} onClick={() => setView("plan")}>Floor plan</button>
                   <button aria-pressed={view === "3d"} onClick={() => setView("3d")}>3D building</button>
+                  <button aria-pressed={view === "plan"} onClick={() => setView("plan")}>Floor plan</button>
                 </div>
               </div>
               <div className="floor-toolbar"><span className="floor-strip-label">Floor</span><div ref={floorTabs} className="floor-tabs" role="group" aria-label="Select floor">
