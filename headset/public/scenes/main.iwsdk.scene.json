@@ -140,6 +140,10 @@
           0
         ],
         "scale": 0.2
+      },
+      "components": {
+        "RayInteractable": {},
+        "PokeInteractable": {}
       }
     },
     {

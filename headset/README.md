@@ -24,7 +24,9 @@ npm run dev
 
 The headset dev server uses port 8081 and proxies HTTP and WebSocket traffic to
 the incident server on port 8080. Keep both running. For a remote incident server,
-append `?server=https://your-server-host` to the headset app URL. A production
+append `?server=https://your-server-host` to the headset app URL. You can also
+start the dev session with `FIREWATCH_SERVER_URL=http://host:port npm run dev`
+to point its proxy at a different server. A production
 host must provide the same proxy paths or use that HTTPS server override.
 
 For Quest over USB, authorize the device and forward the app port:
