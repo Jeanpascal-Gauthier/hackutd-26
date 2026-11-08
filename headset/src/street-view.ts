@@ -102,7 +102,7 @@ export class StreetViewScene {
       const holder = new Group();
       holder.name = `Link ${link.text || link.panoId}`;
       holder.rotation.y = Math.PI - link.heading * DEG;
-      const arrow = new Mesh(shapeGeometry, new MeshBasicMaterial({ color: ARROW_COLOR, transparent: true, opacity: 0.85, depthTest: false }));
+      const arrow = new Mesh(shapeGeometry, new MeshBasicMaterial({ color: ARROW_COLOR, transparent: true, opacity: 0.85, depthTest: false, fog: false }));
       arrow.rotation.x = -Math.PI / 2;
       arrow.position.set(0, 0.03, -ARROW_RADIUS);
       arrow.renderOrder = 5;
@@ -190,8 +190,8 @@ export class AimReticle {
 
   constructor() {
     this.root.name = 'Street View aim';
-    this.ring = new Mesh(new RingGeometry(0.75, 1, 40), new MeshBasicMaterial({ color: '#27d8ef', depthTest: false, transparent: true, opacity: 0.95 }));
-    this.fill = new Mesh(new CircleGeometry(0.75, 40), new MeshBasicMaterial({ color: '#27d8ef', depthTest: false, transparent: true, opacity: 0.55 }));
+    this.ring = new Mesh(new RingGeometry(0.75, 1, 40), new MeshBasicMaterial({ color: '#27d8ef', depthTest: false, transparent: true, opacity: 0.95, fog: false }));
+    this.fill = new Mesh(new CircleGeometry(0.75, 40), new MeshBasicMaterial({ color: '#27d8ef', depthTest: false, transparent: true, opacity: 0.55, fog: false }));
     this.ring.renderOrder = 30; this.fill.renderOrder = 31;
     this.fill.scale.setScalar(0.001);
     this.root.add(this.ring, this.fill);
