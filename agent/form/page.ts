@@ -14,10 +14,10 @@ const IMESSAGE_SECTION = `<details id="im">
       <input id="imp" name="phone" type="tel" autocomplete="tel" inputmode="tel" maxlength="32" placeholder="415-555-0123" required>
       <button id="imb" type="submit">Get number</button>
     </div>
-    <p id="ims" class="imnote" role="status" aria-live="polite">We sign up this number so you can text FireSight.</p>
+    <p id="ims" class="imnote" role="status" aria-live="polite">We sign up this number so you can text Firewatch.</p>
   </form>
   <div id="imr" hidden>
-    <p>Text FireSight at <strong id="imn"></strong></p>
+    <p>Text Firewatch at <strong id="imn"></strong></p>
     <a id="iml" class="sms" href="#">Open Messages</a>
     <p class="imnote">Text from the number you entered. Replies come by iMessage.</p>
   </div>
@@ -64,7 +64,7 @@ export function reportPage({ imessage = false }: { imessage?: boolean } = {}): s
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#14181c">
-<title>FireSight Report</title>
+<title>Firewatch Report</title>
 <style>
   :root { --bg:#14181c; --panel:#1d2329; --line:#2e363e; --text:#eef2f5; --muted:#9aa6b2; --fire:#ff6a3d; --me:#2b4a63; --them:#262d34; --ok:#5fd0a5; }
   * { box-sizing: border-box; }
@@ -108,7 +108,7 @@ export function reportPage({ imessage = false }: { imessage?: boolean } = {}): s
 </head>
 <body>
 <header>
-  <h1><span class="dot" aria-hidden="true"></span>FireSight</h1>
+  <h1><span class="dot" aria-hidden="true"></span>Firewatch</h1>
   <p>Report fire or smoke. Say which floor you're on and where you see it.</p>
   <div id="where">
     <label for="a">Building address (optional)</label>
@@ -178,7 +178,7 @@ export function qrPage(url: string, svg: string): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FireSight QR</title>
+<title>Firewatch QR</title>
 <style>
   html, body { margin:0; background:#fff; color:#111; font:18px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
   main { max-width:520px; margin:0 auto; padding:32px 16px; text-align:center; }
@@ -192,7 +192,7 @@ export function qrPage(url: string, svg: string): string {
 <body>
 <main>
   <h1>Report a fire</h1>
-  <p>Scan to report fire or smoke to FireSight from your phone.</p>
+  <p>Scan to report fire or smoke to Firewatch from your phone.</p>
   <div class="qr" role="img" aria-label="QR code for ${esc(url)}">${svg}</div>
   <code>${esc(url)}</code>
 </main>

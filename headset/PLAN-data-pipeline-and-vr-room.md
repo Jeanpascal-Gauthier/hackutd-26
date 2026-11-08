@@ -1,4 +1,4 @@
-# FireSight — Caller Data Pipeline & VR Command Room
+# Firewatch — Caller Data Pipeline & VR Command Room
 
 Working design doc, not yet agreed-on `shared/` contract. Extends (doesn't replace) the
 "How it works" and "Agent tools" sections of the main project plan. Decisions below were
@@ -11,7 +11,7 @@ The call center line (Photon) receives all kinds of emergencies, not just fire. 
 passes happen before anything reaches the simulation:
 
 1. **Is it fire-related at all?** A cheap first classification on the raw call/text. Not
-   fire-related → outside FireSight's scope, no further processing (in a real deployment this
+   fire-related → outside Firewatch's scope, no further processing (in a real deployment this
    would route back to normal dispatch; for the demo we just never see those calls, since the
    demo number only exists for this scenario).
 2. **Which category(ies) does it contain?** One call can contain more than one signal — a

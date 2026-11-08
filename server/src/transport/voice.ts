@@ -3,7 +3,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 
-/** Said when FireSight has nothing to say yet (no reply and no recommendation). */
+/** Said when Firewatch has nothing to say yet (no reply and no recommendation). */
 export const VOICE_FALLBACK = "Help is on the way. Which floor are you on, and which room is the smoke or fire in?";
 
 /**

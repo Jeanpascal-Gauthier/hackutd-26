@@ -1,4 +1,4 @@
-# FireSight demo runbook
+# Firewatch demo runbook
 
 ## CBRE map and action demo (no server required)
 
@@ -45,7 +45,7 @@ Options: `npm run demo -- --mock` (scripted calls, no agent), `-- --no-agent` (l
 Second terminal: `npm run demo:check` (is everything up?), `npm run demo:urls` (URLs again), `npm run demo:reset`.
 
 **How reports get in** (all of them end at the server's ingest path, and the caller gets the reply):
-- **Phone call** to the Photon voice number: the ElevenLabs agent asks what happened and where, puts the emergency on the map (fires, crashes, anything else), and reads FireSight's reply back. Setup in [Phone calls](#phone-calls-elevenlabs).
+- **Phone call** to the Photon voice number: the ElevenLabs agent asks what happened and where, puts the emergency on the map (fires, crashes, anything else), and reads Firewatch's reply back. Setup in [Phone calls](#phone-calls-elevenlabs).
 - **iMessage** to the project's Photon 2.0 line (iPhones; the person texts first). Needs `PHOTON_PROJECT_ID` +
   `PHOTON_API_KEY` in `.env`; the demo's first line says `photon: on (Photon 2.0)`. It polls every 2 s, so no
   webhook or tunnel. Shared iMessage lines are **per person**: each judge's phone must be registered first
@@ -104,7 +104,7 @@ It prints `https://<name>.trycloudflare.com`. The URL changes every restart: upd
 Check it: `curl -XPOST https://<name>.trycloudflare.com/voice/incident -H 'x-firesight-token: <VOICE_TOKEN>' -H 'content-type: application/json' -d '{"type":"crash","address":"Campbell Road and Coit Road, Richardson, TX","description":"two cars crashed","lanes_blocked":"all"}'`
 should answer `"ok":true` with "I have the location as…". Run `npm run demo:reset` afterwards.
 
-**3. ElevenLabs agent** (ElevenAgents → the FireSight agent). Paste these:
+**3. ElevenLabs agent** (ElevenAgents → the Firewatch agent). Paste these:
 
 - **First message:** `FireWatch emergency line. What is your emergency, and where is it?`
 - **System prompt:**

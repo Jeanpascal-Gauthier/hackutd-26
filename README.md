@@ -1,6 +1,6 @@
-# FirstSight
+# Firewatch
 
-HackUTD '26 project. FirstSight gives emergency operators a shared incident workspace for fires, car crashes, and other disruptions. The dispatch console shows an incident queue, Google Maps locations, modeled fire and smoke spread or traffic queues, caller reports, response status, and copyable responder briefs. Street View supplies scene context from existing imagery. Forecasts are illustrative models, and scene imagery does not establish current conditions.
+HackUTD '26 project. Firewatch gives emergency operators a shared incident workspace for fires, car crashes, and other disruptions. The dispatch console shows an incident queue, Google Maps locations, modeled fire and smoke spread or traffic queues, caller reports, response status, and copyable responder briefs. Street View supplies scene context from existing imagery. Forecasts are illustrative models, and scene imagery does not establish current conditions.
 
 The existing building-fire workflow remains available: a shared 3D building and floor plan, room-by-room smoke forecasts, occupancy estimates, and evacuation analysis on the console and Quest headset. The headset and the text/QR agent currently retain that building-focused workflow; the new geographic incident workspace is in `console/` and `server/`. See [console integration and remaining work](console/INTEGRATION.md).
 
@@ -43,7 +43,7 @@ Use `npm run demo -- --mock` for scripted calls on the demo building.
 | `shared/` | The contract: `types.ts`, WebSocket events (`events.ts`), `building.json` |
 | `server/` | Node server on :8080: incident state, WebSocket, `POST /ingest`, spread model, exit finder, mock mode. API in [server/API.md](server/API.md) |
 | `agent/` | Nemotron agent and its five tools, Photon 2.0 line, QR report form |
-| `console/` | FirstSight React + Vite dispatch console: multi-incident Google Maps, forecast overlays, response controls, briefs, and existing three.js building tools |
+| `console/` | Firewatch React + Vite dispatch console: multi-incident Google Maps, forecast overlays, response controls, briefs, and existing three.js building tools |
 | `headset/` | Immersive Web SDK (three.js) mixed-reality app for the Quest |
 | `data/` | Building generator and validator (floor plans, sprinkler and fire-door inspection records, occupancy) |
 
@@ -51,7 +51,7 @@ Use `npm run demo -- --mock` for scripted calls on the demo building.
 
 - **AI:** NVIDIA Nemotron through NVIDIA's OpenAI-compatible API, with tool calling
 - **Texts:** Photon 2.0 (`@photon-ai/api`), iMessage
-- **Phone calls:** a Photon voice number forwards calls over SIP to an ElevenLabs voice agent, which asks for the address and the fire's location and calls the server's `/voice/address` and `/voice/report` tools ([DEMO.md](DEMO.md#phone-calls-elevenlabs), [server/API.md](server/API.md#phone-calls-photon--elevenlabs--firesight))
+- **Phone calls:** a Photon voice number forwards calls over SIP to an ElevenLabs voice agent, which asks for the address and the fire's location and calls the server's `/voice/address` and `/voice/report` tools ([DEMO.md](DEMO.md#phone-calls-elevenlabs), [server/API.md](server/API.md#phone-calls-photon--elevenlabs--firewatch))
 - **Address lookup:** Geoapify geocoding plus OpenStreetMap building outlines (`GEOAPIFY_API_KEY`)
 - **Headset:** Meta Immersive Web SDK, running in the Quest browser over HTTPS
 - **Console:** React, Vite, Google Maps JavaScript API, three.js

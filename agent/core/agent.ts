@@ -89,7 +89,7 @@ export function systemPrompt(building: Building, lookup?: BuildingLookup): strin
     ? " Its room layout and occupant counts are estimated (from its outline, room type and time of day), so room names are generic."
     : "";
   const status = lookupLine(lookup);
-  return `You are the dispatch assistant for FireSight, which handles fire reports for one building at a time.
+  return `You are the dispatch assistant for Firewatch, which handles fire reports for one building at a time.
 Active building: ${where}. ${/^[aeiou]/i.test(b.use) ? "An" : "A"} ${b.use} building with ${b.floors} ${b.floors === 1 ? "floor" : "floors"} (floors ${lowest}-${highest}).${estimated}${status ? `
 ${status}` : ""}
 Each message is from someone reporting fire or smoke, by text or phone call.

@@ -24,7 +24,7 @@ export default defineConfig(({ mode }) => ({
     strictPort: true,
     open: false,
     // The headset loads over https (dev cert); browsers block a secure page
-    // from talking to the FireSight server's plain http/ws on :8080 (mixed
+    // from talking to the Firewatch server's plain http/ws on :8080 (mixed
     // content). Proxy it through Vite's own origin instead of exposing the
     // server directly, so the browser only ever sees https/wss to :8081.
     proxy: {

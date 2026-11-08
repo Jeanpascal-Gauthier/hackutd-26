@@ -23,7 +23,7 @@ export function printUrls({ headset = true, form = true, serverPort = 8080, cons
   const real = lan.filter((a) => !a.virtual);
   const line = "-".repeat(64);
   console.log(line);
-  console.log("FireSight demo URLs");
+  console.log("Firewatch demo URLs");
   console.log(`  Console (this laptop):  http://localhost:${consolePort}`);
   console.log(`  Server health:          http://localhost:${serverPort}/health`);
   if (headset) console.log(`  Headset (this laptop):  https://localhost:${headsetPort}   (accept the self-signed cert)`);

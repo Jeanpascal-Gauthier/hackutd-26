@@ -36,7 +36,7 @@ const FIREFIGHTER_PROGRESSION: { status: FirefighterStatus; afterMs: number }[] 
 
 /**
  * Owns the voice/comms panel roster and the resources panel stats, driven by
- * the real FireSight server over its WebSocket: callers from state.reports,
+ * the real Firewatch server over its WebSocket: callers from state.reports,
  * people-at-risk from state.exits. There is no "firefighter unit" concept in
  * the shared contract (server/API.md: dispatch is logged only, for now), so
  * that half stays a simulated single-unit dispatch, triggered by confirmed server dispatch records. Acceptance and dispatch

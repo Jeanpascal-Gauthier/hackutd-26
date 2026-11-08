@@ -1,5 +1,5 @@
 // Registers a person's phone (or email) on the Photon 2.0 project's shared iMessage line pool, so
-// they can text FireSight. Photon 2.0 shared lines are per person: each handle is assigned to one
+// they can text Firewatch. Photon 2.0 shared lines are per person: each handle is assigned to one
 // of the pool's numbers (using a seat), and that person texts the assigned number.
 // Used by `npm run photon:assign` (assign-cli.ts) and the QR form's "Text us on iMessage" step.
 //
@@ -7,7 +7,7 @@
 import { createHash } from "node:crypto";
 import { Photon } from "@photon-ai/api";
 
-/** One shared-line assignment, as FireSight uses it. */
+/** One shared-line assignment, as Firewatch uses it. */
 export interface Assignment {
   /** The registered handle, normalized (E.164 phone like +14155550123, or an email). */
   handle: string;

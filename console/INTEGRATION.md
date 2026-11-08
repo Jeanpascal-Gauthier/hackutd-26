@@ -9,7 +9,7 @@ The interrupted Claude work was recovered from the local session and agent assig
 - Legacy building reports and decisions remain accessible. Building lookup controls, occupancy, evacuation analysis, floor plans, and 3D models are no longer mounted in the console.
 - Compatibility with existing building-only agent and headset clients. Their code and workflows are not redesigned in this change.
 
-Visible console branding is now **FirstSight** in `src/brand.ts`. Existing package identifiers, protocol headers, and theme storage keys remain compatible.
+Visible console branding is now **Firewatch** in `src/brand.ts`. Existing package identifiers, protocol headers, and theme storage keys remain compatible.
 
 Forecast UI has been removed from the console: map playback, modeled overlays and legends, the impact tool, forecast status messages, and modeled sections in responder briefs. Server forecast contracts remain available for other clients.
 
