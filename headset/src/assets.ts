@@ -1,3 +1,4 @@
+import { createBriefingRoom, createIncidentMarker } from './scene-assets/briefing-room.scene-asset.js';
 import building from '../../shared/building.json';
 import type { Building } from './incident-types.js';
 import { createIncidentBuilding } from './scene-assets/incident-building.scene-asset.js';
@@ -21,6 +22,9 @@ const uikitml = (fileName: string, name: string) => ({
 });
 
 export default defineAssets({
+  'briefing-room': createBriefingRoom(),
+  'fire-eye-marker': createIncidentMarker(),
+  'fire-eye-panel': uikitml('fire-eye.uikitml', 'FireEye Briefing'),
   'incident-building-preview': createIncidentBuilding(building as Building).root,
   'command-desk': createCommandDesk(),
   'command-room': createCommandRoom(),
