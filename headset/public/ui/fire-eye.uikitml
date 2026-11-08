@@ -10,6 +10,9 @@
   .status { background-color: #193b48; border-radius: 12px; padding-top: 16px; padding-right: 16px; padding-bottom: 16px; padding-left: 16px; flex-direction: column; gap: 8px; }
   .status-text { font-size: 22px; font-weight: 700; color: #f0f8fb; }
   .row { flex-direction: row; gap: 8px; justify-content: center; }
+  .list { flex-direction: column; gap: 6px; }
+  .incident-row { min-height: 40px; padding-left: 14px; padding-right: 14px; }
+  .incident-label { font-size: 17px; color: #172331; }
   .button { min-height: 42px; }
   .button-label { font-size: 18px; }
 </style>
@@ -19,6 +22,21 @@
     <span id="fireeye-title" class="title">Incident briefing</span>
     <span id="fireeye-location" class="text">Resolving the active incident location...</span>
     <span id="fireeye-coordinates" class="small">Waiting for a mapped location</span>
+    <div id="fireeye-incidents" class="list" style="display: none">
+      <Button id="fireeye-incident-toggle" class="incident-row"><span id="fireeye-incident-toggle-label" class="incident-label">Select an incident  v</span></Button>
+      <div id="fireeye-incident-menu" class="list" style="display: none">
+      <span id="fireeye-incidents-header" class="small">INCIDENTS</span>
+      <Button id="fireeye-incident-0" class="incident-row" style="display: none"><span id="fireeye-incident-label-0" class="incident-label">Incident</span></Button>
+      <Button id="fireeye-incident-1" class="incident-row" style="display: none"><span id="fireeye-incident-label-1" class="incident-label">Incident</span></Button>
+      <Button id="fireeye-incident-2" class="incident-row" style="display: none"><span id="fireeye-incident-label-2" class="incident-label">Incident</span></Button>
+      <Button id="fireeye-incident-3" class="incident-row" style="display: none"><span id="fireeye-incident-label-3" class="incident-label">Incident</span></Button>
+      <Button id="fireeye-incident-4" class="incident-row" style="display: none"><span id="fireeye-incident-label-4" class="incident-label">Incident</span></Button>
+      <div id="fireeye-incident-pager" class="row" style="display: none">
+        <Button id="fireeye-incident-prev" class="button"><ButtonLabel class="button-label">Previous</ButtonLabel></Button>
+        <Button id="fireeye-incident-next" class="button"><ButtonLabel class="button-label">Next</ButtonLabel></Button>
+      </div>
+      </div>
+    </div>
     <div id="fireeye-status-box" class="status">
       <span id="fireeye-status" class="status-text">Waiting for agent recommendations</span>
       <span id="fireeye-map-status" class="status-text">Connecting to the map...</span>

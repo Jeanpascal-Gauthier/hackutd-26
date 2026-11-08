@@ -1,5 +1,5 @@
-import { Group, LinearFilter, LinearMipmapLinearFilter, Mesh, PerspectiveCamera, Raycaster, Texture, Vector3, type Camera, type WebGLRenderer } from '@iwsdk/core';
-import { TilesRenderer } from '3d-tiles-renderer';
+import { BoxGeometry, Group, LinearFilter, LinearMipmapLinearFilter, Mesh, MeshBasicMaterial, PerspectiveCamera, Raycaster, Texture, Vector3, type Camera, type WebGLRenderer } from '@iwsdk/core';
+import { Scheduler, TilesRenderer } from '3d-tiles-renderer';
 import { GoogleCloudAuthPlugin } from '3d-tiles-renderer/core/plugins';
 import { ReorientationPlugin, TileCompressionPlugin } from '3d-tiles-renderer/plugins';
 import type { FireEyeState } from './fire-eye-state.js';
@@ -9,12 +9,17 @@ const DEG = Math.PI / 180;
 // and horizontal distance keeps the selected coordinate about 45 degrees below eye level.
 const HEIGHT = 250;
 const SIDE_VIEW_DISTANCE = 200;
+// Road strips must read from 250 m up; drawn over the city so terrain never hides them.
+const ROAD_WIDTH = 10;
+const ROAD_MATERIAL = new MeshBasicMaterial({ color: 0xff2020, transparent: true, opacity: 0.9, depthTest: false });
 
 /** Owns one streamed tileset. The observer stays still; changing sides rotates the city. */
 export class FireEyeMap {
   readonly anchor = new Group();
   readonly pivot = new Group();
   readonly tiles = new TilesRenderer();
+  private readonly overlay = new Group();
+  private overlayPaths: { lat: number; lon: number }[][] = [];
   ready = false;
   failed = false;
   surfaceY = 0;
@@ -32,12 +37,14 @@ export class FireEyeMap {
   private anisotropy = 1;
   private samplingConfigured = false;
 
-  constructor(token: string, lat: number, lon: number, private readonly onError: () => void) {
+  constructor(token: string, lat: number, lon: number, private readonly onError: (reason: string) => void) {
     this.anchor.name = 'FireEye city';
     this.pivot.name = 'Incident perspective';
     this.anchor.position.set(0, -HEIGHT, -HEIGHT);
     this.anchor.add(this.pivot);
     this.pivot.add(this.tiles.group);
+    this.overlay.name = 'Incident road overlay';
+    this.pivot.add(this.overlay);
     this.auth = new GoogleCloudAuthPlugin({ apiToken: token, autoRefreshToken: true });
     this.tiles.registerPlugin(this.auth);
     // Distant, oblique roads and roofs need mipmaps; stripping them causes head-motion shimmer.
@@ -74,20 +81,24 @@ export class FireEyeMap {
     this.tiles.setCamera(this.preloadCamera);
     this.tiles.setResolution(this.preloadCamera, 600, 600);
     this.tiles.addEventListener('load-root-tileset', () => { this.rootReady = true; });
-    this.tiles.addEventListener('load-error', () => {
+    this.tiles.addEventListener('load-error', (event: { error?: Error; url?: string | URL }) => {
       // A failed child tile can recover; a rejected root cannot display any map.
-      if (!this.rootReady) this.fail();
+      if (!this.rootReady) this.fail(`tileset rejected: ${event.error?.message ?? 'unknown error'}`);
     });
   }
 
-  private fail(): void {
+  private fail(reason: string): void {
     if (this.failed) return;
     this.failed = true;
-    this.onError();
+    this.onError(reason);
   }
 
   update(delta: number, camera: PerspectiveCamera, renderer: WebGLRenderer): boolean {
     if (this.failed) return false;
+    // The Quest pauses window rAF during WebXR; tile downloads must follow the session's frames.
+    const session = renderer.xr.isPresenting ? renderer.xr.getSession() : null;
+    // Typings omit null, which is how the scheduler returns to window rAF.
+    Scheduler.setXRSession(session as XRSession);
     if (!this.samplingConfigured) {
       this.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
       this.samplingConfigured = true;
@@ -126,7 +137,7 @@ export class FireEyeMap {
     this.tiles.update();
     this.total += delta;
     this.elapsed += delta;
-    if (!this.ready && this.total > 60) { this.fail(); return false; }
+    if (!this.ready && this.total > 60) { this.fail(`no ground found after 60 s (${this.tiles.visibleTiles.size} tiles visible)`); return false; }
     if (this.ready || !this.rootReady || this.elapsed < 0.5) return false;
     this.elapsed = 0;
     // Surface sampling only: this ray never handles user interaction.
@@ -144,6 +155,7 @@ export class FireEyeMap {
     this.surfaceY = altitude;
     this.tiles.group.position.y -= altitude;
     this.ready = true;
+    this.buildOverlay();
     return true;
   }
 
@@ -184,11 +196,47 @@ export class FireEyeMap {
     this.anchor.updateMatrixWorld(true);
   }
 
+  /** Red strips along each path (blocked or queued road). Rebuilt once the surface height is known. */
+  setRoadOverlay(paths: { lat: number; lon: number }[][]): void {
+    this.overlayPaths = paths;
+    this.buildOverlay();
+  }
+
+  private buildOverlay(): void {
+    for (const child of [...this.overlay.children]) { (child as Mesh).geometry.dispose(); this.overlay.remove(child); }
+    if (!this.ready) return;
+    this.tiles.group.updateMatrix();
+    const a = new Vector3(), b = new Vector3();
+    for (const path of this.overlayPaths) {
+      for (let i = 1; i < path.length; i++) {
+        this.toLocal(path[i - 1], a); this.toLocal(path[i], b);
+        const length = a.distanceTo(b);
+        if (length < 0.5) continue;
+        const strip = new Mesh(new BoxGeometry(ROAD_WIDTH, 1, length), ROAD_MATERIAL);
+        strip.position.copy(a).add(b).multiplyScalar(0.5);
+        strip.rotation.y = Math.atan2(b.x - a.x, b.z - a.z);
+        strip.renderOrder = 10;
+        this.overlay.add(strip);
+      }
+    }
+  }
+
+  /** Geographic point at the sampled ground height, in the pivot's frame. */
+  private toLocal(point: { lat: number; lon: number }, target: Vector3): Vector3 {
+    this.tiles.ellipsoid.getCartographicToPosition(point.lat * DEG, point.lon * DEG, this.surfaceY, target);
+    return target.applyMatrix4(this.tiles.group.matrix);
+  }
+
   attribution(): string {
     const entries: { type: string; value: string }[] = [];
     this.tiles.getAttributions(entries);
     return entries.filter(entry => entry.type === 'string').map(entry => entry.value).join(' | ');
   }
 
-  dispose(): void { this.tiles.dispose(); }
+  dispose(): void {
+    this.overlayPaths = [];
+    this.ready = false;
+    this.buildOverlay();
+    this.tiles.dispose();
+  }
 }

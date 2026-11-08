@@ -1,6 +1,6 @@
 import { Box3, Group, Quaternion, Raycaster, UIKitMLAsset, Vector3, VisibilityState, createSystem, type Entity, type Object3D } from '@iwsdk/core';
 import { fetchBuilding, IncidentSocket } from './incident-client.js';
-import type { IncidentState } from './incident-types.js';
+import type { IncidentState, MapIncident } from './incident-types.js';
 import { FireEyeMap } from './fire-eye-map.js';
 import { FireEyeAtmosphere } from './fire-eye-atmosphere.js';
 import { FireEyeStatus, type FireEyePhase, type FireEyeState } from './fire-eye-state.js';
@@ -13,11 +13,17 @@ const HANDS: Hand[] = ['right', 'left'];
 /** Search radius around an aimed point; aiming is coarse at city distance. */
 const AIM_RADIUS_METRES = 50;
 const INCIDENT_RADIUS_METRES = 100;
+/** Incident rows shown per list page; Previous/Next pages through the rest. */
+const LIST_ROWS = 5;
 
 /** Keep the original command desk available at ?view=firewatch. */
 export const fireEyeRequested = (): boolean => new URLSearchParams(location.search).get('view') !== 'firewatch';
 const clean = (text: string): string => text.replace(/[\u2013\u2014]/g, '-').replace(/[^\x20-\x7e]/g, '');
 const validLocation = (lat: number, lon: number): boolean => Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+const shortPlace = (incident: MapIncident): string => {
+  const place = (incident.formatted ?? incident.query ?? '').split(',').slice(0, 2).join(',').trim();
+  return place.length > 44 ? `${place.slice(0, 43)}...` : place;
+};
 
 export class FireEyeSystem extends createSystem({}) {
   private panel: UIKitMLAsset | null = null;
@@ -54,10 +60,17 @@ export class FireEyeSystem extends createSystem({}) {
   private elapsed = 0;
   private countdown = 0;
   private transition = 0;
-  private paused = false;
   private connected = false;
   private manualPreview = false;
   private token = '';
+  private incidents: MapIncident[] = [];
+  private selectedId: string | null = null;
+  private incidentPage = 0;
+  private menuOpen = false;
+  /** The city opens only after an explicit pick, once its map is ready. */
+  private flyWhenReady = false;
+  private overlayKey = '';
+  private overlayMap: FireEyeMap | null = null;
 
   init(): void {
     this.panel = this.world.getSceneObject<UIKitMLAsset>('fire-eye-panel') ?? null;
@@ -92,11 +105,15 @@ export class FireEyeSystem extends createSystem({}) {
     const streetEntities = [this.world.createTransformEntity(this.streetScene.root), this.world.createTransformEntity(this.reticle.root)];
     this.raycaster.far = 3000;
     for (const id of ['fireeye-streetview', 'fireeye-streetview-cancel', 'fireeye-streetview-exit']) this.bind(id, () => this.toggleStreet());
+    for (let i = 0; i < LIST_ROWS; i++) this.bind(`fireeye-incident-${i}`, () => this.pickIncident(this.incidentPage * LIST_ROWS + i));
+    this.bind('fireeye-incident-toggle', () => { this.menuOpen = !this.menuOpen; this.renderIncidents(); });
+    this.bind('fireeye-incident-prev', () => this.pageIncidents(-1));
+    this.bind('fireeye-incident-next', () => this.pageIncidents(1));
     this.bind('fireeye-enter', () => { void this.world.launchXR(); });
     this.bind('fireeye-exit', () => { void this.world.exitXR(); });
     this.bind('fireeye-retry', () => { void this.resolveLocation(); });
-    this.bind('fireeye-back', () => { this.manualPreview = false; this.paused = true; this.showBriefing(); });
-    this.bind('fireeye-resume', () => { this.manualPreview = true; this.paused = false; this.maybeStartCountdown(true); });
+    this.bind('fireeye-back', () => { this.manualPreview = false; this.flyWhenReady = false; this.showBriefing(); });
+    this.bind('fireeye-resume', () => { this.manualPreview = true; this.maybeStartCountdown(true); });
     this.bind('fireeye-more', () => {
       this.actionPage = (this.actionPage + 1) % Math.max(1, Math.ceil(this.actionLines.length / 3));
       this.renderRecommendations();
@@ -119,7 +136,7 @@ export class FireEyeSystem extends createSystem({}) {
       this.set('fireeye-exit', { display: isImmersive ? 'flex' : 'none' });
       if (wasImmersive && !isImmersive) {
         this.manualPreview = false;
-        this.paused = true;
+        this.flyWhenReady = false;
         this.showBriefing();
       }
       wasImmersive = isImmersive;
@@ -164,13 +181,77 @@ export class FireEyeSystem extends createSystem({}) {
   }
 
   private onState(state: IncidentState): void {
+    this.incidents = (state.mapIncidents ?? [])
+      .filter(incident => incident.location && validLocation(incident.location.lat, incident.location.lon));
+    this.renderIncidents();
+    const selected = this.selectedIncident();
     const key = state.building ? `${state.building.id}:${state.building.version}` : 'demo';
-    if (this.buildingKey && key !== this.buildingKey) {
+    if (this.buildingKey && key !== this.buildingKey && !selected) {
       this.actions = []; this.fingerprint = '';
       void this.resolveLocation();
     }
     this.buildingKey = key;
-    const actions = state.recommendation?.actions?.filter(action => typeof action === 'string' && action.trim()) ?? [];
+    this.syncOverlay();
+    const recommendation = selected ? selected.recommendation ?? selected.accepted?.recommendation : state.recommendation;
+    this.setActions(recommendation?.actions?.filter(action => typeof action === 'string' && action.trim()) ?? []);
+  }
+
+  private selectedIncident(): MapIncident | undefined {
+    return this.selectedId ? this.incidents.find(incident => incident.id === this.selectedId) : undefined;
+  }
+
+  /** Fly the city to the picked incident and show its own recommendations. */
+  private pickIncident(index: number): void {
+    const incident = this.incidents[index];
+    if (!incident?.location) return;
+    this.selectedId = incident.id;
+    this.menuOpen = false;
+    this.renderIncidents();
+    const recommendation = incident.recommendation ?? incident.accepted?.recommendation;
+    this.setActions(recommendation?.actions?.filter(action => typeof action === 'string' && action.trim()) ?? []);
+    const here = this.map && this.state.latitude === incident.location.lat && this.state.longitude === incident.location.lon;
+    if (!here) void this.resolveLocation();
+    else this.syncOverlay();
+    this.flyWhenReady = this.state.phase !== 'city';
+    this.maybeStartCountdown();
+  }
+
+  private pageIncidents(step: number): void {
+    const pages = Math.max(1, Math.ceil(this.incidents.length / LIST_ROWS));
+    this.incidentPage = (this.incidentPage + step + pages) % pages;
+    this.renderIncidents();
+  }
+
+  private renderIncidents(): void {
+    const total = this.incidents.length;
+    const pages = Math.max(1, Math.ceil(total / LIST_ROWS));
+    this.incidentPage = Math.min(this.incidentPage, pages - 1);
+    const first = this.incidentPage * LIST_ROWS;
+    this.set('fireeye-incidents', { display: total ? 'flex' : 'none' });
+    this.set('fireeye-incident-menu', { display: this.menuOpen ? 'flex' : 'none' });
+    const selected = this.selectedIncident();
+    const arrow = this.menuOpen ? '^' : 'v';
+    this.set('fireeye-incident-toggle-label', { text: clean(selected ? `${selected.label} - ${shortPlace(selected)}  ${arrow}` : `Select an incident (${total})  ${arrow}`) });
+    this.set('fireeye-incident-pager', { display: total > LIST_ROWS ? 'flex' : 'none' });
+    this.set('fireeye-incidents-header', { text: `INCIDENTS ${first + 1}-${Math.min(total, first + LIST_ROWS)} OF ${total} / PINCH ONE TO VIEW IT` });
+    for (let i = 0; i < LIST_ROWS; i++) {
+      const incident = this.incidents[first + i];
+      this.set(`fireeye-incident-${i}`, { display: incident ? 'flex' : 'none' });
+      if (incident) this.set(`fireeye-incident-label-${i}`, { text: clean(`${incident.id === this.selectedId ? '> ' : ''}${incident.label} - ${shortPlace(incident)}`) });
+    }
+  }
+
+  /** Crashes draw their blocked and queued road segments in red on the city. */
+  private syncOverlay(): void {
+    if (!this.map) return;
+    const paths = this.selectedIncident()?.crash?.segments.map(segment => segment.path) ?? [];
+    const key = JSON.stringify(paths);
+    if (key === this.overlayKey && this.overlayMap === this.map) return;
+    this.overlayKey = key; this.overlayMap = this.map;
+    this.map.setRoadOverlay(paths);
+  }
+
+  private setActions(actions: string[]): void {
     const fingerprint = JSON.stringify(actions);
     if (fingerprint !== this.fingerprint) {
       this.fingerprint = fingerprint;
@@ -239,6 +320,10 @@ export class FireEyeSystem extends createSystem({}) {
         lat = Number(params.get('lat')); lon = Number(params.get('lon'));
         if (!params.has('lat') || !params.has('lon') || !params.get('lat')?.trim() || !params.get('lon')?.trim() || !validLocation(lat, lon)) throw new Error('Invalid coordinates. Supply lat (-90..90) and lon (-180..180).');
         this.set('fireeye-location', { text: 'Explicit map coordinates (URL override)' });
+      } else if (this.selectedIncident()?.location) {
+        const incident = this.selectedIncident()!;
+        ({ lat, lon } = incident.location!);
+        this.set('fireeye-location', { text: clean(`${incident.label} | ${incident.formatted ?? incident.query ?? ''}`) });
       } else {
         const info = await fetchBuilding(abort.signal);
         if (generation !== this.generation) return;
@@ -251,12 +336,14 @@ export class FireEyeSystem extends createSystem({}) {
       this.state.latitude = lat; this.state.longitude = lon;
       this.set('fireeye-coordinates', { text: `${lat.toFixed(6)}, ${lon.toFixed(6)} | Selected location - confirm with caller` });
       this.set('fireeye-map-status', { text: 'Loading Google 3D city...' });
-      const map = new FireEyeMap(this.token, lat, lon, () => {
-        if (generation === this.generation) this.error('Map unavailable. Check Map Tiles API access or the network, then retry.');
+      const map = new FireEyeMap(this.token, lat, lon, reason => {
+        console.error(`FireEye map failed at ${lat}, ${lon}: ${reason}`);
+        if (generation === this.generation) this.error(clean(`Map unavailable (${reason}). Retry.`));
       });
       map.anchor.visible = false;
       this.map = map;
       this.mapEntity = this.world.createTransformEntity(map.anchor);
+      this.syncOverlay();
     } catch (error) {
       if (generation === this.generation) this.error(error instanceof Error && error.name !== 'AbortError' ? error.message : 'Location lookup timed out. Retry when the server is connected.');
     } finally { clearTimeout(timer); }
@@ -288,9 +375,10 @@ export class FireEyeSystem extends createSystem({}) {
   }
 
   private maybeStartCountdown(explicit = false): void {
-    if (!this.map?.ready || this.paused || this.state.phase !== 'briefing') return;
-    if (!explicit && (!this.connected || !this.actions.length)) return;
-    if (document.visibilityState === 'hidden' && !explicit) return;
+    if (!this.map?.ready || this.state.phase !== 'briefing') return;
+    // Never open the city on its own: only a pick (deferred until the map is ready) or Preview city.
+    if (!explicit && !this.flyWhenReady) return;
+    this.flyWhenReady = false;
     this.phase('countdown'); this.countdown = 2;
     this.set('fireeye-status', { text: this.actions.length ? 'Recommendations ready / City opens in 2 seconds' : 'City preview opens in 2 seconds / Waiting for agent' });
     this.set('fireeye-resume', { display: 'none' });
