@@ -25,7 +25,8 @@ export class BuildingSystem extends createSystem({}) {
   private baseColor = new Color('#ece8de');
   private smokeColor = new Color('#555555');
   private fireColor = new Color('#ff5a1f');
-  private routeColor = new Color('#3ddc5a');
+  private routeColor = new Color('#0fbf3a');
+  private routeGlow = new Color('#078a26');
   private mixColor = new Color();
   private socket: IncidentSocket | null = null;
 
@@ -103,9 +104,12 @@ export class BuildingSystem extends createSystem({}) {
       material.opacity = 0.06 + Math.max(roomState.fire, roomState.smoke) * 0.7;
       const clear = roomState.fire < 0.15 && roomState.smoke < 0.15;
       if (routeRooms?.has(roomState.roomId) && clear) {
+        // Near-opaque, glowing green so the route reads clearly against the ivory model.
+        // A softer glow keeps the green saturated instead of tone-mapping toward white.
+        material.opacity = 0.9;
         material.color.copy(this.routeColor);
-        material.emissive.copy(this.routeColor);
-        material.emissiveIntensity = 0.9;
+        material.emissive.copy(this.routeGlow);
+        material.emissiveIntensity = 0.8;
         continue;
       }
       this.mixColor.copy(this.baseColor);
