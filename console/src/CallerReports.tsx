@@ -1,47 +1,64 @@
-// Caller reports for the selected incident. A report tied to a map incident shows that incident's place;
-// a building-pipeline report keeps its room link and location confidence.
-import { useState } from "react";
+// The call queue: every caller report across all incidents, newest first, laid out like the incident
+// queue. Clicking a call selects its incident; the calls of the selected incident are highlighted.
 import type { Report } from "@firewatch/shared/types";
 import { useBuilding } from "./activeBuilding";
 import { PinIcon } from "./Icons";
-import { Empty, PanelHeading, formatTime as time } from "./ui";
+import { KindIcon, sameSelection } from "./IncidentQueue";
+import type { CallEntry, IncidentSelection } from "./incidents";
+import { Ago, Empty, PanelHeading } from "./ui";
 
 const channels: Record<NonNullable<Report["channel"]>, string> = { voice: "Voice", sms: "SMS", form: "Form", console: "Console" };
 
-function ReportCard({ report, place, fresh }: { report: Report; place: string | null; fresh: boolean }) {
+function CallRow({ call, selected, onSelect }: { call: CallEntry; selected: boolean; onSelect: () => void }) {
   const { roomName } = useBuilding();
-  const uncertain = !report.roomId || report.confidence === undefined || report.confidence < 0.7;
-  return (
-    <article className={`report-card${fresh ? " is-new" : ""}`}>
-      <div className="report-meta"><strong>{report.caller}</strong><time dateTime={new Date(report.time).toISOString()}>{time(report.time)}</time></div>
-      <p>{report.text}</p>
-      {report.reply && <div className="caller-reply report-reply"><span className="eyebrow">Caller was told</span><p>{report.reply}</p></div>}
-      <div className="report-location">
-        {report.incidentId
-          ? place && <span className="report-place"><PinIcon size={16} />{place}</span>
-          : <><span className="report-place"><PinIcon size={16} />{roomName(report.roomId)}</span>{uncertain && <span className="pill warn">Location uncertain</span>}</>}
+  const { report, incident, label } = call;
+  // A building-pipeline report points at a room, and says so when it is not sure which.
+  const room = report.incidentId ? null : roomName(report.roomId);
+  const uncertain = !report.incidentId && (!report.roomId || report.confidence === undefined || report.confidence < 0.7);
+  const place = [label, incident?.formatted ?? incident?.query, room].filter(Boolean).join(" · ");
+  const content = (
+    <>
+      <span className="queue-row-top">
+        <KindIcon kind={incident?.kind ?? "fire"} />
+        <strong>{report.caller}</strong>
+        <span className="queue-elapsed"><Ago value={report.time} /></span>
+      </span>
+      <span className="call-text">{report.text}</span>
+      {report.reply && <span className="call-reply"><span className="eyebrow">Caller was told</span> {report.reply}</span>}
+      <span className="queue-place"><PinIcon size={14} />{place}</span>
+      <span className="queue-tags">
         {report.channel && <span className="pill">{channels[report.channel]}</span>}
-      </div>
-    </article>
+        {incident?.phase === "resolved" && <span className="pill safe">Resolved</span>}
+        {uncertain && <span className="pill warn">Location uncertain</span>}
+      </span>
+    </>
   );
+  // A call with nothing to select (its incident is gone) is shown, but is not a button.
+  return call.selection
+    ? <button className={`queue-row${selected ? " selected" : ""}`} aria-pressed={selected} onClick={onSelect}>{content}</button>
+    : <div className="queue-row">{content}</div>;
 }
 
-export function CallerReports({ reports, place, freshIds }: {
-  reports: Report[];
-  /** The selected incident's place, shown on reports tied to it. */
-  place: string | null;
+export function CallerReports({ calls, selection, onSelect, freshIds }: {
+  calls: CallEntry[];
+  selection: IncidentSelection | null;
+  onSelect: (selection: IncidentSelection) => void;
   freshIds: ReadonlySet<string>;
 }) {
-  const [showAll, setShowAll] = useState(false);
-  const newest = [...reports].sort((a, b) => b.time - a.time);
-  const visible = showAll ? newest : newest.slice(0, 3);
   return (
     <section className="panel reports-panel" aria-labelledby="reports-heading">
-      <PanelHeading title="Caller reports" id="reports-heading" count={reports.length} />
-      <div id="report-list" className="report-list" role="log" aria-label="Caller reports" aria-live="polite" aria-relevant="additions">
-        {visible.length ? visible.map((report) => <ReportCard key={report.id} report={report} place={place} fresh={freshIds.has(report.id)} />) : <Empty title="No reports for this incident" text="Caller reports tied to this incident will appear here." />}
-      </div>
-      {reports.length > 3 && <button className="show-reports" aria-expanded={showAll} aria-controls="report-list" onClick={() => setShowAll(!showAll)}>{showAll ? "Show latest 3" : `Show all ${reports.length} reports`}</button>}
+      <PanelHeading title="Caller reports" id="reports-heading" count={calls.length} />
+      {calls.length ? (
+        <div className="call-queue" role="log" aria-label="Caller reports, newest first" aria-live="polite" aria-relevant="additions">
+          <ul className="queue-list">
+            {calls.map((call) => (
+              <li key={call.report.id} className={freshIds.has(call.report.id) ? "is-new" : undefined}>
+                <CallRow call={call} selected={!!call.selection && sameSelection(selection, call.selection)} onSelect={() => call.selection && onSelect(call.selection)} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : <Empty title="No caller reports yet" text="Every call and text will appear here, newest first." />}
     </section>
   );
 }

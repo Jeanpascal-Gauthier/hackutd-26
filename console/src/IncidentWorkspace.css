@@ -21,6 +21,10 @@
 .queue-place svg { flex-shrink: 0; margin-top: 3px; color: var(--text-muted); }
 .queue-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .queue-tags .pill { font-size: 11px; padding: 3px 7px; }
+.call-text, .call-reply { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.call-text { -webkit-line-clamp: 3; font-size: 14px; line-height: 1.45; color: var(--text-secondary); }
+.call-reply { -webkit-line-clamp: 2; font-size: 12px; line-height: 1.4; color: var(--text-muted); }
+.call-queue li.is-new { animation: arrive 1500ms ease-out; }
 .queue-quiet { font-size: 12px; color: var(--text-muted); }
 .queue-resolved { border-top: 1px solid var(--line); }
 .queue-resolved > summary { display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 8px 20px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text-secondary); }

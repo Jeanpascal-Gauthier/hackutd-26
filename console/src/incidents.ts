@@ -1,7 +1,7 @@
 // Pure helpers for the incident queue: what is selected, how entries sort, and who owns the building.
 // The building pipeline (SMS, QR form, MOCK=1) has no MapIncident, so the selection is a small union
 // rather than a fabricated incident.
-import type { IncidentPhase, IncidentSeverity, IncidentState, MapIncident, MapIncidentKind } from "@firewatch/shared/types";
+import type { IncidentPhase, IncidentSeverity, IncidentState, MapIncident, MapIncidentKind, Report } from "@firewatch/shared/types";
 import type { ActiveBuilding } from "./activeBuilding";
 
 export type IncidentSelection = { kind: "map"; id: string } | { kind: "building" };
@@ -80,6 +80,37 @@ export function buildQueue(state: IncidentState | null, active: ActiveBuilding):
   entries.sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || b.time - a.time);
   const isResolved = (entry: QueueEntry) => entry.type === "map" && entry.incident.phase === "resolved";
   return { active: entries.filter((entry) => !isResolved(entry)), resolved: entries.filter(isResolved), building, ownerId: owner?.id ?? null };
+}
+
+/** One call in the call queue: the report, and the incident it belongs to. */
+export interface CallEntry {
+  report: Report;
+  /** Null for a building report no map incident owns, or when the incident is gone. */
+  incident: MapIncident | null;
+  /** What clicking the call selects. Null when there is nothing to select. */
+  selection: IncidentSelection | null;
+  /** "Fire", "Car crash", "Building fire"... */
+  label: string;
+}
+
+/**
+ * Every call, newest first, across all incidents. A building-pipeline report has no incident of its
+ * own: it belongs to the building entry, or to the map incident that owns the active building.
+ */
+export function buildCallQueue(state: IncidentState | null, queue: IncidentQueue): CallEntry[] {
+  const incidents = state?.mapIncidents ?? [];
+  const owner = incidents.find((incident) => incident.id === queue.ownerId) ?? null;
+  return [...(state?.reports ?? [])]
+    .sort((a, b) => b.time - a.time)
+    .map((report): CallEntry => {
+      if (report.incidentId) {
+        const incident = incidents.find((item) => item.id === report.incidentId) ?? null;
+        return { report, incident, selection: incident ? { kind: "map", id: incident.id } : null, label: incident?.label ?? "Incident" };
+      }
+      if (queue.building) return { report, incident: null, selection: { kind: "building" }, label: queue.building.label };
+      if (owner) return { report, incident: owner, selection: { kind: "map", id: owner.id }, label: owner.label };
+      return { report, incident: null, selection: null, label: "Building fire" };
+    });
 }
 
 /** No usable location yet, or nobody has been sent. */
