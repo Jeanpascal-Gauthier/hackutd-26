@@ -46,8 +46,12 @@ network connectivity.
 provider is visible without exposing credentials. If it reports `overpass` and address search
 succeeds but the outline lookup times out, remove `BUILDING_PROVIDER=overpass` or set it to
 `geoapify` and restart. Switching public Overpass hosts or increasing timeouts does not fix an
-unresponsive backend. Overpass requests identify the project and allow up to 30 seconds for
-the public instance's queue and response. Provider failures keep the current incident active;
+unresponsive backend. Overpass requests identify the project, allow up to 45 seconds of query
+execution, and use a 60-second HTTP deadline to accommodate queueing and response transfer.
+These limits apply to both outline and interior requests; Geoapify retains its 10-second deadline.
+Address lookup starts asynchronously, so clients receive progress updates while the provider runs.
+Overpass is an explicitly selectable provider, not an automatic fallback after a Geoapify error.
+Provider failures keep the current incident active;
 they are never interpreted as an empty map.
 
 | Endpoint | Purpose |

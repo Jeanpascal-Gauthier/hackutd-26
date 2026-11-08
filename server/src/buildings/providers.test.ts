@@ -79,6 +79,50 @@ test("Overpass requests use bounded generated queries and preserve raw room fiel
   assert.equal(result[0].tags?.["level:ref"], "G");
 });
 
+test("Overpass outline and interior lookups accept responses taking 32 seconds", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const signals: AbortSignal[] = [];
+  const fetch: typeof globalThis.fetch = async (_, init) => {
+    signals.push(init!.signal!);
+    const query = new URLSearchParams(String(init?.body)).get("data")!;
+    const executionSeconds = Number(/\[timeout:(\d+)\]/.exec(query)?.[1]);
+    assert.ok(executionSeconds >= 32 && executionSeconds < 60, "execution budget must allow slow queries and leave time for transfer");
+    return new Promise<Response>((resolve) => setTimeout(() => resolve(Response.json({ elements: [] })), 32000));
+  };
+  const pending = Promise.all([
+    nearbyBuildings({ lat: 32, lon: -96 }, undefined, { fetch }),
+    buildingInteriors({ south: 32, west: -96, north: 32.001, east: -95.999 }, undefined, { fetch }),
+  ]);
+  t.mock.timers.tick(32000);
+  assert.deepEqual(await pending, [[], []]);
+  assert.ok(signals.every(signal => !signal.aborted));
+});
+
+test("Overpass still aborts stalled requests at 60 seconds and honors explicit shorter timeouts", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const timeoutMs of [undefined, 5000]) {
+    let signal: AbortSignal | null = null;
+    const rejected = assert.rejects(nearbyBuildings({ lat: 32, lon: -96 }, undefined, {
+      timeoutMs,
+      fetch: async (_, init) => { signal = init!.signal!; return new Promise<Response>(() => {}); },
+    }), (e: unknown) => e instanceof BuildingApiError && e.status === 504 && e.code === "provider_timeout");
+    t.mock.timers.tick((timeoutMs ?? 60000) - 1);
+    assert.equal((signal as AbortSignal | null)?.aborted, false);
+    t.mock.timers.tick(1);
+    await rejected;
+    assert.equal((signal as AbortSignal | null)?.aborted, true);
+  }
+});
+
+test("Geoapify retains its 10-second default deadline", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const rejected = assert.rejects(searchAddresses("Dallas", "key", {
+    fetch: async () => new Promise<Response>(() => {}),
+  }), (e: unknown) => e instanceof BuildingApiError && e.code === "provider_timeout");
+  t.mock.timers.tick(10000);
+  await rejected;
+});
+
 test("Overpass never repairs a polygon by discarding invalid vertices or topology", async () => {
   for (const element of [
     { type: "way", id: 1, tags: { building: "yes" }, geometry: [{ lat: 32, lon: -96 }, { lat: 999, lon: -96 }, { lat: 32.001, lon: -95.999 }, { lat: 32, lon: -96 }] },
