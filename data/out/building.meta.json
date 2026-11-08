@@ -595,155 +595,62 @@
   },
   "occupants": [
     {
-      "room": "1-break",
-      "count": 6,
-      "flags": []
-    },
-    {
-      "room": "1-conf",
-      "count": 9,
-      "flags": []
-    },
-    {
       "room": "1-east",
-      "count": 2,
-      "flags": []
-    },
-    {
-      "room": "1-office",
-      "count": 9,
-      "flags": [
-        "child"
-      ]
-    },
-    {
-      "room": "1-west",
-      "count": 10,
-      "flags": []
-    },
-    {
-      "room": "2-break",
-      "count": 2,
-      "flags": []
-    },
-    {
-      "room": "2-conf",
-      "count": 8,
-      "flags": []
-    },
-    {
-      "room": "2-east",
-      "count": 8,
+      "count": 3,
       "flags": [
         "mobility"
       ]
     },
     {
-      "room": "2-office",
-      "count": 7,
+      "room": "1-office",
+      "count": 3,
       "flags": []
     },
     {
-      "room": "2-west",
+      "room": "2-east",
       "count": 4,
+      "flags": [
+        "child"
+      ]
+    },
+    {
+      "room": "2-west",
+      "count": 3,
       "flags": []
     },
     {
       "room": "3-break",
-      "count": 2,
-      "flags": [
-        "child"
-      ]
+      "count": 4,
+      "flags": []
     },
     {
       "room": "3-east",
-      "count": 2,
-      "flags": []
-    },
-    {
-      "room": "3-office",
-      "count": 5,
-      "flags": []
-    },
-    {
-      "room": "3-west",
-      "count": 7,
-      "flags": []
-    },
-    {
-      "room": "4-break",
-      "count": 9,
+      "count": 3,
       "flags": []
     },
     {
       "room": "4-conf",
-      "count": 3,
-      "flags": [
-        "child"
-      ]
-    },
-    {
-      "room": "4-east",
-      "count": 9,
-      "flags": []
-    },
-    {
-      "room": "4-office",
-      "count": 9,
-      "flags": []
-    },
-    {
-      "room": "4-west",
-      "count": 7,
-      "flags": []
-    },
-    {
-      "room": "5-break",
-      "count": 8,
-      "flags": [
-        "child"
-      ]
-    },
-    {
-      "room": "5-conf",
       "count": 4,
       "flags": []
     },
     {
       "room": "5-east",
-      "count": 2,
-      "flags": []
-    },
-    {
-      "room": "5-office",
       "count": 4,
       "flags": []
     },
     {
       "room": "5-west",
-      "count": 8,
-      "flags": [
-        "mobility"
-      ]
+      "count": 3,
+      "flags": []
     },
     {
       "room": "6-break",
-      "count": 6,
+      "count": 4,
       "flags": []
     },
     {
       "room": "6-east",
-      "count": 8,
-      "flags": []
-    },
-    {
-      "room": "6-office",
-      "count": 7,
-      "flags": []
-    },
-    {
-      "room": "6-west",
-      "count": 10,
+      "count": 1,
       "flags": []
     },
     {
@@ -752,13 +659,8 @@
       "flags": []
     },
     {
-      "room": "7-conf",
-      "count": 4,
-      "flags": []
-    },
-    {
       "room": "7-east",
-      "count": 10,
+      "count": 2,
       "flags": []
     },
     {
@@ -767,65 +669,40 @@
       "flags": []
     },
     {
-      "room": "7-west",
-      "count": 5,
-      "flags": []
-    },
-    {
-      "room": "8-break",
-      "count": 2,
-      "flags": []
-    },
-    {
       "room": "8-conf",
-      "count": 2,
-      "flags": []
-    },
-    {
-      "room": "8-east",
-      "count": 7,
+      "count": 4,
       "flags": []
     },
     {
       "room": "8-office",
-      "count": 3,
+      "count": 5,
+      "flags": []
+    },
+    {
+      "room": "8-west",
+      "count": 1,
       "flags": [
         "mobility"
       ]
     },
     {
-      "room": "8-west",
-      "count": 8,
-      "flags": []
-    },
-    {
-      "room": "9-break",
-      "count": 10,
-      "flags": []
-    },
-    {
       "room": "9-east",
-      "count": 6,
+      "count": 2,
       "flags": []
     },
     {
       "room": "9-office",
-      "count": 10,
-      "flags": []
-    },
-    {
-      "room": "9-west",
-      "count": 5,
+      "count": 3,
       "flags": []
     },
     {
       "room": "10-break",
-      "count": 7,
+      "count": 2,
       "flags": []
     },
     {
       "room": "10-conf",
-      "count": 8,
+      "count": 3,
       "flags": []
     },
     {
@@ -836,63 +713,290 @@
       ]
     },
     {
-      "room": "10-office",
-      "count": 7,
-      "flags": [
-        "child"
-      ]
-    },
-    {
-      "room": "10-west",
-      "count": 7,
-      "flags": [
-        "child"
-      ]
-    },
-    {
-      "room": "11-break",
-      "count": 6,
-      "flags": []
-    },
-    {
-      "room": "11-conf",
-      "count": 9,
-      "flags": []
-    },
-    {
-      "room": "11-east",
-      "count": 10,
-      "flags": []
-    },
-    {
       "room": "11-office",
-      "count": 4,
+      "count": 6,
       "flags": []
     },
     {
       "room": "11-west",
-      "count": 5,
-      "flags": []
-    },
-    {
-      "room": "12-break",
-      "count": 5,
-      "flags": []
+      "count": 2,
+      "flags": [
+        "child"
+      ]
     },
     {
       "room": "12-east",
-      "count": 10,
+      "count": 3,
       "flags": []
     },
     {
       "room": "12-office",
-      "count": 6,
+      "count": 3,
       "flags": []
+    }
+  ],
+  "recordsAsOf": "2026-11-07",
+  "inspections": [
+    {
+      "id": "insp-001",
+      "system": "sprinkler",
+      "location": "1-hall",
+      "lastInspected": "2026-09-09",
+      "status": "ok",
+      "source": "Sprinkler contractor log",
+      "note": "Floor 1 zone: quarterly check passed, control valve open and sealed."
     },
     {
-      "room": "12-west",
-      "count": 2,
-      "flags": []
+      "id": "insp-002",
+      "system": "sprinkler",
+      "location": "2-hall",
+      "lastInspected": "2026-09-10",
+      "status": "ok",
+      "source": "Sprinkler contractor log",
+      "note": "Floor 2 zone: quarterly check passed, control valve open and sealed."
+    },
+    {
+      "id": "insp-003",
+      "system": "sprinkler",
+      "location": "3-hall",
+      "lastInspected": "2026-09-11",
+      "status": "ok",
+      "source": "Sprinkler contractor log",
+      "note": "Floor 3 zone: quarterly check passed, control valve open and sealed."
+    },
+    {
+      "id": "insp-004",
+      "system": "sprinkler",
+      "location": "4-hall",
+      "lastInspected": "2026-09-12",
+      "status": "ok",
+      "source": "Sprinkler contractor log",
+      "note": "Floor 4 zone: quarterly check passed, control valve open and sealed."
+    },
+    {
+      "id": "insp-005",
+      "system": "sprinkler",
+      "location": "5-hall",
+      "lastInspected": "2026-09-13",
+      "status": "ok",
+      "source": "Sprinkler contractor log",
+      "note": "Floor 5 zone: quarterly check passed, control valve open and sealed."
+    },
+    {
+      "id": "insp-006",
+      "system": "sprinkler",
+      "location": "6-hall",
+      "lastInspected": "2026-09-14",
+      "status": "ok",
+      "source": "Sprinkler contractor log",
+      "note": "Floor 6 zone: quarterly check passed, control valve open and sealed."
+    },
+    {
+      "id": "insp-007",
+      "system": "sprinkler",
+      "location": "7-hall",
+      "lastInspected": "2026-03-12",
+      "status": "overdue",
+      "source": "Sprinkler contractor log",
+      "note": "Floor 7 zone: Q2 and Q3 quarterly checks skipped while the break-room renovation was open; due since 2026-06-12."
+    },
+    {
+      "id": "insp-008",
+      "system": "sprinkler",
+      "location": "8-hall",
+      "lastInspected": "2026-09-16",
+      "status": "ok",
+      "source": "Sprinkler contractor log",
+      "note": "Floor 8 zone: quarterly check passed, control valve open and sealed."
+    },
+    {
+      "id": "insp-009",
+      "system": "sprinkler",
+      "location": "9-hall",
+      "lastInspected": "2026-09-17",
+      "status": "ok",
+      "source": "Sprinkler contractor log",
+      "note": "Floor 9 zone: quarterly check passed, control valve open and sealed."
+    },
+    {
+      "id": "insp-010",
+      "system": "sprinkler",
+      "location": "10-hall",
+      "lastInspected": "2026-09-18",
+      "status": "ok",
+      "source": "Sprinkler contractor log",
+      "note": "Floor 10 zone: quarterly check passed, control valve open and sealed."
+    },
+    {
+      "id": "insp-011",
+      "system": "sprinkler",
+      "location": "11-hall",
+      "lastInspected": "2026-09-19",
+      "status": "ok",
+      "source": "Sprinkler contractor log",
+      "note": "Floor 11 zone: quarterly check passed, control valve open and sealed."
+    },
+    {
+      "id": "insp-012",
+      "system": "sprinkler",
+      "location": "12-hall",
+      "lastInspected": "2026-09-20",
+      "status": "ok",
+      "source": "Sprinkler contractor log",
+      "note": "Floor 12 zone: quarterly check passed, control valve open and sealed."
+    },
+    {
+      "id": "insp-013",
+      "system": "sprinkler",
+      "location": "7-break",
+      "lastInspected": "2026-03-12",
+      "status": "overdue",
+      "source": "Sprinkler contractor log",
+      "note": "Branch valve closed for ceiling work (renovation permit 2026-03-12); impairment tag never cleared, room unprotected since. Quarterly check overdue since 2026-06-12."
+    },
+    {
+      "id": "insp-014",
+      "system": "fire-door",
+      "location": "stair-a",
+      "lastInspected": "2026-08-20",
+      "status": "ok",
+      "source": "Fire door survey",
+      "note": "All 12 stair A doors (60 min) self-close and latch."
+    },
+    {
+      "id": "insp-015",
+      "system": "fire-door",
+      "location": "stair-b",
+      "lastInspected": "2026-08-20",
+      "status": "ok",
+      "source": "Fire door survey",
+      "note": "All 12 stair B doors (60 min) self-close and latch at survey time."
+    },
+    {
+      "id": "insp-016",
+      "system": "fire-door",
+      "location": "7-stair-b",
+      "lastInspected": "2026-10-21",
+      "status": "failed",
+      "source": "Security patrol report",
+      "note": "Floor 7 stair B door found wedged open, closer arm disconnected. Reported; no work order raised."
+    },
+    {
+      "id": "insp-017",
+      "system": "fire-door",
+      "location": "elev-1",
+      "lastInspected": "2026-08-20",
+      "status": "ok",
+      "source": "Fire door survey",
+      "note": "Elevator lobby doors (60 min) close and latch on all floors."
+    },
+    {
+      "id": "insp-018",
+      "system": "stair-pressurization",
+      "location": "stair-a",
+      "lastInspected": "2026-05-18",
+      "status": "ok",
+      "source": "Building management system",
+      "note": "Annual fan test passed: 50 Pa across closed doors."
+    },
+    {
+      "id": "insp-019",
+      "system": "stair-pressurization",
+      "location": "stair-b",
+      "lastInspected": "2025-10-02",
+      "status": "overdue",
+      "source": "Building management system",
+      "note": "Annual fan test due 2026-10-02 not done; fan left on manual after a controller swap, will not start on alarm."
+    },
+    {
+      "id": "insp-020",
+      "system": "fire-alarm",
+      "location": "1-hall",
+      "lastInspected": "2026-06-30",
+      "status": "ok",
+      "source": "Fire alarm panel log",
+      "note": "Annual panel test passed; monitoring link verified."
+    },
+    {
+      "id": "insp-021",
+      "system": "fire-alarm",
+      "location": "7-hall",
+      "lastInspected": "2026-06-30",
+      "status": "ok",
+      "source": "Fire alarm panel log",
+      "note": "Floor 7 detectors and pull station tested."
+    },
+    {
+      "id": "insp-022",
+      "system": "standpipe",
+      "location": "stair-a",
+      "lastInspected": "2026-04-09",
+      "status": "ok",
+      "source": "Sprinkler contractor log",
+      "note": "Hose valve on every landing tested; crews connect here."
+    },
+    {
+      "id": "insp-023",
+      "system": "standpipe",
+      "location": "stair-b",
+      "lastInspected": "2026-04-09",
+      "status": "ok",
+      "source": "Sprinkler contractor log",
+      "note": "Hose valve on every landing tested."
+    },
+    {
+      "id": "insp-024",
+      "system": "emergency-lighting",
+      "location": "stair-a",
+      "lastInspected": "2026-10-01",
+      "status": "ok",
+      "source": "Facilities work orders",
+      "note": "Monthly 30-second test passed on all landings."
+    },
+    {
+      "id": "insp-025",
+      "system": "emergency-lighting",
+      "location": "stair-b",
+      "lastInspected": "2026-10-01",
+      "status": "ok",
+      "source": "Facilities work orders",
+      "note": "Monthly 30-second test passed on all landings."
+    },
+    {
+      "id": "insp-026",
+      "system": "elevator-recall",
+      "location": "elev-1",
+      "lastInspected": "2026-07-15",
+      "status": "ok",
+      "source": "Elevator contractor log",
+      "note": "Phase I recall to floor 1 on alarm verified."
+    },
+    {
+      "id": "insp-027",
+      "system": "smoke-damper",
+      "location": "4-hall",
+      "lastInspected": "2025-08-11",
+      "status": "overdue",
+      "source": "Building management system",
+      "note": "Hallway smoke damper missed its annual cycle test (due 2026-08-11)."
+    },
+    {
+      "id": "insp-028",
+      "system": "smoke-damper",
+      "location": "7-hall",
+      "lastInspected": "2026-02-03",
+      "status": "ok",
+      "source": "Building management system",
+      "note": "Hallway smoke damper cycled; closes on alarm."
+    },
+    {
+      "id": "insp-029",
+      "system": "smoke-damper",
+      "location": "10-hall",
+      "lastInspected": "2026-02-03",
+      "status": "ok",
+      "source": "Building management system",
+      "note": "Hallway smoke damper cycled; closes on alarm."
     }
   ],
   "demo": {
@@ -902,7 +1006,9 @@
       "Fire starts in 7-break: ordinary (unrated) door, open, sprinkler impaired.",
       "7-hall connects to 7-stair-b through a 60-min rated door that is propped OPEN (link.closed=false; verticals[stair-b].doorsClosed=false). Smoke enters stair B, rises and pools at the top: stair B is smoke-logged on floors 7-12 by about minute 11-17.",
       "Stair A and the elevator have rated doors that are closed (link.closed=true, doorsClosed=true): they stay smoke-free until a door is opened or a rating (60 min) is exceeded.",
-      "10-east holds 6 occupants including a mobility-limited person; their nearest stair (B) fills with smoke, so they must use stair A."
+      "Evening, about 7 pm: 9 people on floor 7 and 40 on floors 8-12 (mobility-limited occupants in 8-west and 10-east, a child in 11-west). Floors 1-6 are lightly occupied.",
+      "10-east holds 6 occupants including a mobility-limited person; their nearest stair (B) fills with smoke, so they must use stair A.",
+      "Inspection records explain the failure chain: 7-break's sprinkler branch valve was closed for a renovation in March 2026 and never reopened (quarterly checks overdue since); stair B's floor-7 door was reported wedged open on 2026-10-21 with no work order; stair B's pressurization fan missed its October 2026 annual test. Stair A's doors, pressurization and standpipe are all current."
     ]
   }
 }

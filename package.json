@@ -10,6 +10,10 @@
   ],
   "scripts": {
     "dev": "concurrently -k -n server,console -c red,cyan \"npm run dev -w server\" \"npm run dev -w console\"",
+    "demo": "node scripts/demo.mjs",
+    "demo:urls": "node scripts/urls.mjs",
+    "demo:check": "node scripts/check.mjs",
+    "demo:reset": "node scripts/reset.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {

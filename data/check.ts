@@ -1,6 +1,17 @@
 // Pure validation: returns a list of error strings (empty = valid).
 import type { Building } from "@firewatch/shared/types";
-import { ELEVATOR, FLAGS, FLOORS, SHAFTS, STAIRS, roomId, type BuildingMeta } from "./model.ts";
+import {
+  ELEVATOR,
+  FLAGS,
+  FLOORS,
+  INSPECTION_STATUSES,
+  RECORDS_AS_OF,
+  SHAFTS,
+  STAIRS,
+  SYSTEMS,
+  roomId,
+  type BuildingMeta,
+} from "./model.ts";
 
 export function validate(b: Building, meta: BuildingMeta): string[] {
   const errs: string[] = [];
@@ -87,7 +98,7 @@ export function validate(b: Building, meta: BuildingMeta): string[] {
   }
   for (const r of b.rooms) if (!reach.has(r.id)) err(`unreachable room: ${r.id}`);
 
-  // Meta: doors, sprinklers, occupants
+  // Meta: doors, sprinklers, occupants, inspections
   const doorLinks = new Map(b.links.filter((l) => l.kind === "door").map((l) => [[l.a, l.b].sort().join("|"), l]));
   for (const d of meta.doors) {
     const l = doorLinks.get([d.a, d.b].sort().join("|"));
@@ -110,6 +121,30 @@ export function validate(b: Building, meta: BuildingMeta): string[] {
     for (const f of o.flags) if (!(FLAGS as readonly string[]).includes(f)) err(`${o.room}: unknown flag ${f}`);
     if (o.flags.length > 0 && o.count === 0) err(`${o.room}: flags set on empty room`);
   }
+
+  // Inspections: known systems/statuses, real locations, valid dates, and they explain the data
+  const insSeen = new Set<string>();
+  const isDate = (s: string) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s)) && new Date(s).toISOString().slice(0, 10) === s;
+  if (!isDate(meta.recordsAsOf) || meta.recordsAsOf > RECORDS_AS_OF) err(`bad recordsAsOf: ${meta.recordsAsOf}`);
+  const inspections = Array.isArray(meta.inspections) ? meta.inspections : (err("missing inspections list"), []);
+  for (const r of inspections) {
+    if (insSeen.has(r.id)) err(`duplicate inspection id: ${r.id}`);
+    insSeen.add(r.id);
+    if (!rooms.has(r.location) && !vids.has(r.location)) err(`${r.id}: unknown location ${r.location}`);
+    if (!(SYSTEMS as readonly string[]).includes(r.system)) err(`${r.id}: unknown system ${r.system}`);
+    if (!(INSPECTION_STATUSES as readonly string[]).includes(r.status)) err(`${r.id}: bad status ${r.status}`);
+    if (!isDate(r.lastInspected)) err(`${r.id}: invalid date ${r.lastInspected}`);
+    else if (r.lastInspected > meta.recordsAsOf) err(`${r.id}: date ${r.lastInspected} after ${meta.recordsAsOf}`);
+    if (!r.note) err(`${r.id}: empty note`);
+  }
+  const flagged = (system: string, locs: string[]) =>
+    inspections.some((r) => r.system === system && locs.includes(r.location) && r.status !== "ok");
+  for (const [id, s] of Object.entries(meta.sprinklers))
+    if (s === "impaired" && !flagged("sprinkler", [id])) err(`impaired sprinkler without an overdue/failed record: ${id}`);
+  for (const l of b.links)
+    if (l.kind === "door" && l.fireRated && !l.closed && !flagged("fire-door", [l.a, l.b]))
+      err(`rated door open without a fire-door record: ${l.a} <-> ${l.b}`);
 
   // Demo ids
   for (const id of ["7-break", "10-east", meta.demo.origin]) if (!rooms.has(id)) err(`demo room missing: ${id}`);
