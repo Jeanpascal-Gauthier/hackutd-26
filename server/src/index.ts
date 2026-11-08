@@ -1,12 +1,12 @@
 // FireSight server entry. Wiring only (app.ts): one live incident (real spread model) behind ws +
-// http on one port. MOCK=1 (default) also replays scripted calls through it on the demo building;
-// MOCK=0 waits for real reports, and an address lookup can switch the incident to a real building.
+// http on one port. Live mode (default) waits for reports and supports building address lookup;
+// MOCK=1 opts into scripted calls on the demo building.
 import { createApp } from "./app.ts";
 import { AGENT_EXPORT, guardAgent, loadAgentProcessor, loadAgentReset, loadOccupancyEstimator } from "./agent/bridge.ts";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const TICK_MS = Number(process.env.TICK_MS ?? 2000);
-const MOCK = process.env.MOCK !== "0"; // default on: scripted demo calls, no API keys needed
+const MOCK = process.env.MOCK === "1"; // scripted demo is opt-in; dev supports address lookup
 const AUTOPLAY = process.env.AUTOPLAY !== "0";
 const AGENT = process.env.AGENT === "1"; // opt in: Nemotron agent (needs NVIDIA_API_KEY in .env)
 const VOICE_TOKEN = process.env.VOICE_TOKEN?.trim() || undefined; // enables POST /voice/report and /voice/address

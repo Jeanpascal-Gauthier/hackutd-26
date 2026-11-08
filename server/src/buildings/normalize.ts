@@ -176,11 +176,13 @@ export function createLocationOnlyRecord(location: Coordinates, fetchedAt: strin
   };
 }
 
-export function normalizeOsmBuilding(buildingId: string, elements: OsmElement[], location: Coordinates, fetchedAt: string): BuildingRecord | null {
+export function normalizeOsmBuilding(buildingId: string, elements: OsmElement[], location: Coordinates, fetchedAt: string, footprint?: AreaGeometry): BuildingRecord | null {
   const byId = new Map(elements.map((element) => [osmId(element), element]));
   const building = byId.get(buildingId);
   if (!building || !isBuilding(building)) return null;
   const base = candidate(building, byId, location, fetchedAt);
+  // Managed OSM providers supply GeoJSON directly rather than OSM member ways.
+  if (footprint) base.footprint = footprint;
   const buildingTags = building.tags ?? {};
   const memberIds = new Set((building.members ?? []).map((m) => osmId({ type: m.type, id: m.ref })));
   const identifiers = new Set([String(building.id), buildingId, `${building.type}/${building.id}`, buildingTags.ref, buildingTags.name].filter(Boolean));

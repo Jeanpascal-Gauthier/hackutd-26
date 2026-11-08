@@ -64,10 +64,16 @@ export function validOverpassUrl(input: string): string {
 }
 
 async function queryOverpass(query: string, url: string, options: RequestOptions): Promise<OsmElement[]> {
+  // Public instances may queue a request before its query execution timeout starts.
   const body = await providerJson(validOverpassUrl(url), "OpenStreetMap", {
-    method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+    method: "POST", headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      accept: "application/json",
+      // Public instances may reject the generic Node fetch user agent.
+      "user-agent": "FireWatch/0.0.0 (HackUTD building lookup prototype)",
+    },
     body: new URLSearchParams({ data: query }).toString(),
-  }, options);
+  }, { ...options, timeoutMs: options.timeoutMs ?? 30000 });
   return elements(body);
 }
 

@@ -63,6 +63,9 @@ test("provider timeout, rate limit and response size have controlled errors", as
 test("Overpass requests use bounded generated queries and preserve raw room fields", async () => {
   const queries: string[] = [];
   const fetch: typeof globalThis.fetch = async (_, init) => {
+    const headers = new Headers(init?.headers);
+    assert.match(headers.get("user-agent") ?? "", /^FireWatch\//);
+    assert.equal(headers.get("content-type"), "application/x-www-form-urlencoded");
     queries.push(new URLSearchParams(String(init?.body)).get("data")!);
     return Response.json({ elements: [{ type: "node", id: 12, lat: 32, lon: -96, tags: { indoor: "room", name: "Coffee Room", level: "0", "level:ref": "G" } }] });
   };

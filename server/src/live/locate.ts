@@ -12,7 +12,7 @@ export interface Located {
 
 const ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth", "eleventh", "twelfth"];
 const NUMBERS = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
-const WORD = `(\\d{1,2}|${NUMBERS.join("|")})`;
+const WORD = `(\\d+|${NUMBERS.join("|")})`;
 
 /** Ordered: the first match wins, so specific places come before plain "east"/"west". */
 const PLACES: [RegExp, string][] = [
@@ -39,12 +39,12 @@ function toNumber(s: string | undefined): number | undefined {
 /** Floor the caller mentions, in order of how explicit the phrasing is. */
 export function parseFloor(text: string, floors: number): number | undefined {
   const t = text.toLowerCase();
-  const ordinal = `(\\d{1,2}(?:st|nd|rd|th)?|${ORDINALS.join("|")})`;
+  const ordinal = `(\\d+(?:st|nd|rd|th)?|${ORDINALS.join("|")})`;
   const candidates = [
     t.match(new RegExp(`\\b(?:floor|fl\\.?|level)\\s*(?:number\\s*)?${WORD}\\b`))?.[1], // "floor 7"
     t.match(new RegExp(`\\b${ordinal}\\s+(?:floor|fl|level)\\b`))?.[1]?.replace(/^(\d+)(st|nd|rd|th)$/, "$1"), // "7th floor"
     t.match(new RegExp(`\\b(?:on|from)\\s+(?:the\\s+)?${ordinal}\\b`))?.[1]?.replace(/^(\d+)(st|nd|rd|th)$/, "$1"), // "on 7", "on the seventh"
-    t.match(/\b(\d{1,2})(?:st|nd|rd|th)\b/)?.[1], // any "7th"
+    t.match(/\b(\d+)(?:st|nd|rd|th)\b/)?.[1], // any "7th"
     ORDINALS.find((o) => new RegExp(`\\b${o}\\b`).test(t)), // any "seventh"
   ];
   for (const c of candidates) {

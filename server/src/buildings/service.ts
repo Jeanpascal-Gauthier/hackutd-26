@@ -1,6 +1,7 @@
 import type { BuildingCandidate, BuildingRecord, Coordinates } from "./types.ts";
 import { createLocationOnlyRecord, getBuildingBounds, listOsmBuildingCandidates, normalizeOsmBuilding, osmId } from "./normalize.ts";
 import { searchAddresses, validateSearch, type AddressCandidate } from "./geoapify.ts";
+import { getGeoapifyBuildings } from "./geoapifyBuildings.ts";
 import { buildingInteriors, DEFAULT_OVERPASS_URL, nearbyBuildings, validateLocation, validOverpassUrl } from "./overpass.ts";
 import { BuildingApiError, isObject, type Fetch } from "./provider.ts";
 
@@ -13,6 +14,7 @@ export interface ResolveInput extends Coordinates { buildingId?: string }
 export interface BuildingServiceOptions {
   geoapifyApiKey?: string;
   overpassApiUrl?: string;
+  buildingProvider?: "geoapify" | "overpass";
   fetch?: Fetch;
   now?: () => number;
   timeoutMs?: number;
@@ -31,6 +33,9 @@ function validateBuildingId(value: unknown): string {
 export function createBuildingService(options: BuildingServiceOptions = {}) {
   const apiKey = options.geoapifyApiKey ?? process.env.GEOAPIFY_API_KEY;
   const overpassUrl = options.overpassApiUrl ?? process.env.OVERPASS_API_URL ?? DEFAULT_OVERPASS_URL;
+  const buildingProvider = options.buildingProvider ?? process.env.BUILDING_PROVIDER ?? (apiKey?.trim() ? "geoapify" : "overpass");
+  if (buildingProvider !== "geoapify" && buildingProvider !== "overpass")
+    throw new BuildingApiError(503, "building_provider_not_configured", "BUILDING_PROVIDER must be geoapify or overpass.");
   const now = options.now ?? Date.now;
   const ttl = options.cacheTtlMs ?? 15 * 60 * 1000;
   const lookupTtl = options.lookupTtlMs ?? 5 * 60 * 1000;
@@ -39,6 +44,7 @@ export function createBuildingService(options: BuildingServiceOptions = {}) {
   const buildings = new Map<string, Entry<BuildingRecord>>();
   const searches = new Map<string, Entry<AddressCandidate[]>>();
   const nearby = new Map<string, Entry<Awaited<ReturnType<typeof nearbyBuildings>>>>();
+  const managed = new Map<string, Entry<BuildingRecord[]>>();
   const inFlight = new Map<string, Promise<BuildingResponse>>();
 
   const cacheInfo = (entry: Entry<unknown>): CacheInfo => ({
@@ -68,6 +74,29 @@ export function createBuildingService(options: BuildingServiceOptions = {}) {
     // Coordinate precision is shared by the query and cache: an adjacent selection cannot reuse
     // a different coordinate's candidate set simply because of rounded cache keys.
     const key = `${location.lat},${location.lon}`;
+    if (buildingProvider === "geoapify") {
+      let lookup = managed.get(key);
+      if (!lookup || lookup.expiresAt <= now()) {
+        const fetchedAt = now();
+        const records = await getGeoapifyBuildings(location, apiKey, new Date(fetchedAt).toISOString(), requestOptions);
+        lookup = put(managed, key, records, lookupTtl, fetchedAt);
+      }
+      const candidates: BuildingCandidate[] = lookup.value.map(({ id, name, address, location, footprint, heightMeters, floorsAboveGround, tags, source }) =>
+        ({ id, name, address, location, footprint, heightMeters, floorsAboveGround, tags, source }));
+      if (!candidates.length) {
+        if (buildingId)
+          throw new BuildingApiError(409, "building_not_at_location", "The selected building was not found at this location. Search again.", { candidates });
+        const record = createLocationOnlyRecord(location, new Date(lookup.fetchedAt).toISOString());
+        record.warnings.push("Geoapify returned no containing building at this point; nearby buildings were not searched.");
+        return response(put(buildings, record.id, record, ttl, lookup.fetchedAt));
+      }
+      if (!buildingId)
+        throw new BuildingApiError(409, "building_selection_required", "Confirm the building before loading its details.", { candidates });
+      const record = lookup.value.find((candidate) => candidate.id === buildingId);
+      if (!record)
+        throw new BuildingApiError(409, "building_not_at_location", "The selected building is not one of this location's candidates.", { candidates });
+      return response(put(buildings, record.id, record, ttl, lookup.fetchedAt));
+    }
     let lookup = nearby.get(key);
     if (!lookup || lookup.expiresAt <= now())
       lookup = put(nearby, key, await nearbyBuildings(location, overpassUrl, requestOptions), lookupTtl);
@@ -139,6 +168,7 @@ export function createBuildingService(options: BuildingServiceOptions = {}) {
     return { ok: true as const, providers: {
       geoapify: { configured: Boolean(apiKey?.trim()), requiresApiKey: true },
       overpass: { configured: overpassConfigured, requiresApiKey: false },
+      buildingLookup: { provider: buildingProvider, configured: buildingProvider === "geoapify" ? Boolean(apiKey?.trim()) : overpassConfigured },
     } };
   }
 

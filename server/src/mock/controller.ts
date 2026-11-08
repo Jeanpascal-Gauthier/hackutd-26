@@ -1,4 +1,4 @@
-// MOCK mode (the default for `npm run dev`): a scripted demo on top of the real live incident.
+// MOCK=1: an opt-in scripted demo on top of the real live incident.
 // Replay starts with no fire, delivers the scripted calls through the real ingest path at their
 // minutes, and advances the forecast one minute per tick up to minute 30. Scrubbing (setSimMinute)
 // goes straight to the live incident; scripted calls arrive only on ticks.
