@@ -71,6 +71,8 @@ export function App() {
   const selectedOccupants = state?.occupants.filter((occupant) => occupant.room === selectedRoom) ?? [];
   const selectedPeople = roomPeople(state, selectedRoom ?? "");
   const floorStatus = statusByFloor(state, active);
+  // A failed lookup leaves the demo building active. It must never pass for the caller's building.
+  const noBuilding = state?.buildingLookup?.status === "failed" && active.isDemo;
 
   // Another building became active: clear the selection and show the fire floor (else the lowest floor).
   const geometrySeen = useRef(active.geometryKey);
@@ -217,25 +219,25 @@ export function App() {
           <div className="workspace-column">
             <section id="building-view" className="panel primary-map" aria-labelledby="building-heading">
               <div className="panel-heading map-heading">
-                <h2 id="building-heading">{active.isDemo ? "Building" : active.profile.name} · Floor {floor}</h2>
-                <div className="view-switch" role="group" aria-label="Building view">
+                <h2 id="building-heading">{noBuilding ? "Building" : <>{active.isDemo ? "Building" : active.profile.name} · Floor {floor}</>}</h2>
+                {!noBuilding && <div className="view-switch" role="group" aria-label="Building view">
                   <button aria-pressed={view === "3d"} onClick={() => setView("3d")}>3D building</button>
                   <button aria-pressed={view === "plan"} onClick={() => setView("plan")}>Floor plan</button>
-                </div>
+                </div>}
               </div>
-              <div className="floor-toolbar"><span className="floor-strip-label">Floor</span><div ref={floorTabs} className="floor-tabs" role="group" aria-label="Select floor">
+              {!noBuilding && <div className="floor-toolbar"><span className="floor-strip-label">Floor</span><div ref={floorTabs} className="floor-tabs" role="group" aria-label="Select floor">
                 {floors.map((value) => {
                   const status = floorStatus.get(value);
                   return <button key={value} className={floor === value ? "active" : ""} aria-pressed={floor === value} aria-label={`Floor ${value}${status ? `, ${status}` : ""}`} onClick={() => selectFloor(value)}>{status && <i className={`floor-dot ${status}`} aria-hidden="true" />}{value}</button>;
                 })}
-              </div></div>
-              {view === "plan" ? (
+              </div></div>}
+              {noBuilding ? <Empty title="No building found for this address" text="Correct the address in the building panel and try again." /> : view === "plan" ? (
                 <>
                   <FloorPlan floor={floor} state={state} selectedRoom={selectedRoom} onSelect={setSelectedRoom} drawRoute={routeDraw} />
                   <div className="map-legend"><span><i className="swatch fire" />Fire</span><span><i className="swatch smoke" />Smoke</span><span><i className="swatch route" />Suggested route</span><span><i className="swatch route-active" />Accepted route</span></div>
                 </>
               ) : <Building3DPanel state={state} floor={floor} selectedRoom={selectedRoom} onSelectRoom={focusRoom} onSelectFloor={selectFloor} onUnavailable={() => { setView("plan"); setNotice({ kind: "info", text: "3D view is unavailable on this device. Showing the floor plan." }); }} />}
-              {selected ? (
+              {noBuilding ? null : selected ? (
                 <div className="room-inspector">
                   <div className="inspector-heading"><h3>{selected.name}</h3><button className="text-button" onClick={() => setSelectedRoom(null)}>Close details</button></div>
                   <div className="room-stats"><span>Fire<strong>{selectedState ? `${Math.round(selectedState.fire * 100)}%` : "No data"}</strong></span><span>Smoke<strong>{selectedState ? `${Math.round(selectedState.smoke * 100)}%` : "No data"}</strong></span><span>Occupants<strong>{selectedPeople.known ? <PeopleCount count={selectedPeople.count} estimated={selectedPeople.estimated} unit="" /> : "Unrecorded"}</strong></span></div>
