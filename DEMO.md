@@ -55,8 +55,10 @@ Second terminal: `npm run demo:check` (is everything up?), `npm run demo:urls` (
    Open the printed `https://<random>.trycloudflare.com` on the Quest. It has a real certificate, so there's no warning.
    The page, `/fs-api` and the `/fs-ws` WebSocket all go through this one tunnel (tested). The URL changes every
    time you restart it. Ctrl+C stops it.
-3. **USB cable.** Needs `adb` (Android platform-tools, not installed on this laptop) and Quest developer mode.
-   `adb devices` then `adb reverse tcp:8081 tcp:8081`, and open `https://localhost:8081` on the Quest.
+3. **USB cable.** Needs `adb` (Android platform-tools) and Quest developer mode.
+   `adb devices`, then `adb reverse tcp:8081 tcp:8081` and `adb reverse tcp:8080 tcp:8080`, and open
+   `https://localhost:8081/?server=http://localhost:8080` on the Quest. The `?server=` part matters: the Quest browser
+   rejects the self-signed certificate for WebSockets, so without it the page loads but receives no live updates.
 
 Reuse one headset tab on the Quest; reload it rather than opening new tabs.
 
@@ -67,7 +69,7 @@ npm run demo:reset
 This clears the incident (`POST /live/reset`: no fire, no reports). In `--mock` mode it also restarts the scripted calls.
 The console has no reset button in live mode (its Reset/Replay buttons only appear in mock mode).
 Reload the Quest tab if it looks stale (the Engine 3 progress shown there is simulated locally).
-Note: with the headset open, a new recommendation is **accepted and dispatched automatically** by the headset.
+The headset never accepts or dispatches on its own: the commander presses **Accept recommendation** and **Dispatch crew** on the Resources panel.
 
 ## If something breaks
 - **Agent slow or down (NVIDIA API):** nothing to do. Each report that errors or takes over 20 s falls back to the

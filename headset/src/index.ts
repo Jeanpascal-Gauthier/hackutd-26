@@ -16,6 +16,8 @@ World.create(
   document.getElementById('scene-container') as HTMLDivElement,
   projectOptions,
 ).then((world) => {
+  // Dev-only handle for scripted on-device checks over adb/CDP; stripped from production builds.
+  if (import.meta.env.DEV) (window as unknown as { __world?: unknown }).__world = world;
   world.registerSystem(PanelSystem);
   world.registerSystem(BuildingSystem);
   world.registerSystem(BuildingManipulationSystem, { priority: -2.9 });
