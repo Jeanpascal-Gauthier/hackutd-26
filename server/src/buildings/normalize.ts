@@ -107,6 +107,17 @@ function height(value: string | undefined): number | null {
 }
 const isBuilding = (e: OsmElement) => e.type !== "node" && !!e.tags && ((!!e.tags.building && e.tags.building !== "no") || (!!e.tags["building:part"] && e.tags["building:part"] !== "no"));
 
+/** Tags a candidate keeps: what the building is, how tall, what it's called. */
+const CANDIDATE_TAGS = [
+  "building", "building:use", "building:levels", "building:levels:underground", "building:flats", "roof:levels", "height",
+  "amenity", "shop", "office", "tourism", "healthcare", "leisure", "name", "official_name", "operator",
+];
+function candidateTags(tags: Record<string, string>): Record<string, string> {
+  const kept: Record<string, string> = {};
+  for (const key of CANDIDATE_TAGS) if (typeof tags[key] === "string" && tags[key].trim()) kept[key] = tags[key].slice(0, 200);
+  return kept;
+}
+
 function candidate(element: OsmElement, byId: Map<string, OsmElement>, location: Coordinates, fetchedAt: string): BuildingCandidate {
   const tags = element.tags ?? {};
   const footprint = areaGeometry(element, byId);
@@ -118,7 +129,7 @@ function candidate(element: OsmElement, byId: Map<string, OsmElement>, location:
     id: osmId(element), name: clean(tags.name), address: clean(tags["addr:full"]) ?? clean([street, tags["addr:city"], tags["addr:postcode"]].filter(Boolean).join(", ")),
     location: midpoint ?? (element.center && validCoordinate(element.center) ? element.center : location), footprint,
     heightMeters: height(tags.height), floorsAboveGround: Number.isInteger(floors) && floors > 0 && floors <= 500 ? floors : null,
-    source: source(element, fetchedAt),
+    tags: candidateTags(tags), source: source(element, fetchedAt),
   };
 }
 

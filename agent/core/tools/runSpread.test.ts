@@ -40,6 +40,9 @@ function fakeServer(opts: { forecastFails?: boolean; buildingFails?: boolean } =
       if (!f) throw new Error(`no fixture for ${origin}`);
       return { ...f, minutes: minutes ?? 30 };
     },
+    async lookupAddress() {
+      throw new Error("not used");
+    },
   };
   return { server, calls };
 }
@@ -109,7 +112,7 @@ test("an explicit origin arg wins over run.origin", async () => {
 test("unknown origin -> error naming the format, no server call", async () => {
   const { server, calls } = fakeServer();
   const out = await run({ origin: "break room" }, envWith(server));
-  assert.match(out.error ?? "", /unknown room id .*7-break/);
+  assert.match(out.error ?? "", /unknown room id "break room".*e.g. "1-break"/);
   assert.equal(calls.forecast.length, 0);
 });
 

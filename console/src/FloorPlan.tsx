@@ -1,6 +1,6 @@
 import { lazy, Suspense, useId, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import building from "@firewatch/shared/building.json";
-import type { IncidentState } from "@firewatch/shared/types";
+import type { IncidentState, Link, Room } from "@firewatch/shared/types";
+import { roomPeople, useBuilding } from "./activeBuilding";
 import { hasHeat, heatSources, type HeatRect } from "./heat/sources";
 
 // WebGL heat layer (three.js) loads in its own chunk, only once a floor has fire or smoke.
@@ -35,7 +35,6 @@ const CORE_AREA = 12;
 /** Margin (SVG units) around the building for grid bubbles and dimension strings. */
 const MARGIN = { top: 34, left: 34, right: 40, bottom: 44 };
 
-type Room = (typeof building.rooms)[number];
 type Line = { orient: "h" | "v"; at: number; lo: number; hi: number };
 type Opening = Line & { into: Room; kind: "swing" | "slide" };
 
@@ -43,16 +42,19 @@ type Opening = Line & { into: Room; kind: "swing" | "slide" };
  * Rooms on this floor that are part of an evacuation route (hall + clear stairwell), mapped to their
  * draw order: rank of the earliest position they take in any exit.route (hall first, then stair).
  */
-function routeRooms(state: IncidentState | null, floor: number): Map<string, number> {
+function routeRooms(state: IncidentState | null, floor: number, roomsById: Map<string, Room>): Map<string, number> {
   const position = new Map<string, number>();
   for (const exit of state?.exits ?? []) (exit.route ?? []).forEach((id, index) => {
-    if (id.startsWith(`${floor}-`)) position.set(id, Math.min(index, position.get(id) ?? Infinity));
+    if (roomsById.get(id)?.floor === floor) position.set(id, Math.min(index, position.get(id) ?? Infinity));
   });
   const ranks = [...new Set(position.values())].sort((a, b) => a - b);
   return new Map([...position].map(([id, index]) => [id, ranks.indexOf(index)]));
 }
 
-const shortName = (label: string) => label.replace(/^Stairwell /, "Stair ").replace(/ (Office|Room)$/, "").replace(/^Conference$/, "Conf.").replace(/^Elevator$/, "Elev.");
+const shortName = (label: string) => label.replace(/^Stairwell /, "Stair ").replace(/ (Office|Room)$/, "").replace(/^Conference$/, "Conf.").replace(/^Elevator$/, "Elev.")
+  .replace(/^Apartment /, "Apt. ").replace(/^Classroom /, "Class ").replace(/^Hallway$/, "Hall").replace(/^Conference Room /, "Conf. ");
+const isStairRoom = (room: Room) => room.kind ? room.kind === "stair" : /stair/.test(room.id);
+const isLiftRoom = (room: Room) => room.kind ? room.kind === "elevator" : /elev/.test(room.id);
 
 /** Room fill: a mix of the empty-room colour toward fire or smoke by intensity, so both themes work. */
 function roomFill(fire: number, smoke: number) {
@@ -94,10 +96,10 @@ function intersect(lo: number, hi: number, spans: [number, number][]): [number, 
  * Wall centre-lines for one floor, split into exterior (no room across) and interior pieces, with door
  * openings cut out. Interior walls come only from bottom/right edges so shared walls are drawn once.
  */
-function floorWalls(rooms: Room[], floor: number) {
+function floorWalls(rooms: Room[], links: Link[], floor: number) {
   const byId = new Map(rooms.map((room) => [room.id, room]));
   const openings: Opening[] = [];
-  for (const link of building.links) {
+  for (const link of links) {
     if (link.kind !== "door") continue;
     const a = byId.get(link.a), b = byId.get(link.b);
     if (!a || !b || a.floor !== floor) continue;
@@ -108,7 +110,7 @@ function floorWalls(rooms: Room[], floor: number) {
     const width = Math.min(DOOR_WIDTH, (hi - lo) * 0.6);
     // Doors into wide rooms sit near a corner, as drawn on real plans; narrow cores get a centred door.
     const start = hi - lo > 3 ? lo + 0.45 : (lo + hi - width) / 2;
-    openings.push({ ...shared.line, lo: start, hi: start + width, into: b, kind: /elev/.test(b.id) ? "slide" : "swing" });
+    openings.push({ ...shared.line, lo: start, hi: start + width, into: b, kind: isLiftRoom(b) ? "slide" : "swing" });
   }
   const cut = (line: Line, pieces: [number, number][], thickness: number) => pieces.flatMap(([lo, hi]) =>
     // Openings are widened by half a wall so square line caps land exactly on the jambs.
@@ -125,11 +127,24 @@ function floorWalls(rooms: Room[], floor: number) {
   return { exterior, interior, openings };
 }
 
-/** Structural grid: distinct edge coordinates of the main (non-core) rooms. */
-function gridLines(rooms: Room[]) {
+/**
+ * Structural grid: distinct edge coordinates of the main (non-core) rooms. Lines closer than `minGap`
+ * metres to the previous kept line are dropped, so generated layouts with many small rooms keep
+ * readable bubbles (the outermost line is always kept).
+ */
+function gridLines(rooms: Room[], minGap: number) {
   const main = rooms.filter((room) => room.w * room.d >= CORE_AREA);
   const unique = (values: number[]) => [...new Set(values.map((v) => Math.round(v * 1000) / 1000))].sort((a, b) => a - b);
-  return { xs: unique(main.flatMap((room) => [room.x, room.x + room.w])), zs: unique(main.flatMap((room) => [room.z, room.z + room.d])) };
+  const thin = (values: number[]) => {
+    const kept: number[] = [];
+    values.forEach((value, index) => {
+      const last = kept[kept.length - 1];
+      if (last === undefined || value - last >= minGap) kept.push(value);
+      else if (index === values.length - 1 && kept.length > 1) kept[kept.length - 1] = value;
+    });
+    return kept;
+  };
+  return { xs: thin(unique(main.flatMap((room) => [room.x, room.x + room.w]))), zs: thin(unique(main.flatMap((room) => [room.z, room.z + room.d]))) };
 }
 
 const metres = (value: number) => `${value.toFixed(value % 1 ? 1 : 0)} m`;
@@ -137,14 +152,19 @@ const metres = (value: number) => `${value.toFixed(value % 1 ? 1 : 0)} m`;
 export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = null }: FloorPlanProps) {
   const uid = useId().replace(/:/g, "");
   const svgRef = useRef<SVGSVGElement>(null);
-  const rooms = building.rooms.filter((room) => room.floor === floor);
-  const minX = Math.min(...rooms.map((room) => room.x));
-  const minZ = Math.min(...rooms.map((room) => room.z));
-  const maxX = Math.max(...rooms.map((room) => room.x + room.w));
-  const maxZ = Math.max(...rooms.map((room) => room.z + room.d));
+  const active = useBuilding();
+  const rooms = active.rooms.filter((room) => room.floor === floor);
+  // The real footprint (generated buildings) draws the envelope; otherwise the rooms' bounding box does.
+  const outline = active.profile.outline && active.profile.outline.length >= 3 ? active.profile.outline : null;
+  const minX = Math.min(...rooms.map((room) => room.x), ...(outline ?? []).map(([x]) => x));
+  const minZ = Math.min(...rooms.map((room) => room.z), ...(outline ?? []).map(([, z]) => z));
+  const maxX = Math.max(...rooms.map((room) => room.x + room.w), ...(outline ?? []).map(([x]) => x));
+  const maxZ = Math.max(...rooms.map((room) => room.z + room.d), ...(outline ?? []).map(([, z]) => z));
   const width = maxX - minX;
   const depth = maxZ - minZ;
-  const scale = Math.min(640 / Math.max(width, 1), 360 / Math.max(depth, 1));
+  // Landscape plans (the demo) fit a 640 x 360 sheet; deep footprints get a taller sheet so rooms stay legible.
+  const portrait = depth > width * 0.75;
+  const scale = Math.min(640 / Math.max(width, 1), (portrait ? 560 : 360) / Math.max(depth, 1));
   const viewW = width * scale + MARGIN.left + MARGIN.right;
   const viewH = depth * scale + MARGIN.top + MARGIN.bottom;
   // Rendered CSS px per SVG unit. Text sizes divide by this so labels stay legible at any width.
@@ -163,7 +183,7 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
   }, [viewW, viewH]);
 
   if (!rooms.length) return <p className="empty-state">No geometry available for this floor.</p>;
-  const route = routeRooms(state, floor);
+  const route = routeRooms(state, floor, active.roomsById);
   const routeActive = !!state?.accepted;
   const drawing = routeActive && drawRoute !== null;
   const origin = state?.origin;
@@ -175,15 +195,23 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
 
   const px = (x: number) => MARGIN.left + (x - minX) * scale;
   const py = (z: number) => MARGIN.top + (z - minZ) * scale;
-  const { exterior, interior, openings } = floorWalls(rooms, floor);
-  const grid = gridLines(rooms);
+  const { exterior, interior, openings } = floorWalls(rooms, active.building.links, floor);
   // Annotation text is decorative: fixed to the margin so the viewBox never depends on the measured scale.
   const annot = Math.min(11, Math.max(8, 9.5 / k));
   const bubble = Math.min(10, Math.max(7.5, 8 / k));
+  const grid = gridLines(rooms, (bubble * 2 + 6) / scale);
+  // Background grid: 1 m squares (5 m major) unless metres get too small on screen for large footprints.
+  const step = scale >= 8 ? 1 : scale >= 3 ? 2 : 5;
+  const cell = scale * step;
+  const outlinePath = outline ? `M ${outline.map(([x, z]) => `${px(x)} ${py(z)}`).join(" L ")} Z` : null;
+  // Room edges with nothing across are the envelope only when there is no mapped outline.
+  const envelopeWall = outline ? INTERIOR_WALL : EXTERIOR_WALL;
   const toSeg = (line: Line) => line.orient === "h"
     ? { x1: px(line.lo), y1: py(line.at), x2: px(line.hi), y2: py(line.at) }
     : { x1: px(line.at), y1: py(line.lo), x2: px(line.at), y2: py(line.hi) };
   const dimY = py(maxZ) + 16;
+  // Bay dimensions only where their text fits between the ticks (always true on the demo building).
+  const fitsBay = (length: number) => length * scale >= metres(length).length * annot * CHAR_EM + 4;
   const dimX = px(maxX) + 16;
 
   // Per-room geometry, state and label layout, shared by the stacked layers below.
@@ -193,7 +221,7 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
     const smoke = Math.min(1, Math.max(0, current?.smoke ?? 0));
     const selected = selectedRoom === room.id;
     const stroke = selected ? "var(--accent)" : "transparent";
-    const count = state?.occupants.filter((item) => item.room === room.id).reduce((sum, item) => sum + item.count, 0) ?? 0;
+    const { count, estimated } = roomPeople(state, room.id);
     const x = px(room.x);
     const y = py(room.z);
     const w = room.w * scale;
@@ -201,15 +229,15 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
     // Retain forecast/acceptance animation, without marking hazardous or unknown segments green.
     const onRoute = route.has(room.id) && current !== undefined && fire <= 0.01 && smoke < 0.3;
     const isOrigin = origin?.roomId === room.id;
-    const isStair = /stair/.test(room.id);
-    const isLift = /elev/.test(room.id);
+    const isStair = isStairRoom(room);
+    const isLift = isLiftRoom(room);
     const label = room.name.replace(/^Floor \d+ /, "");
     const status = current ? `fire ${Math.round(fire * 100)} percent, smoke ${Math.round(smoke * 100)} percent` : "awaiting incident data";
     const wallInset = (INTERIOR_WALL * scale) / 2 + 1.5;
 
     // Text layout: stack label + readings if they fit, else one joined line, else label only, else nothing.
     const readings = [fire > 0.01 && `Fire ${Math.round(fire * 100)}%`, smoke > 0.01 && `Smoke ${Math.round(smoke * 100)}%`].filter(Boolean) as string[];
-    if (count > 0) readings.push(`${count} people`);
+    if (count > 0) readings.push(`${estimated ? "≈ " : ""}${count} people`);
     const innerW = w - inset * 2 - 4;
     const innerH = d - inset * 2 - 4;
     const fits = (text: string, size: number, em = CHAR_EM) => text.length * em * size <= innerW;
@@ -234,24 +262,29 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
     const along = w >= d ? "x" : "z";
     const flight = along === "x" ? w : d;
     const treads = Array.from({ length: Math.max(0, Math.floor((flight - 2 * wallInset) / (TREAD * scale))) }, (_, i) => wallInset + (i + 0.5) * TREAD * scale);
-    return { room, current, fire, smoke, selected, stroke, count, x, y, w, d, onRoute, isOrigin, isStair, isLift, status, wallInset, placed, along, treads };
+    return { room, current, fire, smoke, selected, stroke, count, estimated, x, y, w, d, onRoute, isOrigin, isStair, isLift, status, wallInset, placed, along, treads };
   });
   const heat = heatSources(rooms, state);
   const heatBounds: HeatRect = [minX - MARGIN.left / scale, minZ - MARGIN.top / scale, maxX + MARGIN.right / scale, maxZ + MARGIN.bottom / scale];
 
   return <div className="floor-plan">
     <p className="map-caption"><span>Floor {floor} plan · select a room to inspect</span>{originRoom && origin && <span>Likely origin: <strong>{originRoom.name.replace(/^Floor \d+ /, "")}</strong> ({Math.round(origin.confidence * 100)}%)</span>}</p>
-    <svg ref={svgRef} className="map blueprint" viewBox={`0 0 ${viewW} ${viewH}`} role="group" aria-label={`Floor ${floor} interactive room map`}>
+    <svg ref={svgRef} className="map blueprint" viewBox={`0 0 ${viewW} ${viewH}`} style={portrait ? { maxHeight: "min(640px, 75vh)" } : undefined} role="group" aria-label={`Floor ${floor} interactive room map`}>
       <defs>
-        <pattern id={`${uid}-minor`} width={scale} height={scale} x={MARGIN.left} y={MARGIN.top} patternUnits="userSpaceOnUse">
-          <path d={`M ${scale} 0 H 0 V ${scale}`} className="bp-grid-minor" />
+        <pattern id={`${uid}-minor`} width={cell} height={cell} x={MARGIN.left} y={MARGIN.top} patternUnits="userSpaceOnUse">
+          <path d={`M ${cell} 0 H 0 V ${cell}`} className="bp-grid-minor" />
         </pattern>
-        <pattern id={`${uid}-major`} width={scale * 5} height={scale * 5} x={MARGIN.left} y={MARGIN.top} patternUnits="userSpaceOnUse">
-          <rect width={scale * 5} height={scale * 5} fill={`url(#${uid}-minor)`} />
-          <path d={`M ${scale * 5} 0 H 0 V ${scale * 5}`} className="bp-grid-major" />
+        <pattern id={`${uid}-major`} width={cell * 5} height={cell * 5} x={MARGIN.left} y={MARGIN.top} patternUnits="userSpaceOnUse">
+          <rect width={cell * 5} height={cell * 5} fill={`url(#${uid}-minor)`} />
+          <path d={`M ${cell * 5} 0 H 0 V ${cell * 5}`} className="bp-grid-major" />
         </pattern>
+        {outlinePath && <pattern id={`${uid}-void`} width={7} height={7} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1={0} y1={0} x2={0} y2={7} className="bp-void-hatch" />
+        </pattern>}
       </defs>
       <rect width="100%" height="100%" fill={`url(#${uid}-major)`} />
+      {/* Floor slab inside the mapped footprint; space no room covers reads as hatched, unmodelled area. */}
+      {outlinePath && <g className="bp-slab" aria-hidden="true"><path className="bp-slab-fill" d={outlinePath} /><path d={outlinePath} fill={`url(#${uid}-void)`} /></g>}
 
       {/* Structural grid: dash-dot centre lines with lettered/numbered bubbles, as on a GA plan. */}
       <g className="bp-annotation" aria-hidden="true">
@@ -267,9 +300,9 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
         </g>)}
       </g>
 
-      {layout.map(({ room, current, fire, smoke, selected, stroke, count, x, y, w, d, onRoute, isOrigin, isStair, isLift, status, wallInset, along, treads }) =>
-        <g key={room.id} role="button" tabIndex={0} data-room-id={room.id} data-origin={isOrigin || undefined} data-route={onRoute && routeActive || undefined} aria-pressed={selected} aria-label={`${room.name}, ${status}, ${count} recorded occupants${isOrigin ? ", suspected fire origin" : ""}${onRoute ? routeActive ? ", accepted route segment" : ", forecast route segment" : ""}`} className={`map-room ${selected ? "is-selected" : ""}`} onClick={() => onSelect(room.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(room.id); } }}>
-          <title>{room.name} · {room.id}{current ? ` · fire ${Math.round(fire * 100)}% · smoke ${Math.round(smoke * 100)}%` : " · No incident data"}{count ? ` · ${count} people` : ""}{onRoute ? " · evacuation route" : ""}</title>
+      {layout.map(({ room, current, fire, smoke, selected, stroke, count, estimated, x, y, w, d, onRoute, isOrigin, isStair, isLift, status, wallInset, along, treads }) =>
+        <g key={room.id} role="button" tabIndex={0} data-room-id={room.id} data-origin={isOrigin || undefined} data-route={onRoute && routeActive || undefined} aria-pressed={selected} aria-label={`${room.name}, ${status}, ${estimated ? `about ${count} estimated` : `${count} recorded`} occupants${isOrigin ? ", suspected fire origin" : ""}${onRoute ? routeActive ? ", accepted route segment" : ", forecast route segment" : ""}`} className={`map-room ${selected ? "is-selected" : ""}`} onClick={() => onSelect(room.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(room.id); } }}>
+          <title>{room.name} · {room.id}{current ? ` · fire ${Math.round(fire * 100)}% · smoke ${Math.round(smoke * 100)}%` : " · No incident data"}{count ? ` · ${estimated ? `≈ ${count} people (estimated)` : `${count} people`}` : ""}{onRoute ? " · evacuation route" : ""}</title>
           {/* Fill and stroke as styles so scrubbing the timeline cross-fades them; :hover / :focus-visible override the stroke. Walls are drawn over this separately. */}
           <rect className="room-shape" x={x + wallInset} y={y + wallInset} width={Math.max(1, w - wallInset * 2)} height={Math.max(1, d - wallInset * 2)} strokeWidth={selected ? 2.5 : 1} style={{ fill: roomFill(fire, smoke), stroke }} />
           {isStair && <g className="bp-fixture" aria-hidden="true">
@@ -295,7 +328,8 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
       {/* Walls (solid poché, heavier on the envelope) and doors with swing arcs, drawn over the rooms. */}
       <g className="bp-walls" aria-hidden="true">
         {interior.map((line, index) => <line key={`i${index}`} className="bp-wall" {...toSeg(line)} strokeWidth={INTERIOR_WALL * scale} />)}
-        {exterior.map((line, index) => <line key={`e${index}`} className="bp-wall" {...toSeg(line)} strokeWidth={EXTERIOR_WALL * scale} />)}
+        {exterior.map((line, index) => <line key={`e${index}`} className="bp-wall" {...toSeg(line)} strokeWidth={envelopeWall * scale} />)}
+        {outlinePath && <path className="bp-wall bp-envelope" d={outlinePath} strokeWidth={EXTERIOR_WALL * scale} />}
         {openings.map((door, index) => {
           const into = door.into;
           // Unit normal pointing into the room the door opens into.
@@ -341,11 +375,12 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
         <line x1={px(minX)} y1={dimY + 16} x2={px(maxX)} y2={dimY + 16} />
         {grid.xs.map((x) => <path key={`tx${x}`} className="bp-tick" d={`M ${px(x) - 3} ${dimY + 3} l 6 -6 M ${px(x)} ${py(maxZ) + 3} V ${dimY + 5}`} />)}
         {[minX, maxX].map((x) => <path key={`to${x}`} className="bp-tick" d={`M ${px(x) - 3} ${dimY + 19} l 6 -6 M ${px(x)} ${dimY + 10} V ${dimY + 21}`} />)}
-        {grid.xs.slice(1).map((x, index) => <text key={`lx${x}`} x={(px(x) + px(grid.xs[index]!)) / 2} y={dimY - 3} fontSize={annot}>{metres(x - grid.xs[index]!)}</text>)}
+        {grid.xs.slice(1).map((x, index) => fitsBay(x - grid.xs[index]!) && <text key={`lx${x}`} x={(px(x) + px(grid.xs[index]!)) / 2} y={dimY - 3} fontSize={annot}>{metres(x - grid.xs[index]!)}</text>)}
         <text x={(px(minX) + px(maxX)) / 2} y={dimY + 13} fontSize={annot}>{metres(width)} overall</text>
         <line x1={dimX} y1={py(grid.zs[0] ?? minZ)} x2={dimX} y2={py(grid.zs.at(-1) ?? maxZ)} />
         {grid.zs.map((z) => <path key={`tz${z}`} className="bp-tick" d={`M ${dimX - 3} ${py(z) + 3} l 6 -6 M ${px(maxX) + 3} ${py(z)} H ${dimX + 5}`} />)}
         {grid.zs.slice(1).map((z, index) => {
+          if (!fitsBay(z - grid.zs[index]!)) return null;
           const cy = (py(z) + py(grid.zs[index]!)) / 2;
           return <text key={`lz${z}`} x={dimX + 4} y={cy} fontSize={annot} transform={`rotate(-90 ${dimX + 4} ${cy})`} dy={annot * 0.9}>{metres(z - grid.zs[index]!)}</text>;
         })}

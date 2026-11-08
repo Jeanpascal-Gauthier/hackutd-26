@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Building } from "@firewatch/shared/types";
 import sharedBuilding from "@firewatch/shared/building.json" with { type: "json" };
+import { syntheticBuilding } from "../../fixtures/synthetic.ts";
 import { CONFIDENT, locateRoom, mentionsFloor } from "./locateRoom.ts";
 
 const building = sharedBuilding as Building;
@@ -96,4 +97,43 @@ test("floor known, room unknown: the question lists that floor's rooms and says 
   assert.doesNotMatch(r.followUp ?? "", /Stairwell|Elevator|Hallway/);
   // Floor 8 has a storage room; no place given -> no "couldn't find" prefix.
   assert.match(locateRoom({ floor: 8 }, building, "8th floor").followUp ?? "", /^Which room on floor 8 .*Storage/);
+});
+
+// ---- Buildings generated from an address: rooms with `kind`, generic names ----
+
+test("generated building: room names and kinds, its own floor range", () => {
+  const b = syntheticBuilding({ floors: 4 });
+  assert.equal(locateRoom({ floor: 2, place: "open office" }, b).roomId, "2-open");
+  assert.equal(locateRoom({ floor: 2, place: "office 2" }, b).roomId, "2-office-2");
+  assert.equal(locateRoom({ floor: 3, place: "stairwell A" }, b).roomId, "3-stair-a");
+  assert.equal(locateRoom({ floor: 3, place: "hallway" }, b).roomId, "3-hall");
+  const anyOffice = locateRoom({ floor: 2, place: "the office" }, b);
+  assert.deepEqual(anyOffice.candidates, ["2-office-1", "2-office-2", "2-open"]);
+  assert.match(anyOffice.followUp ?? "", /Office 1, Office 2 or Open Office/);
+  assert.equal(locateRoom({ floor: 5, place: "open office" }, b).roomId, undefined); // only 4 floors
+});
+
+test("generated building: kinds match when names don't ('apartment' -> the floor's apartments)", () => {
+  const b = syntheticBuilding({
+    use: "residential",
+    rooms: [
+      ["apt-1", "Unit 1", "residential", 10, 8],
+      ["laundry", "Laundry", "utility", 4, 8],
+    ],
+  });
+  const r = locateRoom({ floor: 2, place: "apartment" }, b, "smoke in my apartment on floor 2");
+  assert.equal(r.roomId, "2-apt-1");
+  assert.ok(r.confidence >= CONFIDENT);
+});
+
+test("follow-up lists at most 6 rooms, never halls, stairs or elevators", () => {
+  const rooms = Array.from({ length: 9 }, (_, i) => [`o${i + 1}`, `Office ${i + 1}`, "office", 5, 5] as [string, string, "office", number, number]);
+  const r = locateRoom({ floor: 1 }, syntheticBuilding({ rooms }), "1st floor");
+  assert.match(r.followUp ?? "", /for example Office 1, Office 2, Office 3, Office 4, Office 5 or Office 6\?$/);
+  assert.doesNotMatch(r.followUp ?? "", /Stairwell|Elevator|Hallway/);
+});
+
+test("mentionsFloor knows floors past twelve and the ground floor", () => {
+  assert.equal(mentionsFloor("on the fifteenth floor", 15), true);
+  assert.equal(mentionsFloor("ground floor lobby", 1), true);
 });

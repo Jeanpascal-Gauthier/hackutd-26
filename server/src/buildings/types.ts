@@ -46,6 +46,11 @@ export interface BuildingCandidate {
   footprint: AreaGeometry | null;
   heightMeters: number | null;
   floorsAboveGround: number | null;
+  /**
+   * The outline's descriptive OSM tags (building, building:use, building:levels, amenity, name, ...),
+   * so a candidate list can show what each building is. A full BuildingRecord carries every tag.
+   */
+  tags?: Record<string, string>;
   source: BuildingSource;
 }
 export interface FloorRecord {

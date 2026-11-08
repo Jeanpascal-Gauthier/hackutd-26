@@ -10,4 +10,10 @@ export type ServerEvent = { type: "state"; state: IncidentState };
 export type ClientEvent =
   | { type: "setSimMinute"; minute: number }
   | { type: "acceptRecommendation" }
-  | { type: "dispatch"; roomId: string };
+  | { type: "dispatch"; roomId: string }
+  /** Start an address lookup (operator typed it, or corrected the one heard on a call). */
+  | { type: "lookupAddress"; address: string }
+  /** Operator confirms one of `buildingLookup.candidates`: the server builds it and makes it active. */
+  | { type: "confirmBuilding"; buildingId: string }
+  /** Go back to the demo building (clears the incident). */
+  | { type: "useDemoBuilding" };

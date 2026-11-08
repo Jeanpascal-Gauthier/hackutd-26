@@ -23,6 +23,7 @@ function fakeServer(forecast: Forecast) {
   const server: ServerApi = {
     getState: () => Promise.reject(new Error("not used")),
     getBuilding: () => Promise.reject(new Error("not used")),
+    lookupAddress: () => Promise.reject(new Error("not used")),
     forecast: async (origin) => {
       calls.push(origin);
       return forecast;

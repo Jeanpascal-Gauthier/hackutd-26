@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Report } from "@firewatch/shared/types";
-import { building, occupants, sprinklerRooms } from "./buildingData.ts";
+import { DEMO } from "./buildingData.ts";
 import { locate, parseFloor } from "./locate.ts";
 import { isFireReport, mergeFires, mergeReports } from "./merge.ts";
 import { IncidentStore } from "../state/store.ts";
@@ -10,6 +10,8 @@ import { LiveIncident } from "./incident.ts";
 import { recommend } from "./recommend.ts";
 import { simulateSpread } from "../simulation/spread.ts";
 import { findExits } from "../simulation/exits.ts";
+
+const { building, occupants, sprinklerRooms } = DEMO;
 
 test("parseFloor understands digits, words and ordinals", () => {
   const cases: [string, number | undefined][] = [

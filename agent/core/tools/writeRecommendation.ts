@@ -256,7 +256,8 @@ export const writeRecommendationSchema: OpenAI.Chat.Completions.ChatCompletionFu
           description:
             `1-${MAX_ACTIONS} short imperative actions for the incident commander (each under ${MAX_ACTION_CHARS} characters), ` +
             "based only on the find_clear_exits result: which floors evacuate by which clear stairwell, where to send the " +
-            "first crew, who needs help (mobility, children), and every floor listed in noClearStair. " +
+            "first crew, who needs help (mobility, children), door-to-door alerting where people are flagged sleeping, " +
+            "and every floor listed in noClearStair. " +
             "E.g. 'Evacuate floors 8-12 by Stairwell A'.",
         },
         callerReply: {

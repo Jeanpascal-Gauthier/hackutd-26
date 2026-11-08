@@ -270,3 +270,78 @@ test("a reused result does not use up the cap", async () => {
     await s.close();
   }
 });
+
+// ---- Building address: starts the server's lookup before the report ----
+
+async function startWithLookup(fails = false) {
+  const order: string[] = [];
+  const lookups: [string, string][] = [];
+  const server = createFormServer({
+    ingest: async (input) => {
+      order.push(`ingest:${input.text}`);
+      return { ok: true, reply: "Help is on the way. We are confirming the building now. Do not use the elevator." };
+    },
+    lookupAddress: async (address, caller) => {
+      order.push(`lookup:${address}`);
+      lookups.push([address, caller]);
+      if (fails) throw new Error("POST /incident/address failed: HTTP 503");
+      return { ok: true };
+    },
+    log: () => {},
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const post = (body: unknown) =>
+    fetch(`${base}/report`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  return { base, post, order, lookups, close: () => new Promise((r) => server.close(r)) };
+}
+
+test("the page has an optional building address field", async () => {
+  const s = await startWithLookup();
+  try {
+    const page = await (await fetch(`${s.base}/`)).text();
+    assert.match(page, /<label for="a">Building address \(optional\)<\/label>/);
+    assert.match(page, /<input id="a"[^>]*maxlength="200"/);
+    assert.doesNotMatch(page, /<input id="a"[^>]*required/);
+  } finally {
+    await s.close();
+  }
+});
+
+test("an address starts the lookup first, then the report goes in", async () => {
+  const s = await startWithLookup();
+  try {
+    const res = await s.post({ text: "fire on 3", caller: "web-a", address: "  800 W   Campbell Rd, Richardson " });
+    assert.equal(res.status, 200);
+    assert.deepEqual(s.order, ["lookup:800 W Campbell Rd, Richardson", "ingest:fire on 3"]);
+    assert.deepEqual(s.lookups, [["800 W Campbell Rd, Richardson", "form:web-a"]]);
+  } finally {
+    await s.close();
+  }
+});
+
+test("no address (or an empty one): no lookup, the form works as before", async () => {
+  const s = await startWithLookup();
+  try {
+    assert.equal((await s.post({ text: "fire on 3", caller: "web-b" })).status, 200);
+    assert.equal((await s.post({ text: "again", caller: "web-b", address: "   " })).status, 200);
+    assert.equal(s.lookups.length, 0);
+    assert.deepEqual(s.order, ["ingest:fire on 3", "ingest:again"]);
+  } finally {
+    await s.close();
+  }
+});
+
+test("a failed lookup still sends the report; a bad address is a 400", async () => {
+  const s = await startWithLookup(true);
+  try {
+    const res = await s.post({ text: "fire on 3", caller: "web-c", address: "1313 Broadway" });
+    assert.equal(res.status, 200);
+    assert.deepEqual(s.order, ["lookup:1313 Broadway", "ingest:fire on 3"]);
+    assert.equal((await s.post({ text: "x", caller: "web-c", address: 42 })).status, 400);
+    assert.equal((await s.post({ text: "x", caller: "web-c", address: "y".repeat(201) })).status, 400);
+    assert.equal(s.order.length, 2);
+  } finally {
+    await s.close();
+  }
+});

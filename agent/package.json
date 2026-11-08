@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "smoke": "tsx --env-file-if-exists=../.env scripts/smoke.ts",
     "try": "tsx --env-file-if-exists=../.env scripts/try.ts",
-    "test": "tsx --test core/*/*.test.ts form/*.test.ts photon/*.test.ts",
+    "test": "tsx --test core/*.test.ts core/*/*.test.ts form/*.test.ts photon/*.test.ts",
     "form": "tsx --env-file-if-exists=../.env form/index.ts",
     "photon": "tsx --env-file-if-exists=../.env photon/index.ts",
     "photon:assign": "tsx --env-file-if-exists=../.env photon/assign-cli.ts"

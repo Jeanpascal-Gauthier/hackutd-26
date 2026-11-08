@@ -1,36 +1,55 @@
 // LIVE mode controller (MOCK=0): reports -> merged fires -> 30-minute spread forecast
 // (precomputed, so scrubbing is instant) -> exits -> recommendation. Mirrors mock/controller.ts.
-import type { Recommendation } from "@firewatch/shared/types";
+import type { IncidentState, Recommendation } from "@firewatch/shared/types";
 import type { IncidentStore } from "../state/store.ts";
 import type { ProcessResult, ReportProcessor } from "../state/processor.ts";
 import type { SpreadSnapshot } from "../simulation/index.ts";
-import * as defaults from "./buildingData.ts";
+import { ActiveBuilding, type BuildingData } from "./buildingData.ts";
 import { FORECAST_MINUTES, forecast, type ForecastData } from "./forecast.ts";
 import { locate } from "./locate.ts";
 import { mergeFires } from "./merge.ts";
 
 export { FORECAST_MINUTES };
 
+/** Fields a reset may carry over instead of clearing. */
+export type ResetKeep = Partial<Pick<IncidentState, "buildingLookup" | "reports" | "trail" | "log">>;
+
 export class LiveIncident {
   private snapshots: SpreadSnapshot[] = [];
   /** Sorted room ids of the fires the current forecast was run from ("" = none). */
   private fireKey = "";
 
-  constructor(private store: IncidentStore, readonly data: ForecastData = defaults) {}
+  constructor(private store: IncidentStore, readonly active: ActiveBuilding = new ActiveBuilding()) {}
 
-  /** No fire yet: every room clear, occupants known, no reports. */
-  reset(): void {
+  /** The active building's data. It changes when an address lookup activates another building. */
+  get data(): BuildingData & ForecastData {
+    return this.active.get();
+  }
+
+  /**
+   * No fire yet: every room of the active building clear, its occupants, no reports.
+   * `keep` carries fields across the reset (a lookup, the log, reports held during a lookup).
+   */
+  reset(keep: ResetKeep = {}): void {
     this.snapshots = [];
     this.fireKey = "";
     this.store.reset({
       simMinute: 0,
       rooms: this.data.building.rooms.map((r) => ({ roomId: r.id, fire: 0, smoke: 0 })),
-      reports: [],
+      reports: keep.reports ?? [],
       occupants: this.data.occupants,
-      trail: [],
+      trail: keep.trail ?? [],
       dispatches: [],
-      log: [],
+      log: keep.log ?? [],
+      building: this.active.summary(),
+      ...(keep.buildingLookup && { buildingLookup: keep.buildingLookup }),
     });
+  }
+
+  /** Make `data` the active building (its version goes up) and start a clean incident on it. */
+  activate(data: BuildingData, keep: ResetKeep = {}): void {
+    this.active.set(data);
+    this.reset(keep);
   }
 
   /** Locator used when no agent is plugged in. */

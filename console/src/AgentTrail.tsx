@@ -10,6 +10,30 @@ function hasError(output: unknown): boolean {
   return typeof output === "object" && output !== null && "error" in output && Boolean(output.error);
 }
 
+const record = (value: unknown): Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {};
+const text = (value: unknown) => typeof value === "string" && value.trim() ? value.trim() : null;
+
+/** Building tools get a readable one-line summary instead of the generic status; other tools keep it. */
+function summary(step: TrailStep): { tag: string; text: string } | null {
+  const input = record(step.input), output = record(step.output);
+  if (step.tool === "find_building") {
+    // find_building returns `match` as the formatted address string; accept the object form too.
+    const match = text(output.match) ?? text(record(output.match).formatted);
+    const candidates = Array.isArray(output.candidates) ? output.candidates.length : typeof output.candidates === "number" ? output.candidates : null;
+    const query = text(input.address) ?? text(input.query);
+    const parts = [query && `“${query}”`, match && `matched ${match}`, candidates !== null && `${candidates} outline${candidates === 1 ? "" : "s"} nearby`].filter(Boolean);
+    return { tag: "Building lookup", text: parts.length ? parts.join(" · ") : "Address lookup recorded" };
+  }
+  if (step.tool === "estimate_occupancy") {
+    const total = typeof output.total === "number" ? output.total : null;
+    const floors = Object.keys(record(output.byFloor)).length;
+    const basis = Array.isArray(output.basis) ? output.basis.length : 0;
+    const parts = [total !== null && `≈ ${total} people estimated`, floors > 0 && `${floors} floor${floors === 1 ? "" : "s"}`, basis > 0 && `${basis} basis note${basis === 1 ? "" : "s"}`].filter(Boolean);
+    return { tag: "Occupancy estimate", text: parts.length ? parts.join(" · ") : "Occupancy estimate recorded" };
+  }
+  return null;
+}
+
 export function AgentTrail({ steps = [], demo = false }: { steps?: readonly TrailStep[]; demo?: boolean }) {
   return (
     <section className="panel" aria-labelledby="agent-heading">
@@ -19,17 +43,20 @@ export function AgentTrail({ steps = [], demo = false }: { steps?: readonly Trai
       </p>
       {steps.length ? (
         <ol className="tool-trail">
-          {steps.map((step, index) => (
+          {steps.map((step, index) => {
+            const about = summary(step);
+            return (
             <li key={`${index}-${step.tool}`} className={hasError(step.output) ? "failed" : "recorded"}>
-              <div><strong>{step.tool}</strong><span>{Math.round(step.ms)} ms</span></div>
-              <p className="tool-status">{hasError(step.output) ? "Tool returned an error" : "Call recorded"}</p>
+              <div><strong>{step.tool}</strong>{about && <span className="tool-tag">{about.tag}</span>}<span>{Math.round(step.ms)} ms</span></div>
+              <p className="tool-status">{hasError(step.output) ? "Tool returned an error" : about?.text ?? "Call recorded"}</p>
               <details>
                 <summary>Inspect input & output</summary>
                 <span className="eyebrow">INPUT</span><pre>{formatValue(step.input)}</pre>
                 <span className="eyebrow">OUTPUT</span><pre>{formatValue(step.output)}</pre>
               </details>
             </li>
-          ))}
+            );
+          })}
         </ol>
       ) : (
         <Empty title="No tool calls recorded" text="Tool activity will appear when the server records it. Reports can also be processed by the rule-based locator." />
