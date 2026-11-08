@@ -77,5 +77,14 @@ test("exits + recommendation for the demo fire in 7-break", () => {
   assert.ok(rec.actions.length >= 1 && rec.actions.length <= 3);
   assert.match(rec.actions[0], /Evacuate floors .*12 .* by Stairwell A/);
   assert.ok(rec.actions.some((a) => /Engine 3 to floor 7/.test(a)));
-  assert.match(rec.callerReply!, /Stairwell A/);
+  assert.match(rec.callerReply!, /Leave now by Stairwell A; do not use Stairwell B or the elevator\./);
+});
+
+test("caller reply always says not to use the elevator, even with no stairwell to avoid", () => {
+  // 10-east: no stairwell fills with smoke, so there is nothing to avoid but the elevator.
+  const snaps = simulateSpread(building, "10-east", 30, { sprinklerRooms });
+  const exits = findExits(building, snaps, occupants);
+  const reply = recommend(exits, "10-east", building).callerReply!;
+  assert.match(reply, /Do not use the elevator\./);
+  assert.doesNotMatch(reply, /or the elevator/, `reads as advice to take the elevator: ${reply}`);
 });
