@@ -37,3 +37,8 @@ export function speakable(text: string | undefined): string {
   if (!/[.!?]$/.test(out)) out += ".";
   return out;
 }
+
+/** POST /voice/address: the address was heard and the lookup started. */
+export const VOICE_ADDRESS_REPLY = "Thank you, I have the address. Which floor is the fire or smoke on, and which room?";
+/** POST /voice/address with no usable address. */
+export const VOICE_ADDRESS_PROMPT = "What is the address of the building?";

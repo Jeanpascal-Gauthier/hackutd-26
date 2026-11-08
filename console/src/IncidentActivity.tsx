@@ -1,11 +1,13 @@
 import type { IncidentState, LogEntry } from "@firewatch/shared/types";
-import { Empty, PanelHeading, roomName, Timestamp } from "./ui";
+import { Empty, PanelHeading, Timestamp } from "./ui";
 import { CheckIcon } from "./Icons";
+import { useBuilding } from "./activeBuilding";
 
 export function IncidentDecisions({ state, onSelectRoom }: {
   state: IncidentState | null;
   onSelectRoom: (roomId: string) => void;
 }) {
+  const { roomName } = useBuilding();
   const accepted = state?.accepted;
   const dispatches = state?.dispatches ?? [];
   return (
@@ -50,7 +52,7 @@ export function IncidentDecisions({ state, onSelectRoom }: {
 }
 
 const kinds: Record<LogEntry["kind"], string> = {
-  report: "Report", origin: "Origin", recommendation: "Recommendation", accepted: "Accepted", dispatch: "Dispatch",
+  report: "Report", origin: "Origin", recommendation: "Recommendation", accepted: "Accepted", dispatch: "Dispatch", building: "Building",
 };
 
 export function IncidentLog({ entries = [], freshIds }: { entries?: readonly LogEntry[]; freshIds?: ReadonlySet<string> }) {
@@ -63,7 +65,7 @@ export function IncidentLog({ entries = [], freshIds }: { entries?: readonly Log
           {[...entries].reverse().map((entry, index) => (
             <li key={`${entry.time}-${entry.kind}-${index}`} className={freshIds?.has(`${entry.time}-${entry.kind}-${entry.text}`) ? "is-new" : undefined}>
               <span className={`log-dot ${entry.kind}`} />
-              <div><span className="log-kind">{kinds[entry.kind]}</span><p>{entry.text}</p><Timestamp value={entry.time} /></div>
+              <div><span className="log-kind">{kinds[entry.kind] ?? entry.kind}</span><p>{entry.text}</p><Timestamp value={entry.time} /></div>
             </li>
           ))}
         </ol>

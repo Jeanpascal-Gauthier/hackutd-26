@@ -224,6 +224,11 @@ main { max-width: 1720px; padding: 24px 32px 0; margin: auto; }
 .bp-dimensions line, .bp-tick { fill: none; stroke: var(--bp-ink-soft); stroke-width: 0.75; }
 .bp-tick { stroke-width: 1.1; }
 .bp-walls { pointer-events: none; }
+/* Mapped footprint (generated buildings): slab tone between sheet and room, hatched where no room is modelled. */
+.bp-slab { pointer-events: none; }
+.bp-slab-fill { fill: color-mix(in oklab, var(--bp-room) 40%, var(--bp-paper)); }
+.bp-void-hatch { stroke: var(--bp-grid-major); stroke-width: 1; }
+.bp-envelope { fill: none; stroke-linejoin: miter; }
 .bp-wall { stroke: var(--bp-ink); stroke-linecap: square; }
 .bp-door line, .bp-door-leaf { stroke: var(--bp-ink); stroke-width: 1.6; stroke-linecap: butt; }
 .bp-door-swing { fill: none; stroke: var(--bp-ink-soft); stroke-width: 0.8; stroke-dasharray: 3 2; }
@@ -313,6 +318,7 @@ input[type=range]:disabled { opacity: .45; cursor: not-allowed; }
 .log-dot.action, .log-dot.accepted, .log-dot.recommendation { background: var(--accent); }
 .log-dot.origin { background: var(--fire); }
 .log-dot.dispatch { background: var(--safe); }
+.log-dot.building { background: var(--bp-ink-soft); box-shadow: 0 0 0 2px color-mix(in oklab, var(--bp-ink-soft) 30%, transparent); }
 
 /* ---------- Evacuation by floor ---------- */
 .evac-list { list-style: none; margin: 0; padding: 0 20px 16px; }
@@ -346,6 +352,10 @@ input[type=range]:disabled { opacity: .45; cursor: not-allowed; }
 .tool-trail li > div > span { white-space: nowrap; }
 .tool-trail .tool-status { margin: 6px 0 9px; font-size: 12px; color: var(--text-muted); }
 .tool-trail .failed .tool-status { color: var(--fire); }
+.tool-trail li > div > .tool-tag { margin-right: auto; padding: 1px 7px; border: 1px solid var(--line-strong); border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+.tool-trail .recorded:has(.tool-tag) .tool-status { color: var(--text-secondary); }
+/* Estimated people counts: "≈ 14 people", dotted underline with an "estimated" tooltip. */
+.estimated-count { text-decoration: underline dotted color-mix(in oklab, currentColor 55%, transparent); text-underline-offset: 3px; cursor: help; }
 .tool-trail details { font-size: 13px; color: var(--text-secondary); }
 .tool-trail summary { cursor: pointer; color: var(--accent); }
 .tool-trail details[open] summary { margin-bottom: 10px; }

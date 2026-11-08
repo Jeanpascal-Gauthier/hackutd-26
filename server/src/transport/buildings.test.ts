@@ -42,7 +42,7 @@ function makeServer(buildings: ReturnType<typeof createBuildingService>) {
     buildings,
     ingest: async () => { throw new Error("A lookup must not ingest an incident report"); },
     getState: () => state,
-    buildingInfo: { building, occupants: [], sprinklers: {}, doors: [], inspections: [] },
+    getBuildingInfo: () => ({ building, occupants: [], sprinklers: {}, doors: [], inspections: [] }),
     forecast: () => { throw new Error("A lookup must not activate a forecast"); },
     resetLive: () => { throw new Error("A lookup must not reset the incident"); },
   });

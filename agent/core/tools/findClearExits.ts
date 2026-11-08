@@ -17,7 +17,7 @@ export interface FloorPlan {
   othersFill: Record<string, number | null>;
   /** First minute smoke reaches an occupied room or the hall on this floor (null = never). */
   smokeAt: number | null;
-  /** Occupant flags such as "mobility" or "child": people who need help. Omitted when none. */
+  /** Occupant flags: "mobility" or "child" (people who need help), "sleeping" (homes or hotel rooms at night: wake them door to door). Omitted when none. */
   help?: string[];
 }
 

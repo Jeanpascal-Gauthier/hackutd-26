@@ -1,7 +1,8 @@
 // The QR fallback form: a phone-friendly page that sends a report through ingest(), the same
 // path the Photon line uses. Judges scan the QR on the table card and type what they see.
 //   GET  /          report page (with the iMessage sign-up step when `register` is set)
-//   POST /report    { text, caller } -> { ok, reply } (or { ok:false, error })
+//   POST /report    { text, caller, address? } -> { ok, reply } (or { ok:false, error }); a building
+//                   address first starts the server's lookup (POST /incident/address)
 //   POST /imessage  { phone } -> { ok, number, reused } (or { ok:false, error }); 404 without `register`
 //   GET  /config    { imessage }: whether the iMessage step is on (diagnostics; the page has it rendered in)
 //   GET  /qr        printable QR of the public URL (?url=https://... to encode a tunnel URL)
@@ -16,12 +17,18 @@ import { qrPage, reportPage } from "./page.ts";
 const MAX_BODY = 4 * 1024;
 const MAX_TEXT = 500;
 const MAX_PHONE = 32;
+const MAX_ADDRESS = 200;
 const DEFAULT_MAX_REGISTRATIONS = 40;
 const SIGNUPS_FULL = "iMessage sign-ups are full right now: use the form above.";
 const SIGNUP_FAILED = "Couldn't sign you up for iMessage right now: use the form above.";
 
 export interface FormOptions {
   ingest: (input: IngestInput) => Promise<IngestResult>;
+  /**
+   * Starts the server's building lookup for an address (POST /incident/address). Called before
+   * ingest when the reporter filled in the address. Absent: addresses are ignored. May throw.
+   */
+  lookupAddress?: (address: string, caller: string) => Promise<unknown>;
   /** URL encoded in the QR when /qr has no ?url=. Defaults to the first LAN address. */
   publicUrl?: string;
   log?: (line: string) => void;
@@ -94,6 +101,7 @@ function readBody(req: IncomingMessage): Promise<string> {
 
 export function createFormServer({
   ingest,
+  lookupAddress,
   publicUrl,
   log = console.log,
   register,
@@ -131,10 +139,17 @@ export function createFormServer({
       } catch {
         return json(res, 400, { ok: false, error: "Send JSON: { text, caller }." });
       }
-      const { text, caller } = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
+      const { text, caller, address } = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
       if (typeof text !== "string" || !text.trim()) return json(res, 400, { ok: false, error: "Please type a message." });
       if (text.length > MAX_TEXT) return json(res, 400, { ok: false, error: `Please keep it under ${MAX_TEXT} characters.` });
       if (typeof caller !== "string" || !/^[\w.+-]{1,64}$/.test(caller)) return json(res, 400, { ok: false, error: "Bad caller id." });
+      if (address !== undefined && address !== null && typeof address !== "string") {
+        return json(res, 400, { ok: false, error: "Bad building address." });
+      }
+      const where = typeof address === "string" ? address.replace(/\s+/g, " ").trim() : "";
+      if (where.length > MAX_ADDRESS) {
+        return json(res, 400, { ok: false, error: `Please keep the address under ${MAX_ADDRESS} characters.` });
+      }
 
       if (inFlight.has(caller)) {
         return json(res, 429, { ok: false, error: "One moment: your last message is still being handled." });
@@ -142,6 +157,16 @@ export function createFormServer({
       inFlight.add(caller);
       log(`[form] ${caller}: ${JSON.stringify(text.trim())}`);
       try {
+        // The lookup starts first, so the server holds this report until the building is confirmed.
+        // A failed lookup still sends the report (on the active building).
+        if (where && lookupAddress) {
+          try {
+            await lookupAddress(where, `form:${caller}`);
+            log(`[form] ${caller}: building lookup for ${JSON.stringify(where)}`);
+          } catch (err) {
+            log(`[form] building lookup failed for ${caller}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
         const result = await ingest({ text: text.trim(), caller: `form:${caller}` });
         if (!result.ok) log(`[form] ingest failed for ${caller}: ${result.error}`);
         else log(`[form] -> ${caller}: room ${result.roomId ?? "-"} (${result.confidence ?? 0})`);

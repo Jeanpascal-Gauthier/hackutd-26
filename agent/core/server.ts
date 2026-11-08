@@ -1,6 +1,6 @@
 // ServerApi over HTTP (server/API.md). Works both in-process (the server loads the agent with
 // AGENT=1 and the agent calls back to the same port) and from a separate process.
-import type { IncidentState } from "@firewatch/shared/types";
+import type { BuildingLookup, IncidentState } from "@firewatch/shared/types";
 import type { BuildingInfo, Forecast, ServerApi } from "./tools/types.ts";
 
 const TIMEOUT_MS = 5000;
@@ -31,6 +31,14 @@ export function httpServerApi(): ServerApi {
         body: JSON.stringify(minutes === undefined ? { origin } : { origin, minutes }),
       });
       return f;
+    },
+    lookupAddress: async (address, caller) => {
+      const { lookup } = await call<{ ok: true; lookup: BuildingLookup }>("/incident/address", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(caller === undefined ? { address } : { address, caller }),
+      });
+      return lookup;
     },
   };
 }

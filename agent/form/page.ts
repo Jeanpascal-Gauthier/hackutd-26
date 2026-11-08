@@ -100,12 +100,20 @@ export function reportPage({ imessage = false }: { imessage?: boolean } = {}): s
   #imr p:first-child { margin:12px 0 8px; font-size:16px; }
   .sms { display:flex; align-items:center; justify-content:center; min-height:56px; padding:12px; border-radius:14px; background:var(--ok); color:#06261a; font:700 18px system-ui,sans-serif; text-decoration:none; overflow-wrap:anywhere; }
   #im summary:focus-visible, #imp:focus-visible, .sms:focus-visible { outline:2px solid var(--fire); outline-offset:2px; }
+  #where { padding:12px 0 0; }
+  #where label { display:block; margin:0 0 6px; color:var(--muted); font-size:14px; }
+  #a { width:100%; height:44px; padding:0 12px; border-radius:12px; border:1px solid var(--line); background:var(--panel); color:var(--text); font:inherit; font-size:16px; }
+  #a:focus-visible { outline:2px solid var(--fire); outline-offset:2px; }
 </style>
 </head>
 <body>
 <header>
   <h1><span class="dot" aria-hidden="true"></span>FireSight</h1>
-  <p>Report fire or smoke in the demo building. Say which floor you're on and where you see it.</p>
+  <p>Report fire or smoke. Say which floor you're on and where you see it.</p>
+  <div id="where">
+    <label for="a">Building address (optional)</label>
+    <input id="a" name="address" type="text" maxlength="200" autocomplete="street-address" placeholder="e.g. 800 W Campbell Rd, Richardson, TX">
+  </div>
 </header>
 <main id="log" aria-live="polite">
   <p class="hint" id="hint">Example: "There's smoke coming from the break room on the 7th floor."</p>
@@ -124,6 +132,7 @@ ${imessage ? IMESSAGE_SECTION : ""}<footer>Hackathon demo. In a real emergency, 
     caller = "web-" + Math.random().toString(36).slice(2, 8);
     try { localStorage.setItem("fs-caller", caller); } catch (e) {}
   }
+  var a = document.getElementById("a"), sentAddress = "";
   var log = document.getElementById("log"), f = document.getElementById("f"),
       t = document.getElementById("t"), b = document.getElementById("b");
   function add(text, cls) {
@@ -139,10 +148,14 @@ ${imessage ? IMESSAGE_SECTION : ""}<footer>Hackathon demo. In a real emergency, 
     var text = t.value.trim(); if (!text || b.disabled) return;
     add(text, "me"); t.value = ""; b.disabled = true;
     var pending = add("Locating your report…", "them pending");
-    fetch("report", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: text, caller: caller }) })
+    // The address goes with the first message after it is typed or changed (the server looks it up once).
+    var address = a.value.trim(), body = { text: text, caller: caller };
+    if (address && address !== sentAddress) body.address = address;
+    fetch("report", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j }; }); })
       .then(function (x) {
         pending.classList.remove("pending");
+        if (x.status === 200 && body.address) sentAddress = body.address;
         if (x.j && x.j.reply) pending.textContent = x.j.reply;
         else { pending.classList.add("error"); pending.textContent = (x.j && x.j.error) || "Something went wrong. Please try again."; }
       })
@@ -179,7 +192,7 @@ export function qrPage(url: string, svg: string): string {
 <body>
 <main>
   <h1>Report a fire</h1>
-  <p>Scan to text the FireSight demo building from your phone.</p>
+  <p>Scan to report fire or smoke to FireSight from your phone.</p>
   <div class="qr" role="img" aria-label="QR code for ${esc(url)}">${svg}</div>
   <code>${esc(url)}</code>
 </main>

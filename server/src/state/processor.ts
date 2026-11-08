@@ -1,6 +1,6 @@
 // Replaceable seam for Person C's agent. POST /ingest calls the active ReportProcessor.
-// The server ships with the MOCK processor (mock/processor.ts); swap it with setReportProcessor().
-import type { Recommendation, Report, TrailStep } from "@firewatch/shared/types";
+// The server ships with the rule-based locator (live/incident.ts); swap it with setReportProcessor().
+import type { Building, Recommendation, Report, TrailStep } from "@firewatch/shared/types";
 
 export interface IngestInput {
   text: string;
@@ -12,6 +12,11 @@ export interface IngestInput {
    * The server then skips its ReportProcessor and uses these fields as the result.
    */
   preprocessed?: ProcessResult;
+  /**
+   * The active building, set by the server before it calls the processor (index.ts). The agent
+   * bridge hands it to the agent as its context, so rooms are located on the current building.
+   */
+  building?: Building;
 }
 
 export interface ProcessResult {

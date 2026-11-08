@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import type { Building } from "@firewatch/shared/types";
 import { simulateSpread } from "./spread.ts";
 import { fixtureBuilding as B } from "./fixture.ts";
-import { building as REAL, sprinklerRooms } from "../live/buildingData.ts";
+import { DEMO } from "../live/buildingData.ts";
+const { building: REAL, sprinklerRooms } = DEMO;
 
 const at = (s: ReturnType<typeof simulateSpread>, m: number, id: string) =>
   s[m].rooms.find((r) => r.roomId === id)!;

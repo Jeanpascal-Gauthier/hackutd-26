@@ -24,7 +24,7 @@ export function attachWebSocket(httpServer: Server, store: IncidentStore, hooks:
       } catch {
         return console.warn("[ws] ignored non-JSON message");
       }
-      const event = parseClientEvent(parsed);
+      const event = parseClientEvent(parsed, hooks.roomIds?.());
       if (typeof event === "string") return console.warn(`[ws] ignored: ${event}`);
       applyClientEvent(event, store, hooks);
     });

@@ -9,6 +9,8 @@ export interface AddressCandidate {
   resultType: string | null;
   confidence: number | null;
   matchType: string | null;
+  /** IANA time zone at the match (e.g. "America/Chicago"), when Geoapify returns one. */
+  timezone: string | null;
   source: { provider: "geoapify"; name: string | null; attribution: string | null; license: string | null };
 }
 
@@ -45,6 +47,8 @@ export async function searchAddresses(
       location: { lat: item.lat, lon: item.lon }, resultType: string(item.result_type),
       confidence: typeof rank.confidence === "number" && rank.confidence >= 0 && rank.confidence <= 1 ? rank.confidence : null,
       matchType: string(rank.match_type),
+      timezone: isObject(item.timezone) && typeof item.timezone.name === "string" && /^[A-Za-z_]+(\/[A-Za-z0-9_+-]+)*$/.test(item.timezone.name)
+        ? item.timezone.name.slice(0, 64) : null,
       source: { provider: "geoapify" as const, name: string(source.sourcename), attribution: string(source.attribution), license: string(source.license) },
     }];
   });

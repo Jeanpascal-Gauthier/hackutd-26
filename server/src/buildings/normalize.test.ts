@@ -137,3 +137,14 @@ test("room-purpose tags without indoor still retain labels and purpose without i
   assert.equal(result.rooms[0].name, "Admissions");
   assert.equal(result.rooms[0].number, "101");
 });
+
+test("candidates keep the outline's descriptive tags (use, levels, name) and nothing else", () => {
+  const office: OsmElement = {
+    type: "way", id: 7, geometry: box(0, 0, 0.01, 0.01),
+    tags: { building: "office", "building:levels": "6", amenity: "college", name: "Tower", "addr:street": "Main St", note: "private note" },
+  };
+  const [c] = listOsmBuildingCandidates([office], location, time);
+  assert.deepEqual(c.tags, { building: "office", "building:levels": "6", amenity: "college", name: "Tower" });
+  // A full record still carries every tag.
+  assert.equal(normalizeOsmBuilding("osm:way:7", [office], location, time)!.tags.note, "private note");
+});
