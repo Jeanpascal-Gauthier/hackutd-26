@@ -3,6 +3,7 @@ import type { IncidentState } from "@firewatch/shared/types";
 
 export function FloorPlan({ floor, state, selectedRoom, onSelect }: { floor: number; state: IncidentState | null; selectedRoom: string | null; onSelect: (id: string) => void }) {
   const rooms = building.rooms.filter((room) => room.floor === floor);
+  const routeRooms = new Set(state?.accepted ? (state.exits ?? []).flatMap((exit) => exit.route ?? []) : []);
   if (!rooms.length) return <p className="empty-state">No geometry available for this floor.</p>;
   const minX = Math.min(...rooms.map((room) => room.x));
   const minZ = Math.min(...rooms.map((room) => room.z));
@@ -26,10 +27,16 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect }: { floor: num
       const w = room.w * scale;
       const d = room.d * scale;
       const selected = selectedRoom === room.id;
+      const origin = state?.origin?.roomId === room.id;
+      // Keep hazard colors visible. Only mark segments with known conditions below
+      // the model's smoke threshold, and no visible fire, at the selected minute.
+      const onRoute = routeRooms.has(room.id) && current !== undefined && fire <= 0.01 && smoke < 0.3;
       const label = room.name.replace(/^Floor \d+ /, "");
-      return <g key={room.id} role="button" tabIndex={0} aria-pressed={selected} aria-label={`${room.name}, ${current ? `fire ${Math.round(fire * 100)} percent, smoke ${Math.round(smoke * 100)} percent` : "awaiting incident data"}, ${count} recorded occupants`} className={`map-room ${selected ? "is-selected" : ""}`} onClick={() => onSelect(room.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(room.id); } }}>
+      return <g key={room.id} role="button" tabIndex={0} data-room-id={room.id} data-origin={origin || undefined} data-route={onRoute || undefined} aria-pressed={selected} aria-label={`${room.name}, ${current ? `fire ${Math.round(fire * 100)} percent, smoke ${Math.round(smoke * 100)} percent` : "awaiting incident data"}, ${count} recorded occupants${origin ? ", suspected fire origin" : ""}${onRoute ? ", accepted route segment" : ""}`} className={`map-room ${selected ? "is-selected" : ""}`} onClick={() => onSelect(room.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(room.id); } }}>
         <title>{room.name} · {room.id}{current ? ` · fire ${Math.round(fire * 100)}% · smoke ${Math.round(smoke * 100)}%` : " · No incident data"}</title>
         <rect x={x + 2} y={y + 2} width={Math.max(1, w - 4)} height={Math.max(1, d - 4)} rx={4} fill={color} stroke={selected ? "#6ad9c3" : fire > 0.01 ? "#d87550" : smoke > 0.01 ? "#a69472" : "#344954"} strokeWidth={selected ? 2.5 : 1} />
+        {onRoute && <rect className="route-highlight" x={x + 5} y={y + 5} width={Math.max(1, w - 10)} height={Math.max(1, d - 10)} rx={3} fill="none" stroke="#7eea93" strokeWidth={2} strokeDasharray="5 3" pointerEvents="none" aria-hidden="true" />}
+        {origin && <circle cx={x + w - 10} cy={y + 10} r={4} fill="#ee9b72" stroke="#0b1116" strokeWidth={1.5} pointerEvents="none" aria-hidden="true" />}
         <svg x={x + 8} y={y + 5} width={Math.max(w - 16, 1)} height={Math.max(d - 10, 1)} viewBox={`0 0 ${Math.max(w - 16, 1)} ${Math.max(d - 10, 1)}`} overflow="hidden" aria-hidden="true">
           <text x="50%" y={d > 90 ? "38%" : "42%"} textAnchor="middle" dominantBaseline="middle" className="room-label" fontSize={Math.min(14, Math.max(7, (w - 20) / (label.length * 0.58)))}>{label}</text>
           {d > 46 && <text x="50%" y={d > 90 ? "59%" : "73%"} textAnchor="middle" className="room-reading" fontSize={Math.min(10, Math.max(6, w / 22))}>{current ? fire > 0.01 ? `FIRE ${Math.round(fire * 100)}% · SMOKE ${Math.round(smoke * 100)}%` : smoke > 0.01 ? `SMOKE ${Math.round(smoke * 100)}%` : "NO FIRE / SMOKE" : "AWAITING DATA"}</text>}
