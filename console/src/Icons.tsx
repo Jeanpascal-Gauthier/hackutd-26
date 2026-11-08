@@ -39,3 +39,15 @@ export const UsersIcon = (p: P) => (
 export const SendIcon = (p: P) => (
   <Icon {...p}><path d="M5 12h13M13 6l6 6-6 6" /></Icon>
 );
+export const SunIcon = (p: P) => (
+  <Icon {...p}><circle cx="12" cy="12" r="4" /><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" /></Icon>
+);
+export const MoonIcon = (p: P) => (
+  <Icon {...p}><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" /></Icon>
+);
+export const PlayIcon = (p: P) => (
+  <Icon {...p}><path d="M8 5.6v12.8a.6.6 0 0 0 .92.5l10-6.4a.6.6 0 0 0 0-1l-10-6.4a.6.6 0 0 0-.92.5Z" /></Icon>
+);
+export const PauseIcon = (p: P) => (
+  <Icon {...p}><rect x="6.5" y="5" width="3.5" height="14" rx="1" /><rect x="14" y="5" width="3.5" height="14" rx="1" /></Icon>
+);
