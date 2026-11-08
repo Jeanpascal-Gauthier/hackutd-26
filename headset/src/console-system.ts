@@ -103,6 +103,11 @@ export class ConsoleSystem extends createSystem({}) {
     if (roomId != null) {
       this.socket?.send({ type: 'dispatch', roomId });
     }
+    // Closes the loop so the server moves recommendation -> accepted and
+    // BuildingSystem lights the evacuation route green (server/API.md).
+    // No separate "accept" UI yet; the commander's real approval step is a
+    // natural next addition once there's a button to wire it to.
+    this.socket?.send({ type: 'acceptRecommendation' });
   }
 
   private recentCallers(): Report[] {

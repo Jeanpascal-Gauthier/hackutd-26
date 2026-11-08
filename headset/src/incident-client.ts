@@ -13,16 +13,30 @@ import type {
 } from './incident-types.js';
 
 /**
- * Talks to the FireSight server through Vite's dev proxy (see vite.config.ts
- * /fs-api and /fs-ws) so the headset, loaded over https, never has to reach
- * the server's plain http/ws directly (mixed content is blocked by the
- * browser). In production this would need a real https/wss endpoint instead.
+ * Talks to the FireSight server. Two ways to reach it, matching
+ * server/API.md's "Remote access" guidance (never hard-code
+ * ws://localhost:8080):
+ *
+ * - Default: Vite's own dev proxy (see vite.config.ts /fs-api and /fs-ws),
+ *   so the headset, loaded over https, never has to reach the server's
+ *   plain http/ws directly (the browser blocks that as mixed content).
+ *   Only works when the server runs on the same machine as this dev server.
+ * - `?server=https://<name>.trycloudflare.com` query param: talks to that
+ *   origin directly instead, for the documented cloudflared-tunnel setup
+ *   (server on a different machine, or the proxy isn't available).
  */
 
+function serverOverride(): string | null {
+  const value = new URLSearchParams(window.location.search).get('server')?.trim();
+  return value ? value.replace(/\/+$/u, '') : null;
+}
+
 export async function fetchBuilding(): Promise<BuildingInfo> {
-  const response = await fetch('/fs-api/building');
+  const override = serverOverride();
+  const url = override != null ? `${override}/building` : '/fs-api/building';
+  const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`GET /fs-api/building failed: ${response.status}`);
+    throw new Error(`GET ${url} failed: ${response.status}`);
   }
   return (await response.json()) as BuildingInfo;
 }
@@ -36,8 +50,12 @@ export class IncidentSocket {
 
   connect(): void {
     this.closedByCaller = false;
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const socket = new WebSocket(`${protocol}//${window.location.host}/fs-ws`);
+    const override = serverOverride();
+    const socketUrl =
+      override != null
+        ? override.replace(/^http/u, 'ws')
+        : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/fs-ws`;
+    const socket = new WebSocket(socketUrl);
     this.socket = socket;
 
     socket.addEventListener('message', (event) => {

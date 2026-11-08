@@ -35,6 +35,7 @@ export class BuildingSystem extends createSystem({}) {
   private baseColor = new Color('#bfe8f2');
   private smokeColor = new Color('#555555');
   private fireColor = new Color('#ff5a1f');
+  private routeColor = new Color('#3ddc5a');
   private mixColor = new Color();
   private socket: IncidentSocket | null = null;
 
@@ -97,9 +98,23 @@ export class BuildingSystem extends createSystem({}) {
   }
 
   private onState(state: IncidentState): void {
+    // "accepted" is when the route should light green (server/API.md); the
+    // route is only meaningful as a safe path, so a room on fire or smoky
+    // still shows danger color instead of a misleading green.
+    const routeRooms =
+      state.accepted != null
+        ? new Set((state.exits ?? []).flatMap((exit) => exit.route ?? []))
+        : null;
+
     for (const roomState of state.rooms) {
       const material = this.roomMaterials.get(roomState.roomId);
       if (material == null) {
+        continue;
+      }
+      const clear = roomState.fire < 0.15 && roomState.smoke < 0.15;
+      if (routeRooms?.has(roomState.roomId) && clear) {
+        material.emissive.copy(this.routeColor);
+        material.emissiveIntensity = 0.9;
         continue;
       }
       this.mixColor.copy(this.baseColor);

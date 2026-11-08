@@ -76,6 +76,24 @@ export interface FloorExit {
   stair: string | null;
   blockedAt: Record<string, number | null>;
   atRiskAt: number | null;
+  /** Rooms to light green: hall -> clear stairwell -> down to floor 1. */
+  route?: string[];
+}
+
+export interface Dispatch {
+  roomId: string;
+  time: number;
+}
+
+export interface LogEntry {
+  time: number;
+  kind: 'report' | 'origin' | 'recommendation' | 'accepted' | 'dispatch';
+  text: string;
+}
+
+export interface AcceptedRecommendation {
+  recommendation: Recommendation;
+  time: number;
 }
 
 export interface TrailStep {
@@ -91,9 +109,12 @@ export interface IncidentState {
   reports: Report[];
   occupants: Occupant[];
   recommendation?: Recommendation;
+  accepted?: AcceptedRecommendation;
   origin?: { roomId: string; confidence: number };
   exits?: FloorExit[];
+  dispatches?: Dispatch[];
   trail?: TrailStep[];
+  log?: LogEntry[];
 }
 
 export type ServerEvent = { type: 'state'; state: IncidentState };
