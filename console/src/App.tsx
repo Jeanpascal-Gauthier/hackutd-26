@@ -3,7 +3,7 @@ import type { IncidentState, Report } from "@firewatch/shared/types";
 import { BuildingProvider, roomPeople, useActiveBuildingSource, useBuilding, type ActiveBuilding } from "./activeBuilding";
 import { BuildingPanel } from "./BuildingPanel";
 import { devFixture } from "./devFixture";
-import { FloorPlan } from "./FloorPlan";
+import { SurroundingsMap } from "./SurroundingsMap";
 import { Building3DPanel } from "./building3d";
 import { AgentTrail } from "./AgentTrail";
 import { ExitAnalysis } from "./ExitAnalysis";
@@ -48,7 +48,7 @@ export function App() {
   const { theme, toggle: toggleTheme } = useTheme();
   const [floor, setFloor] = useState(floors.includes(7) ? 7 : floors[floors.length - 1]!);
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
-  const [view, setView] = useState<"plan" | "3d">(fixture?.view ?? "3d");
+  const [view, setView] = useState<"map" | "3d">(() => fixture?.view ?? (new URLSearchParams(location.search).get("view") === "map" ? "map" : "3d"));
   const [showAllReports, setShowAllReports] = useState(false);
   const floorTabs = useRef<HTMLDivElement>(null);
   const [caller, setCaller] = useState("");
@@ -84,21 +84,6 @@ export function App() {
   }, [active.geometryKey]);
   const trailErrors = state?.trail?.filter((step) => typeof step.output === "object" && step.output !== null && "error" in step.output && Boolean(step.output.error)).length ?? 0;
 
-  const acceptedSeen = useRef<number | null | undefined>(undefined);
-  const [routeDraw, setRouteDraw] = useState<number | null>(null);
-  useLayoutEffect(() => {
-    if (!state) return;
-    const now = state.accepted?.time ?? null;
-    if (acceptedSeen.current !== undefined && now !== null && acceptedSeen.current !== now) setRouteDraw(now);
-    if (now === null) setRouteDraw(null);
-    acceptedSeen.current = now;
-  }, [state]);
-  useEffect(() => {
-    if (routeDraw === null) return;
-    const timer = setTimeout(() => setRouteDraw(null), 2600);
-    return () => clearTimeout(timer);
-  }, [routeDraw]);
-
   useEffect(() => {
     const tabs = floorTabs.current;
     if (!tabs) return;
@@ -112,7 +97,7 @@ export function App() {
     const resize = new ResizeObserver(revealActiveFloor);
     resize.observe(tabs);
     return () => resize.disconnect();
-  }, [floor]);
+  }, [floor, view]);
 
   useEffect(() => {
     if (!playing) return;
@@ -149,11 +134,12 @@ export function App() {
 
   function focusRoom(id: string) {
     const room = active.roomsById.get(id);
-    if (room) { setFloor(room.floor); setSelectedRoom(id); }
+    if (room) { setView("3d"); setFloor(room.floor); setSelectedRoom(id); }
   }
 
   function selectFloor(value: number) {
     if (!floors.includes(value)) return;
+    setView("3d");
     setFloor(value);
     setSelectedRoom((id) => active.roomsById.get(id ?? "")?.floor === value ? id : null);
   }
@@ -217,31 +203,27 @@ export function App() {
           <div className="workspace-column">
             <section id="building-view" className="panel primary-map" aria-labelledby="building-heading">
               <div className="panel-heading map-heading">
-                <h2 id="building-heading">{active.isDemo ? "Building" : active.profile.name} · Floor {floor}</h2>
+                <h2 id="building-heading">{view === "3d" ? `${active.isDemo ? "Building" : active.profile.name} · Floor ${floor}` : "Address surroundings"}</h2>
                 <div className="view-switch" role="group" aria-label="Building view">
                   <button aria-pressed={view === "3d"} onClick={() => setView("3d")}>3D building</button>
-                  <button aria-pressed={view === "plan"} onClick={() => setView("plan")}>Floor plan</button>
+                  <button aria-pressed={view === "map"} onClick={() => setView("map")}>Surroundings</button>
                 </div>
               </div>
-              <div className="floor-toolbar"><span className="floor-strip-label">Floor</span><div ref={floorTabs} className="floor-tabs" role="group" aria-label="Select floor">
+              {view === "3d" && <div className="floor-toolbar"><span className="floor-strip-label">Floor</span><div ref={floorTabs} className="floor-tabs" role="group" aria-label="Select floor">
                 {floors.map((value) => {
                   const status = floorStatus.get(value);
                   return <button key={value} className={floor === value ? "active" : ""} aria-pressed={floor === value} aria-label={`Floor ${value}${status ? `, ${status}` : ""}`} onClick={() => selectFloor(value)}>{status && <i className={`floor-dot ${status}`} aria-hidden="true" />}{value}</button>;
                 })}
-              </div></div>
-              {view === "plan" ? (
-                <>
-                  <FloorPlan floor={floor} state={state} selectedRoom={selectedRoom} onSelect={setSelectedRoom} drawRoute={routeDraw} />
-                  <div className="map-legend"><span><i className="swatch fire" />Fire</span><span><i className="swatch smoke" />Smoke</span><span><i className="swatch route" />Suggested route</span><span><i className="swatch route-active" />Accepted route</span></div>
-                </>
-              ) : <Building3DPanel state={state} floor={floor} selectedRoom={selectedRoom} onSelectRoom={focusRoom} onSelectFloor={selectFloor} onUnavailable={() => { setView("plan"); setNotice({ kind: "info", text: "3D view is unavailable on this device. Showing the floor plan." }); }} />}
-              {selected ? (
+              </div></div>}
+              {view === "map" ? <SurroundingsMap lookup={state?.buildingLookup} />
+                : <Building3DPanel state={state} floor={floor} selectedRoom={selectedRoom} onSelectRoom={focusRoom} onSelectFloor={selectFloor} onUnavailable={() => { setView("map"); setNotice({ kind: "info", text: "3D view is unavailable on this device. Showing the surroundings map." }); }} />}
+              {view === "3d" && (selected ? (
                 <div className="room-inspector">
                   <div className="inspector-heading"><h3>{selected.name}</h3><button className="text-button" onClick={() => setSelectedRoom(null)}>Close details</button></div>
                   <div className="room-stats"><span>Fire<strong>{selectedState ? `${Math.round(selectedState.fire * 100)}%` : "No data"}</strong></span><span>Smoke<strong>{selectedState ? `${Math.round(selectedState.smoke * 100)}%` : "No data"}</strong></span><span>Occupants<strong>{selectedPeople.known ? <PeopleCount count={selectedPeople.count} estimated={selectedPeople.estimated} unit="" /> : "Unrecorded"}</strong></span></div>
                   {selectedOccupants.some((item) => item.flags.length) && <p className="assistance-note">Assistance: {[...new Set(selectedOccupants.flatMap((item) => item.flags))].join(", ")}</p>}
                 </div>
-              ) : <p className="map-hint">Select a room to see conditions and occupants.</p>}
+              ) : <p className="map-hint">Select a room to see conditions and occupants.</p>)}
 
               <div className="compact-timeline">
                 <div className="timeline-heading"><div><h3>Forecast +{minute} min</h3><span className="subtle">Changes all connected screens</span></div><button className="button secondary play-button" disabled={!connected || !state} onClick={togglePlayback} aria-label={playing ? "Pause forecast playback" : "Play forecast"}>{playing ? <><PauseIcon size={18} />Pause</> : <><PlayIcon size={18} />Play</>}</button></div>

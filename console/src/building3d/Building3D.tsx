@@ -64,7 +64,7 @@ export default function Building3D(props: Building3DProps) {
         onHover: (id, x, y) => setHover(id ? { name: activeRef.current.roomsById.get(id)?.name ?? id, x, y } : null),
       });
     } catch {
-      setFailed(true); // No usable WebGL context: the 2D floor plan stays the only view.
+      setFailed(true); // No usable WebGL context: App switches to the surroundings map.
       return;
     }
     sceneRef.current = scene;

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/maps/*.test.ts"
   },
   "dependencies": {
     "@firewatch/shared": "*",
@@ -15,10 +16,12 @@
     "three": "^0.187.0"
   },
   "devDependencies": {
+    "@types/google.maps": "^3.66.10",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/three": "^0.187.0",
     "@vitejs/plugin-react": "^4.3.3",
+    "tsx": "^4.23.15",
     "vite": "^5.4.11"
   }
 }
