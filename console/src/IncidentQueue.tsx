@@ -19,7 +19,7 @@ export function PhasePill({ phase }: { phase: MapIncident["phase"] }) {
   return <span className={`pill${phase === "resolved" ? " safe" : ""}`}>{phaseText[phase]}</span>;
 }
 
-const sameSelection = (a: IncidentSelection | null, b: IncidentSelection) => a?.kind === b.kind && (a.kind !== "map" || b.kind !== "map" || a.id === b.id);
+export const sameSelection = (a: IncidentSelection | null, b: IncidentSelection) => a?.kind === b.kind && (a.kind !== "map" || b.kind !== "map" || a.id === b.id);
 
 function QueueRow({ entry, selected, needsConfirmation, onSelect }: { entry: QueueEntry; selected: boolean; needsConfirmation: boolean; onSelect: () => void }) {
   let title: string, place: string, tags: ReactNode;

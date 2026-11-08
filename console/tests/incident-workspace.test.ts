@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { IncidentState, MapIncident } from "@firewatch/shared/types";
 import type { ActiveBuilding } from "../src/activeBuilding";
-import { buildingDecisions, buildQueue, ownsBuilding } from "../src/incidents";
+import { buildCallQueue, buildingDecisions, buildQueue, ownsBuilding } from "../src/incidents";
 import { buildResponderBrief } from "../src/buildResponderBrief";
 import { followUpQuestions, situationChecks, situationText } from "../src/incidentChecks";
 
@@ -137,4 +137,46 @@ test("brief compacts whitespace without rewriting or truncating caller details",
     ],
   }));
   assert.equal(brief.text, "Reported location\n1200 Main St\n\nCallers report\nAlex: Smoke in the kitchen. No flames that I can see.");
+});
+
+test("the call queue lists every incident's calls newest first, each tied to its incident", () => {
+  const fire = incident({ id: "fire-1", label: "Fire" });
+  const crash = incident({ id: "crash-2", kind: "crash", label: "Car crash", formatted: "Coit Road, Richardson" });
+  const current = state({
+    mapIncidents: [fire, crash],
+    reports: [
+      { id: "map-a", caller: "+15550001", text: "smoke behind the mall", time: 1000, incidentId: "fire-1", channel: "voice" },
+      { id: "map-b", caller: "+15550002", text: "two cars, all lanes", time: 3000, incidentId: "crash-2", channel: "voice" },
+      { id: "map-c", caller: "+15550003", text: "still smoking", time: 2000, incidentId: "fire-1" },
+    ],
+  });
+  const calls = buildCallQueue(current, buildQueue(current, active));
+  assert.deepEqual(calls.map((call) => call.report.id), ["map-b", "map-c", "map-a"]);
+  assert.deepEqual(calls.map((call) => call.label), ["Car crash", "Fire", "Fire"]);
+  assert.deepEqual(calls[0]!.selection, { kind: "map", id: "crash-2" });
+  assert.deepEqual(calls[1]!.selection, { kind: "map", id: "fire-1" });
+});
+
+test("the call queue keeps a call whose incident is gone, but gives it nothing to select", () => {
+  const current = state({ reports: [{ id: "map-a", caller: "+1555", text: "fire", time: 1000, incidentId: "merged-away" }] });
+  const [call] = buildCallQueue(current, buildQueue(current, active));
+  assert.equal(call!.incident, null);
+  assert.equal(call!.selection, null);
+});
+
+test("the call queue sends a building report to the building entry", () => {
+  const current = state({ reports: [{ id: "r1", caller: "+1555", text: "smoke in the break room", time: 1000, roomId: "7-break" }] });
+  const queue = buildQueue(current, active);
+  const [call] = buildCallQueue(current, queue);
+  assert.equal(call!.incident, null);
+  if (queue.building) assert.deepEqual(call!.selection, { kind: "building" });
+  else assert.equal(call!.selection, null);
+});
+
+test("the call queue is empty with no reports, and does not change the reports it is given", () => {
+  assert.deepEqual(buildCallQueue(null, buildQueue(null, active)), []);
+  const reports = [{ id: "a", caller: "x", text: "1", time: 1 }, { id: "b", caller: "y", text: "2", time: 2 }];
+  const current = state({ reports });
+  buildCallQueue(current, buildQueue(current, active));
+  assert.deepEqual(reports.map((report) => report.id), ["a", "b"]);
 });

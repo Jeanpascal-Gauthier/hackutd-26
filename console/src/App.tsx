@@ -9,7 +9,7 @@ import { IncidentTools } from "./IncidentTools";
 import { IncidentDecisions, IncidentLog } from "./IncidentActivity";
 import { PriorityActions } from "./IncidentPriority";
 import { IncidentQueue, IncidentStrip } from "./IncidentQueue";
-import { buildingDecisions, buildQueue, locationIssue, placeOf, type IncidentSelection } from "./incidents";
+import { buildingDecisions, buildCallQueue, buildQueue, type IncidentSelection } from "./incidents";
 import { MapPanel } from "./MapPanel";
 import { MoonIcon, ReplayIcon, SceneIcon, SunIcon } from "./Icons";
 import { useIncident } from "./useIncident";
@@ -78,7 +78,7 @@ export function App() {
   const allReports = state?.reports ?? [];
   // Building-pipeline records have no incidentId; they belong to whichever entry holds the building.
   const inScope = (record: { incidentId?: string }) => selected ? record.incidentId === selected.id || (ownerSelected && !record.incidentId) : buildingSelected ? !record.incidentId : true;
-  const reports = allReports.filter(inScope);
+  const calls = useMemo(() => buildCallQueue(state, queue), [state, queue]);
   const log: LogEntry[] | undefined = state?.log?.filter(inScope);
   const freshReports = useFreshIds(state ? state.reports.map((report) => report.id) : null);
   const freshLog = useFreshIds(state?.log ? state.log.map(logId) : null);
@@ -87,7 +87,6 @@ export function App() {
     ? { accepted: selected.accepted, dispatches: selected.dispatches ?? [] }
     : { accepted: buildingActions.accepted, dispatches: state?.dispatches ?? [] };
   const trailErrors = state?.trail?.filter((step) => typeof step.output === "object" && step.output !== null && "error" in step.output && Boolean(step.output.error)).length ?? 0;
-  const reportPlace = selected ? placeOf(selected) ?? locationIssue(selected) : null;
 
   return (
     <BuildingProvider value={active}>
@@ -117,7 +116,7 @@ export function App() {
             {selected
               ? <PriorityActions pending={selected.recommendation} accepted={selected.accepted} connected={connected} onAccept={() => transmit({ type: "acceptRecommendation", incidentId: selected.id })} variant="incident" />
               : buildingSelected && <PriorityActions pending={buildingActions.recommendation} accepted={buildingActions.accepted} connected={connected} onAccept={() => transmit({ type: "acceptRecommendation" })} />}
-            {(selected || buildingSelected) && <CallerReports key={selected?.id ?? "building"} reports={reports} place={reportPlace} freshIds={freshReports} />}
+            <CallerReports calls={calls} selection={selection} onSelect={setSelection} freshIds={freshReports} />
           </aside>
 
           <div className="workspace-column">
