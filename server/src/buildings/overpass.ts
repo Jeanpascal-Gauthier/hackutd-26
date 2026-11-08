@@ -3,6 +3,9 @@ import { BuildingApiError, isObject, providerJson, type RequestOptions } from ".
 
 export const DEFAULT_OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 export const SEARCH_RADIUS_METERS = 150;
+// Leave time for the public server's queue and response transfer after query execution.
+const REQUEST_TIMEOUT_MS = 60000;
+const QUERY_TIMEOUT_SECONDS = 45;
 export interface Bounds { south: number; west: number; north: number; east: number }
 
 export function validateLocation(value: unknown): Coordinates {
@@ -73,14 +76,14 @@ async function queryOverpass(query: string, url: string, options: RequestOptions
       "user-agent": "FireWatch/0.0.0 (HackUTD building lookup prototype)",
     },
     body: new URLSearchParams({ data: query }).toString(),
-  }, { ...options, timeoutMs: options.timeoutMs ?? 30000 });
+  }, { ...options, timeoutMs: options.timeoutMs ?? REQUEST_TIMEOUT_MS });
   return elements(body);
 }
 
 export async function nearbyBuildings(location: Coordinates, url = DEFAULT_OVERPASS_URL, options: RequestOptions = {}): Promise<OsmElement[]> {
   const { lat, lon } = validateLocation(location);
   const around = `(around:${SEARCH_RADIUS_METERS},${lat},${lon})`;
-  return queryOverpass(`[out:json][timeout:8];(way["building"]${around};relation["building"]${around};);out meta geom;`, url, options);
+  return queryOverpass(`[out:json][timeout:${QUERY_TIMEOUT_SECONDS}];(way["building"]${around};relation["building"]${around};);out meta geom;`, url, options);
 }
 
 /** Fetch indoor features plus child/member nodes required to preserve rooms and shared doors. */
@@ -91,5 +94,5 @@ export async function buildingInteriors(bounds: Bounds, url = DEFAULT_OVERPASS_U
     throw new BuildingApiError(422, "building_area_too_large", "Interior lookup is unavailable for this building's geographic bounds.");
   const box = `(${south},${west},${north},${east})`;
   const indoor = `["indoor"]${box};nwr["room"]${box};nwr["stairs"]${box};nwr["highway"="steps"]${box};nwr["highway"="corridor"]${box};nwr["highway"="elevator"]${box};nwr["door"]${box};nwr["entrance"]${box}`;
-  return queryOverpass(`[out:json][timeout:8];(nwr${indoor};);(._;>;);out meta geom;`, url, options);
+  return queryOverpass(`[out:json][timeout:${QUERY_TIMEOUT_SECONDS}];(nwr${indoor};);(._;>;);out meta geom;`, url, options);
 }
