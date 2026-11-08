@@ -13,8 +13,8 @@ concerns, next actions, and evacuation priorities. Risk totals cover the whole
 30-minute model forecast, not only the currently selected minute. Missing analysis
 is displayed as pending rather than zero risk.
 
-The primary map defaults to the 3D building; the floor-plan switch replaces it in
-the same workspace. Unsupported 3D automatically returns to the floor plan. Caller report
+The primary map defaults to the 3D building; the Surroundings switch opens Google Maps in
+the same workspace. Unsupported 3D automatically opens Surroundings. Caller report
 entry stays visible. The feed initially shows the latest three complete reports,
 with a control to reveal all reports and explicit uncertain-location labels.
 
@@ -33,7 +33,7 @@ theme is light, with saved light/dark choices respected.
 - Select a floor or report location, then inspect a room's fire, smoke, occupants,
   assistance flags, and linked-report count. Missing occupant records mean unknown,
   not zero. Geometry comes from the active building (see below); floor tabs, the 3D
-  model and the plan follow every generated floor, including towers above 40 floors.
+  model follow every generated floor, including towers above 40 floors.
 - Submit caller name and report text to `POST /ingest`. The server broadcasts the
   resulting report; the console does not invent a local copy.
 - Scrub the shared 0–30 minute forecast with `setSimMinute`, in both mock and live
@@ -47,12 +47,11 @@ theme is light, with saved light/dark choices respected.
   backup control. The server moves it to `accepted`, including the server time.
   Acceptance from another client is also shown. The wire format does not identify
   the actor or whether it was manual, so the console never labels it human approved.
-- Forecast route segments use dashed green outlines; accepted segments become solid
-  and draw on once when acceptance arrives, while retaining hazard colors.
-  Only rooms with known fire <= 0.01 and smoke < 0.3 are marked at the selected
-  minute; this is a visualization of the server route, not a new route calculation.
-- The themed 3D building view shares floor/room selection with the 2D map and report
-  feed. Theme controls, forecast playback, and new-report/log highlights are retained
+- The 3D building highlights the server's evacuation routes alongside fire and smoke.
+  Surroundings shows geographic context without indoor route or forecast overlays.
+- The themed 3D building view shares floor/room selection with the report feed and
+  evacuation priorities. Selecting one of those locations returns to the 3D view.
+  Theme controls, forecast playback, and new-report/log highlights are retained
   alongside the detailed server panels. Playback pauses on reset, replay, disconnect,
   or manual scrubbing. Three.js is provided by the merged console dependencies.
 - Read `dispatches` as destinations/times and click a destination to inspect it.
@@ -71,8 +70,8 @@ theme is light, with saved light/dark choices respected.
 `activeBuilding.tsx` starts with the bundled `shared/building.json` (the demo) and fetches
 `GET /building` again whenever `state.building.id` or `version` changes; components read it
 with `useBuilding()`. A new building clears the selected room and shows the fire floor (else
-floor 1). When `profile.outline` is present, the plan and the 3D shell follow the real footprint
-(space no room covers is hatched); the demo, which has no outline, renders exactly as before.
+floor 1). When `profile.outline` is present, the 3D shell follows the footprint;
+the demo, which has no outline, renders as a box building.
 
 The Incident building panel shows the profile (name, address, use, floors, footprint, an
 "Estimated layout" badge, assumptions, the latest `estimate_occupancy` basis, attribution) and
@@ -84,8 +83,38 @@ Estimated people counts read "≈ 14 people" everywhere, with an "estimated" too
 
 Dev-only fixtures (never in the production bundle, and they send nothing to the server):
 `?fixture=lookup` (5-floor L-shaped building, lookup waiting for confirmation) and
-`?fixture=tower` (40 floors). Add `&view=plan`, `&theme=dark`, or
+`?fixture=tower` (40 floors). Add `&view=map`, `&theme=dark`, or
 `&lookup=searching|loading|failed`.
+
+## Google Maps surroundings
+
+The Surroundings tab replaces the former floor-plan tab. `SurroundingsMap.tsx` uses the
+Google Maps Embed API with street/satellite/Street View selection, recentering, fullscreen, and a link
+to open the location in Google Maps. It follows the geocoded lookup as soon as a match is
+available, including while awaiting building confirmation. A failed lookup shows the active
+building's location instead. The synthetic demo has no geographic location and shows an
+address-search prompt. Floor and forecast updates do not reload the map.
+Street View first queries the Maps JavaScript API Street View service with both `google`
+and `outdoor` source restrictions and a nearest-panorama preference. It searches within
+150 metres, extending to 500 metres only when no outdoor panorama is found. The returned
+panorama ID is then supplied to the Embed viewer, without a coordinate fallback that could
+open an indoor business tour. Its initial heading faces the building. If outdoor imagery is
+unavailable or the service fails, the console shows a message and retains the map/satellite
+options. Recenter repeats the outdoor lookup. The external link uses the selected panorama ID.
+Street View is disabled without geographic coordinates.
+
+Set `GOOGLE_MAPS_API_KEY` in the root `.env` and enable **Maps Embed API** in that key's
+Google Cloud project. Street View additionally requires **Maps JavaScript API** for outdoor
+panorama selection. Restart Vite after changing the key. `VITE_GOOGLE_MAPS_API_KEY` is
+also accepted and takes precedence. The Vite config reads the root `.env` and exposes only
+the explicitly selected Maps key from server-named variables. Google browser Maps keys are
+visible to the browser: restrict this key to Maps Embed API, Maps JavaScript API and allowed website referrers
+(for local development, `http://localhost:5173/*`; add LAN and hosted origins when used).
+Do not reuse a privileged server key. Geoapify and NVIDIA credentials remain server-only.
+
+If Google displays "This API is not activated on your API project", enable Maps Embed API
+for the project that owns the configured key. API enablement and key restrictions are managed
+in Google Cloud, not by the app. See [Google's setup guide](https://developers.google.com/maps/documentation/embed/get-api-key).
 
 ## Agent activity and remaining handoffs
 
@@ -114,11 +143,13 @@ $env:VITE_SERVER_URL = 'http://localhost:8080'
 npm.cmd run dev -w console
 ```
 
-HTTPS origins produce secure WebSockets. Do not put API keys in Vite variables.
+HTTPS origins produce secure WebSockets. Keep server credentials out of Vite variables;
+the restricted Google Maps browser key described above is intentionally public.
 
 ## Checks
 
 ```powershell
+npm.cmd run test -w console
 npm.cmd run typecheck -w console
 npm.cmd run build -w console
 ```
