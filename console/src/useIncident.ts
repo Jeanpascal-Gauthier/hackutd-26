@@ -3,7 +3,7 @@ import type { ClientEvent, ServerEvent } from "@firewatch/shared/events";
 import type { IncidentState } from "@firewatch/shared/types";
 
 const endpoint = new URL(import.meta.env.VITE_SERVER_URL ?? `${location.protocol}//${location.hostname}:8080`);
-const HTTP_URL = endpoint.origin;
+export const HTTP_URL = endpoint.origin;
 endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
 const WS_URL = endpoint.origin;
 

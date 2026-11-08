@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ReportProcessor } from "../state/processor.ts";
-import { guardAgent, loadAgentProcessor, loadAgentReset } from "./bridge.ts";
+import { guardAgent, loadAgentProcessor, loadAgentReset, loadOccupancyEstimator, onActiveBuilding } from "./bridge.ts";
 
 const input = { text: "smoke on 7", caller: "test" };
 const fallback: ReportProcessor = () => ({ roomId: "7-hall", confidence: 0.4 });
@@ -56,4 +56,40 @@ test("loads resetConversations when exported; undefined when not", async () => {
   assert.equal(await loadAgentReset(new URL("./fixtures/no-export-agent.ts", import.meta.url)), undefined);
   // The real agent/index.ts exports it.
   assert.equal(typeof (await loadAgentReset()), "function");
+});
+
+test("the agent gets the active building in its context; other context fields are kept", async () => {
+  const url = new URL("./fixtures/good-agent.ts", import.meta.url);
+  const p = await loadAgentProcessor(url);
+  const fixture = (await import(url.href)) as { lastContext: unknown; defaultContext: object };
+  await p!(input);
+  assert.equal(fixture.lastContext, fixture.defaultContext, "no building given: the agent's default context");
+  const building = { rooms: [{ id: "1-hall", floor: 1, name: "Hall", x: 0, z: 0, w: 1, d: 1 }], links: [], verticals: [] };
+  await p!({ ...input, building });
+  assert.deepEqual(fixture.lastContext, { ...fixture.defaultContext, building });
+});
+
+test("a result naming a room the active building lacks is re-located by the fallback", async () => {
+  const rooms = new Set(["1-hall", "1-break"]);
+  const p = onActiveBuilding(async () => ({ roomId: "7-break", confidence: 0.9, reply: "x" }), () => ({ roomId: "1-hall", confidence: 0.4 }), () => rooms);
+  await quiet(async () => assert.deepEqual(await p(input), { roomId: "1-hall", confidence: 0.4, reply: "x" }))();
+  const ok = onActiveBuilding(async () => ({ roomId: "1-break", confidence: 0.9 }), fallback, () => rooms);
+  assert.deepEqual(await ok(input), { roomId: "1-break", confidence: 0.9 });
+});
+
+test("loads estimateOccupancy when exported; undefined (with a warning) when not", async () => {
+  const est = await loadOccupancyEstimator(new URL("./fixtures/good-agent.ts", import.meta.url));
+  assert.ok(est);
+  const building = { rooms: [{ id: "1-hall", floor: 1, name: "Hall", x: 0, z: 0, w: 1, d: 1 }], links: [], verticals: [] };
+  assert.equal(est(building, 0).total, 3);
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    assert.equal(await loadOccupancyEstimator(new URL("./fixtures/no-export-agent.ts", import.meta.url)), undefined);
+    // The real agent/index.ts loads either way.
+    const real = await loadOccupancyEstimator();
+    assert.ok(real === undefined || typeof real === "function");
+  } finally {
+    console.warn = warn;
+  }
 });

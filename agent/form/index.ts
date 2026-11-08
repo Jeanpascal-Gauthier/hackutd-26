@@ -5,7 +5,7 @@
 // With PHOTON_PROJECT_ID + PHOTON_API_KEY the page also offers iMessage sign-up (Photon 2.0 shared
 // line); FORM_MAX_REGISTRATIONS caps new sign-ups per run (default 40, each uses a paid seat).
 import { ingest } from "../core/ingest.ts";
-import { serverUrl } from "../core/server.ts";
+import { httpServerApi, serverUrl } from "../core/server.ts";
 import { assignApiFromEnv, assignHandle } from "../photon/assign.ts";
 import { createFormServer, lanAddress, type FormOptions } from "./server.ts";
 
@@ -28,7 +28,8 @@ try {
   imessage = `off (${err instanceof Error ? err.message : String(err)})`;
 }
 
-createFormServer({ ingest, publicUrl, register }).listen(port, "0.0.0.0", () => {
+const server = httpServerApi();
+createFormServer({ ingest, lookupAddress: (address, caller) => server.lookupAddress(address, caller), publicUrl, register }).listen(port, "0.0.0.0", () => {
   console.log(`[form] report page: http://localhost:${port}/${publicUrl ? `  phones: ${publicUrl}` : ""}`);
   console.log(`[form] QR for the table card: http://localhost:${port}/qr   reports go to ${serverUrl()}/ingest`);
   console.log(`[form] iMessage sign-up ${imessage}`);

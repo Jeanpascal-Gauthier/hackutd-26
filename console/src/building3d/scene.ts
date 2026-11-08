@@ -2,11 +2,11 @@
 // the scene renders on demand (state, controls, eases, resize). The only continuous
 // loop is the animated heat field, and only while a floor has fire or smoke.
 import {
-  BoxGeometry, CanvasTexture, Color, DirectionalLight, EdgesGeometry, HemisphereLight, LineBasicMaterial,
+  BoxGeometry, BufferGeometry, CanvasTexture, Color, DirectionalLight, EdgesGeometry, Float32BufferAttribute, HemisphereLight, LineBasicMaterial,
   LineSegments, Mesh, PerspectiveCamera, PlaneGeometry, type ShaderMaterial, Raycaster, Scene, SRGBColorSpace, Sprite, SpriteMaterial, Vector2, Vector3, WebGLRenderer,
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import type { IncidentState, Room } from "@firewatch/shared/types";
+import type { Building, IncidentState, Room } from "@firewatch/shared/types";
 import { createBuildingModel, type BuildingModel } from "./model";
 import { createHeatMaterial, hasHeat, heatSources, setHeatBounds, setHeatSources, STILL_TIME, type HeatRect } from "../heat/heatField";
 import type { Theme3D } from "./theme";
@@ -30,6 +30,21 @@ const DRAG_PX = 5;
 /** Heat field layers per burning floor: height above the slab (m) and opacity. Higher layers spread wider (see heatField). */
 const HEAT_LAYERS = [{ y: 0.7, opacity: 1 }, { y: 1.7, opacity: 0.7 }, { y: 2.7, opacity: 0.45 }];
 const HEAT_MARGIN = 1.5; // Metres the field may bleed past the facade.
+const MARKER_SIZE = 2.4; // Origin marker size (m) on the demo; larger buildings scale it with their radius.
+/** Tall towers frame a band of about this many storeys (or 1.2x the footprint) around the selected floor. */
+const FRAME_FLOORS = 12;
+
+/** Unit-height prism outline (bottom ring, top ring, verticals) around a footprint, for the floor highlight. */
+function prismEdges(ring: [number, number][]): BufferGeometry {
+  const points: number[] = [];
+  ring.forEach(([x, z], i) => {
+    const [nx, nz] = ring[(i + 1) % ring.length]!;
+    points.push(x, -0.5, z, nx, -0.5, nz, x, 0.5, z, nx, 0.5, nz, x, -0.5, z, x, 0.5, z);
+  });
+  const geometry = new BufferGeometry();
+  geometry.setAttribute("position", new Float32BufferAttribute(points, 3));
+  return geometry;
+}
 
 /** cubic-bezier(x1, y1, x2, y2) timing function, solved for y at time x. */
 function cubicBezier(x1: number, y1: number, x2: number, y2: number) {
@@ -71,6 +86,9 @@ export class BuildingScene {
   private readonly hemi = new HemisphereLight();
   private readonly sun = new DirectionalLight();
   private readonly edgeGeometry = new EdgesGeometry(new BoxGeometry(1, 1, 1));
+  private readonly footprintGeometry: BufferGeometry | null;
+  private readonly floorRooms = new Map<number, Room[]>();
+  private markerSize = MARKER_SIZE;
   private readonly floorLineMaterial = new LineBasicMaterial({ transparent: true });
   private readonly roomLineMaterial = new LineBasicMaterial({ depthTest: false }); // Selection stays visible through slabs.
   private readonly floorOutline: LineSegments;
@@ -98,7 +116,7 @@ export class BuildingScene {
   private hovered: string | null = null;
   private disposed = false;
 
-  constructor(private readonly host: HTMLElement, building: { rooms: Room[] }, theme: Theme3D, input: SceneInput, private readonly callbacks: SceneCallbacks) {
+  constructor(private readonly host: HTMLElement, building: Building, theme: Theme3D, input: SceneInput, private readonly callbacks: SceneCallbacks) {
     this.theme = theme;
     this.input = input;
     this.renderer = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });
@@ -117,7 +135,13 @@ export class BuildingScene {
       entry.material.emissiveIntensity = 0;
     }
 
-    this.floorOutline = new LineSegments(this.edgeGeometry, this.floorLineMaterial);
+    for (const room of building.rooms) {
+      const list = this.floorRooms.get(room.floor);
+      if (list) list.push(room); else this.floorRooms.set(room.floor, [room]);
+    }
+    // Mapped footprints highlight the selected floor along the real outline; box buildings use a box.
+    this.footprintGeometry = this.model.slabOutline ? prismEdges(this.model.slabOutline) : null;
+    this.floorOutline = new LineSegments(this.footprintGeometry ?? this.edgeGeometry, this.floorLineMaterial);
     this.roomOutline = new LineSegments(this.edgeGeometry, this.roomLineMaterial);
     this.roomOutline.renderOrder = 5;
     this.scene.add(this.floorOutline, this.roomOutline);
@@ -127,7 +151,7 @@ export class BuildingScene {
     this.markerTexture.colorSpace = SRGBColorSpace;
     this.marker = new Sprite(new SpriteMaterial({ map: this.markerTexture, depthTest: false, transparent: true }));
     this.marker.renderOrder = 10;
-    this.marker.scale.setScalar(2.4);
+    this.marker.scale.setScalar(this.markerSize);
     this.scene.add(this.marker);
 
     const b = this.model.bounds;
@@ -202,6 +226,7 @@ export class BuildingScene {
     this.controls.dispose();
     this.model.dispose();
     this.edgeGeometry.dispose();
+    this.footprintGeometry?.dispose();
     this.floorLineMaterial.dispose();
     this.roomLineMaterial.dispose();
     this.marker.material.dispose();
@@ -238,15 +263,26 @@ export class BuildingScene {
     this.renderer.setSize(width, height);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    // Frame the whole building's bounding sphere in the narrower field of view.
+    // Frame the whole building's bounding sphere in the narrower field of view. Towers much taller than
+    // they are wide frame a band of storeys around the selected floor instead (the demo frames all of it),
+    // and can still zoom out to the whole building.
     const b = this.model.bounds;
-    const radius = 0.5 * Math.hypot(b.maxX - b.minX, b.height, b.maxZ - b.minZ);
+    const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ);
+    const storey = this.model.floorCenterY(2) - this.model.floorCenterY(1);
+    const band = Math.min(b.height, Math.max(span * 1.2, FRAME_FLOORS * storey));
+    const radius = 0.5 * Math.hypot(b.maxX - b.minX, band, b.maxZ - b.minZ);
+    const whole = 0.5 * Math.hypot(b.maxX - b.minX, b.height, b.maxZ - b.minZ);
     const vertical = (FOV * Math.PI) / 180;
     const horizontal = 2 * Math.atan(Math.tan(vertical / 2) * this.camera.aspect);
     const previous = this.fitDistance;
-    this.fitDistance = (radius / Math.sin(Math.min(vertical, horizontal) / 2)) * 0.92;
+    const fitFor = (r: number) => (r / Math.sin(Math.min(vertical, horizontal) / 2)) * 0.92;
+    this.fitDistance = fitFor(radius);
     this.controls.minDistance = this.fitDistance * 0.3;
-    this.controls.maxDistance = this.fitDistance * 2.2;
+    this.controls.maxDistance = Math.max(this.fitDistance * 2.2, fitFor(whole) * 1.3);
+    const far = Math.max(2000, fitFor(whole) * 4);
+    if (far !== this.camera.far) { this.camera.far = far; this.camera.updateProjectionMatrix(); }
+    this.markerSize = Math.max(MARKER_SIZE, radius * 0.08);
+    this.marker.scale.setScalar(this.markerSize);
     // Keep the user's relative zoom when the panel changes size.
     if (previous !== this.fitDistance && this.camera.position.lengthSq() > 0) {
       const offset = this.camera.position.clone().sub(this.controls.target);
@@ -345,8 +381,7 @@ export class BuildingScene {
     const clip: HeatRect = [b.minX, b.minZ, b.maxX, b.maxZ];
     const bounds: HeatRect = [b.minX - HEAT_MARGIN, b.minZ - HEAT_MARGIN, b.maxX + HEAT_MARGIN, b.maxZ + HEAT_MARGIN];
     for (let level = 1; level <= this.model.floors; level++) {
-      const rooms = [...this.model.rooms.values()].filter((entry) => entry.room.floor === level).map((entry) => entry.room);
-      const sources = heatSources(rooms, state);
+      const sources = heatSources(this.floorRooms.get(level) ?? [], state);
       let layers = this.heatLayers.get(level);
       if (!hasHeat(sources)) {
         if (layers) { for (const mesh of layers) { this.scene.remove(mesh); mesh.material.dispose(); } this.heatLayers.delete(level); }
@@ -360,7 +395,7 @@ export class BuildingScene {
           const mesh = new Mesh(this.heatGeometry, material);
           mesh.rotation.x = -Math.PI / 2; // Plane +y becomes world -z, matching the shader's uv mapping.
           mesh.scale.set(bounds[2] - bounds[0], bounds[3] - bounds[1], 1);
-          mesh.position.set((bounds[0] + bounds[2]) / 2, slab.y + spec.y, (bounds[1] + bounds[3]) / 2);
+          mesh.position.set((bounds[0] + bounds[2]) / 2, slab.y + spec.y * this.model.floorScale, (bounds[1] + bounds[3]) / 2);
           mesh.renderOrder = 6 + index;
           setHeatBounds(material, bounds, clip);
           this.scene.add(mesh);
@@ -388,8 +423,13 @@ export class BuildingScene {
     const b = this.model.bounds;
     const cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2;
     const bottom = this.model.slab(floor), top = this.model.slab(floor + 1);
-    this.floorOutline.position.set(cx, (bottom.y + top.y) / 2, cz);
-    this.floorOutline.scale.set(bottom.w, top.y - bottom.y + bottom.h, bottom.d);
+    if (this.footprintGeometry) {
+      this.floorOutline.position.set(0, (bottom.y + top.y) / 2, 0);
+      this.floorOutline.scale.set(1, top.y - bottom.y + bottom.h, 1);
+    } else {
+      this.floorOutline.position.set(cx, (bottom.y + top.y) / 2, cz);
+      this.floorOutline.scale.set(bottom.w, top.y - bottom.y + bottom.h, bottom.d);
+    }
 
     const room = selectedRoom ? this.model.rooms.get(selectedRoom) : undefined;
     this.roomOutline.visible = !!room;
@@ -403,7 +443,7 @@ export class BuildingScene {
     this.marker.visible = !!origin;
     if (origin) {
       const s = this.model.root.scale.x;
-      this.marker.position.set(origin.mesh.position.x * s, (origin.mesh.position.y + origin.mesh.scale.y / 2) * s + 1.8, origin.mesh.position.z * s);
+      this.marker.position.set(origin.mesh.position.x * s, (origin.mesh.position.y + origin.mesh.scale.y / 2) * s + this.markerSize * 0.75, origin.mesh.position.z * s);
     }
   }
 

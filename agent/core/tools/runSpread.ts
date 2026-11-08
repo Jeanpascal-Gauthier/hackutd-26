@@ -2,6 +2,7 @@
 // the model. The full forecast stays in run.forecast for find_clear_exits and later tools.
 import type OpenAI from "openai";
 import type { Building } from "@firewatch/shared/types";
+import { isCirculation } from "../rooms.ts";
 import type { AgentTool, BuildingInfo, Forecast, ToolEnv } from "./types.ts";
 
 export const DEFAULT_MINUTES = 30;
@@ -47,7 +48,7 @@ export const runSpreadSchema: OpenAI.Chat.Completions.ChatCompletionFunctionTool
       properties: {
         origin: {
           type: "string",
-          description: "Room id of the fire origin, e.g. '7-break'. Omit to use the origin from merge_reports.",
+          description: "Room id of the fire origin (from locate_room or merge_reports). Omit to use the origin from merge_reports.",
         },
         minutes: {
           type: "integer",
@@ -131,7 +132,8 @@ export const runSpreadTool: AgentTool = {
     const origin = given ?? run.origin?.roomId;
     if (!origin) return { error: "no fire origin yet: call merge_reports first" };
     if (!ctx.building.rooms.some((r) => r.id === origin)) {
-      return { error: `unknown room id "${origin}": use a room id as <floor>-<room>, e.g. "7-break" or "10-east"` };
+      const example = run.origin?.roomId ?? ctx.building.rooms.find((r) => !isCirculation(r))?.id ?? ctx.building.rooms[0]?.id;
+      return { error: `unknown room id "${origin}": use a room id from this building, e.g. "${example}", or omit origin to use the one from merge_reports` };
     }
 
     const cached = run.forecast?.origin === origin && run.forecast.minutes === minutes;

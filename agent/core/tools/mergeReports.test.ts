@@ -19,6 +19,9 @@ const fakeServer = (state: IncidentState | (() => never)): ServerApi => ({
   forecast: async () => {
     throw new Error("not used");
   },
+  lookupAddress: async () => {
+    throw new Error("not used");
+  },
 });
 
 const stateWith = (reports: Report[]): IncidentState => ({ ...fixture, reports });

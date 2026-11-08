@@ -3,12 +3,17 @@
 //   export async function processReport(input: { text, caller }): Promise<{ roomId?, confidence?,
 //     recommendation?, trail?, reply? }>
 //   export function resetConversations(): void   // forget callers' earlier texts (new demo run)
+//   export const defaultContext: { building, ... }  // optional: processReport's 2nd argument
+//   export function estimateOccupancy(building, at): { occupants, total, byFloor, localTime, basis }
 // Loaded by relative path (no package dependency). Every call is guarded: if the agent throws,
 // times out or returns something unusable, that report falls back to the rule-based locator.
+import type { Building, Occupant } from "@firewatch/shared/types";
 import type { ProcessResult, ReportProcessor } from "../state/processor.ts";
 
 export const AGENT_EXPORT = "processReport";
 export const RESET_EXPORT = "resetConversations";
+export const CONTEXT_EXPORT = "defaultContext";
+export const OCCUPANCY_EXPORT = "estimateOccupancy";
 const AGENT_URL = new URL("../../../agent/index.ts", import.meta.url);
 
 const isResult = (v: unknown): v is ProcessResult => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -54,7 +59,51 @@ export async function loadAgentProcessor(url: URL = AGENT_URL): Promise<ReportPr
     console.warn(`[agent] agent/index.ts does not export ${AGENT_EXPORT}() yet; using the rule-based locator`);
     return undefined;
   }
-  return fn as ReportProcessor;
+  const ctx = mod[CONTEXT_EXPORT];
+  type Call = (input: { text: string; caller: string }, ctx?: unknown) => ReturnType<ReportProcessor>;
+  // The agent locates rooms on ctx.building: give it the active building when one is set.
+  return (input) => {
+    const { text, caller } = input;
+    if (input.building && typeof ctx === "object" && ctx !== null) return (fn as Call)({ text, caller }, { ...ctx, building: input.building });
+    return (fn as Call)({ text, caller });
+  };
+}
+
+/**
+ * Keeps a processor's located room on the active building: a result naming a room the building
+ * doesn't have (e.g. an agent that still thinks in demo rooms) is re-located by `fallback`.
+ */
+export function onActiveBuilding(processor: ReportProcessor, fallback: ReportProcessor, roomIds: () => ReadonlySet<string>): ReportProcessor {
+  return async (input) => {
+    const result = await processor(input);
+    if (result.roomId === undefined || roomIds().has(result.roomId)) return result;
+    console.error(`[agent] located ${result.roomId}, which the active building doesn't have; using the rule-based locator for this report`);
+    const located = await fallback(input);
+    return { ...result, roomId: located.roomId, confidence: located.confidence, ...(located.reply && { reply: located.reply }) };
+  };
+}
+
+/** What the agent's estimateOccupancy() returns. */
+export interface OccupancyEstimate {
+  occupants: Occupant[]; // each estimated: true
+  total: number;
+  byFloor: Record<string, number>;
+  localTime: string;
+  basis: string[];
+}
+export type OccupancyEstimator = (building: Building, at: number) => OccupancyEstimate;
+
+/**
+ * Loads the agent's estimateOccupancy (pure code, no API key, so it loads whatever AGENT says).
+ * Returns undefined when it isn't exported; looked-up buildings then start with no occupants.
+ */
+export async function loadOccupancyEstimator(url: URL = AGENT_URL): Promise<OccupancyEstimator | undefined> {
+  const fn = (await importAgent(url))?.[OCCUPANCY_EXPORT];
+  if (typeof fn !== "function") {
+    console.warn(`[agent] agent/index.ts does not export ${OCCUPANCY_EXPORT}() yet; looked-up buildings get no occupancy estimate`);
+    return undefined;
+  }
+  return fn as OccupancyEstimator;
 }
 
 /**

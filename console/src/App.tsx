@@ -1,20 +1,21 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import building from "@firewatch/shared/building.json";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { IncidentState, Report } from "@firewatch/shared/types";
+import { BuildingProvider, roomPeople, useActiveBuildingSource, useBuilding, type ActiveBuilding } from "./activeBuilding";
+import { BuildingPanel } from "./BuildingPanel";
+import { devFixture } from "./devFixture";
 import { FloorPlan } from "./FloorPlan";
 import { Building3DPanel } from "./building3d";
 import { AgentTrail } from "./AgentTrail";
 import { ExitAnalysis } from "./ExitAnalysis";
 import { IncidentDecisions, IncidentLog } from "./IncidentActivity";
 import { EvacuationPriorities, IncidentSummary, PriorityActions } from "./IncidentPriority";
-import { Empty, PanelHeading, roomName, Timestamp, formatTime as time } from "./ui";
+import { Empty, PanelHeading, PeopleCount, Timestamp, formatTime as time } from "./ui";
 import { FlameIcon, MoonIcon, PauseIcon, PinIcon, PlayIcon, ReplayIcon, SendIcon, SunIcon } from "./Icons";
 import { useIncident } from "./useIncident";
 import { useTheme } from "./theme";
 import "./styles.css";
 import "./dispatch.css";
 
-const floors = [...new Set(building.rooms.map((room) => room.floor))].sort((a, b) => a - b);
 const PLAY_END = 30;
 const PLAY_STEP_MS = 400;
 const logId = (entry: { time: number; kind: string; text: string }) => `${entry.time}-${entry.kind}-${entry.text}`;
@@ -38,11 +39,16 @@ function useFreshIds(ids: string[] | null): Set<string> {
 }
 
 export function App() {
-  const { state, connected, mode, send, request, lastUpdated } = useIncident();
+  const { state: liveState, connected, mode, send, request, lastUpdated } = useIncident();
+  // Dev-only fixtures (?fixture=lookup | tower) stand in for a server with the building endpoints.
+  const fixture = useMemo(() => import.meta.env.DEV ? devFixture() : null, []);
+  const state = fixture?.state ?? liveState;
+  const { active, sync } = useActiveBuildingSource(state, fixture?.building);
+  const { floors } = active;
   const { theme, toggle: toggleTheme } = useTheme();
-  const [floor, setFloor] = useState(floors.includes(7) ? 7 : floors[floors.length - 1]);
+  const [floor, setFloor] = useState(floors.includes(7) ? 7 : floors[floors.length - 1]!);
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
-  const [view, setView] = useState<"plan" | "3d">("3d");
+  const [view, setView] = useState<"plan" | "3d">(fixture?.view ?? "3d");
   const [showAllReports, setShowAllReports] = useState(false);
   const floorTabs = useRef<HTMLDivElement>(null);
   const [caller, setCaller] = useState("");
@@ -60,10 +66,22 @@ export function App() {
   const visibleReports = showAllReports ? reports : reports.slice(0, 3);
   const freshReports = useFreshIds(state ? state.reports.map((report) => report.id) : null);
   const freshLog = useFreshIds(state?.log ? state.log.map(logId) : null);
-  const selected = building.rooms.find((room) => room.id === selectedRoom);
+  const selected = active.roomsById.get(selectedRoom ?? "");
   const selectedState = state?.rooms.find((room) => room.roomId === selectedRoom);
   const selectedOccupants = state?.occupants.filter((occupant) => occupant.room === selectedRoom) ?? [];
-  const floorStatus = statusByFloor(state);
+  const selectedPeople = roomPeople(state, selectedRoom ?? "");
+  const floorStatus = statusByFloor(state, active);
+
+  // Another building became active: clear the selection and show the fire floor (else the lowest floor).
+  const geometrySeen = useRef(active.geometryKey);
+  useLayoutEffect(() => {
+    if (geometrySeen.current === active.geometryKey) return;
+    geometrySeen.current = active.geometryKey;
+    setSelectedRoom(null);
+    setFloor(fireFloor(state, active));
+    // Only a geometry change resets the view; later state updates keep the operator's floor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active.geometryKey]);
   const trailErrors = state?.trail?.filter((step) => typeof step.output === "object" && step.output !== null && "error" in step.output && Boolean(step.output.error)).length ?? 0;
 
   const acceptedSeen = useRef<number | null | undefined>(undefined);
@@ -109,6 +127,8 @@ export function App() {
   useEffect(() => { if (!connected) setPlaying(false); }, [connected]);
 
   function transmit(event: Parameters<typeof send>[0]) {
+    // Fixtures never reach the real server.
+    if (fixture) { console.info("[fixture] not sent:", event); return true; }
     const ok = send(event);
     if (!ok) setNotice({ kind: "error", text: "Connection lost. Wait for reconnection, then try again." });
     return ok;
@@ -128,13 +148,14 @@ export function App() {
   }
 
   function focusRoom(id: string) {
-    const room = building.rooms.find((item) => item.id === id);
+    const room = active.roomsById.get(id);
     if (room) { setFloor(room.floor); setSelectedRoom(id); }
   }
 
   function selectFloor(value: number) {
+    if (!floors.includes(value)) return;
     setFloor(value);
-    setSelectedRoom((id) => building.rooms.find((room) => room.id === id)?.floor === value ? id : null);
+    setSelectedRoom((id) => active.roomsById.get(id ?? "")?.floor === value ? id : null);
   }
 
   async function submitReport(event: FormEvent<HTMLFormElement>) {
@@ -164,6 +185,7 @@ export function App() {
   }
 
   return (
+    <BuildingProvider value={active}>
     <div className="app-shell dispatch-shell">
       <a className="skip-link" href="#main">Skip to incident</a>
       <header className="app-header">
@@ -187,6 +209,7 @@ export function App() {
 
         <div className="dispatch-layout">
           <aside className="command-column" aria-label="Actions and evacuation priorities">
+            <BuildingPanel state={state} connected={connected} mode={mode} sync={sync} onSend={transmit} />
             <PriorityActions state={state} connected={connected} onAccept={() => transmit({ type: "acceptRecommendation" })} />
             <EvacuationPriorities state={state} floor={floor} onFloor={selectFloor} />
           </aside>
@@ -194,7 +217,7 @@ export function App() {
           <div className="workspace-column">
             <section id="building-view" className="panel primary-map" aria-labelledby="building-heading">
               <div className="panel-heading map-heading">
-                <h2 id="building-heading">Building · Floor {floor}</h2>
+                <h2 id="building-heading">{active.isDemo ? "Building" : active.profile.name} · Floor {floor}</h2>
                 <div className="view-switch" role="group" aria-label="Building view">
                   <button aria-pressed={view === "3d"} onClick={() => setView("3d")}>3D building</button>
                   <button aria-pressed={view === "plan"} onClick={() => setView("plan")}>Floor plan</button>
@@ -215,7 +238,7 @@ export function App() {
               {selected ? (
                 <div className="room-inspector">
                   <div className="inspector-heading"><h3>{selected.name}</h3><button className="text-button" onClick={() => setSelectedRoom(null)}>Close details</button></div>
-                  <div className="room-stats"><span>Fire<strong>{selectedState ? `${Math.round(selectedState.fire * 100)}%` : "No data"}</strong></span><span>Smoke<strong>{selectedState ? `${Math.round(selectedState.smoke * 100)}%` : "No data"}</strong></span><span>Occupants<strong>{selectedOccupants.length ? selectedOccupants.reduce((sum, item) => sum + item.count, 0) : "Unrecorded"}</strong></span></div>
+                  <div className="room-stats"><span>Fire<strong>{selectedState ? `${Math.round(selectedState.fire * 100)}%` : "No data"}</strong></span><span>Smoke<strong>{selectedState ? `${Math.round(selectedState.smoke * 100)}%` : "No data"}</strong></span><span>Occupants<strong>{selectedPeople.known ? <PeopleCount count={selectedPeople.count} estimated={selectedPeople.estimated} unit="" /> : "Unrecorded"}</strong></span></div>
                   {selectedOccupants.some((item) => item.flags.length) && <p className="assistance-note">Assistance: {[...new Set(selectedOccupants.flatMap((item) => item.flags))].join(", ")}</p>}
                 </div>
               ) : <p className="map-hint">Select a room to see conditions and occupants.</p>}
@@ -263,6 +286,7 @@ export function App() {
         <footer className="app-footer"><span>FireWatch · Dispatch workspace</span><span>Illustrative model forecast{mode === "mock" ? " · Scripted reports" : ""}</span></footer>
       </main>
     </div>
+    </BuildingProvider>
   );
 }
 
@@ -275,7 +299,8 @@ function countLabel(count: number, singular: string, plural = `${singular}s`) {
 }
 
 function ReportCard({ report, selected, fresh, onSelect }: { report: Report; selected: boolean; fresh: boolean; onSelect: (id: string) => void }) {
-  const canLocate = building.rooms.some((room) => room.id === report.roomId);
+  const { roomsById, roomName } = useBuilding();
+  const canLocate = roomsById.has(report.roomId ?? "");
   const uncertain = !report.roomId || report.confidence === undefined || report.confidence < 0.7;
   return (
     <article className={`report-card${selected ? " selected-report" : ""}${fresh ? " is-new" : ""}`}>
@@ -286,11 +311,19 @@ function ReportCard({ report, selected, fresh, onSelect }: { report: Report; sel
   );
 }
 
-function statusByFloor(state: IncidentState | null): Map<number, "fire" | "smoke"> {
-  const floorOf = new Map(building.rooms.map((room) => [room.id, room.floor]));
+/** Floor to show for a newly active building: the origin's floor, else the hottest room's, else the lowest. */
+function fireFloor(state: IncidentState | null, active: ActiveBuilding): number {
+  const origin = active.roomsById.get(state?.origin?.roomId ?? "");
+  if (origin) return origin.floor;
+  const hottest = [...(state?.rooms ?? [])].filter((room) => room.fire > 0.05 && active.roomsById.has(room.roomId)).sort((a, b) => b.fire - a.fire)[0];
+  if (hottest) return active.roomsById.get(hottest.roomId)!.floor;
+  return active.floors.includes(1) ? 1 : active.floors[0] ?? 1;
+}
+
+function statusByFloor(state: IncidentState | null, active: ActiveBuilding): Map<number, "fire" | "smoke"> {
   const out = new Map<number, "fire" | "smoke">();
   for (const room of state?.rooms ?? []) {
-    const floor = floorOf.get(room.roomId);
+    const floor = active.roomsById.get(room.roomId)?.floor;
     if (floor === undefined) continue;
     if (room.fire > 0.05) out.set(floor, "fire");
     else if (room.smoke > 0.05 && out.get(floor) !== "fire") out.set(floor, "smoke");

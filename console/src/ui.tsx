@@ -1,9 +1,15 @@
-import building from "@firewatch/shared/building.json";
 import type { ReactNode } from "react";
 import { PulseIcon } from "./Icons";
 
-export const roomName = (id?: string) =>
-  building.rooms.find((room) => room.id === id)?.name ?? id ?? "Location pending";
+/**
+ * A people count. Estimated counts (room kind x building use x time of day, not a record) read
+ * "≈ 14 people" with an "estimated" tooltip; recorded counts render exactly as before.
+ */
+export function PeopleCount({ count, estimated = false, unit = "people" }: { count: number; estimated?: boolean; unit?: string }) {
+  const text = unit ? `${count} ${unit}` : `${count}`;
+  if (!estimated) return <>{text}</>;
+  return <span className="estimated-count" title="Estimated count, not a record"><span aria-hidden="true">≈ </span>{text}<span className="sr-only"> (estimated)</span></span>;
+}
 
 export const formatTime = (value: number) =>
   new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });

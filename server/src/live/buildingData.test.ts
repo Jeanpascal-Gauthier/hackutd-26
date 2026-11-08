@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { building, doors, inspections, sprinklers } from "./buildingData.ts";
+import { DEMO } from "./buildingData.ts";
+const { building, doors, inspections, sprinklers } = DEMO;
 import { filterInspections } from "../transport/http.ts";
 
 test("inspection records load from data/out and cover the building", () => {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import building from "@firewatch/shared/building.json";
 import type { IncidentState } from "@firewatch/shared/types";
+import { useBuilding } from "../activeBuilding";
 import { ChevronDownIcon, ChevronUpIcon, FitIcon } from "../Icons";
 import { BuildingScene } from "./scene";
 import { readTheme, watchTheme } from "./theme";
@@ -15,10 +15,6 @@ export interface Building3DProps {
   onUnavailable?(): void;
 }
 
-const floorNumbers = [...new Set(building.rooms.map((room) => room.floor))].sort((a, b) => a - b);
-const minFloor = floorNumbers[0] ?? 1;
-const maxFloor = floorNumbers[floorNumbers.length - 1] ?? 1;
-const roomsById = new Map(building.rooms.map((room) => [room.id, room]));
 const shortName = (name: string) => name.replace(/^Floor \d+ /, "");
 
 let webglSupport: boolean | undefined;
@@ -34,6 +30,12 @@ function hasWebGL(): boolean {
 
 export default function Building3D(props: Building3DProps) {
   const { state, floor, selectedRoom } = props;
+  const active = useBuilding();
+  const { floors: floorNumbers, roomsById } = active;
+  const minFloor = floorNumbers[0] ?? 1;
+  const maxFloor = floorNumbers[floorNumbers.length - 1] ?? 1;
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const supported = useMemo(hasWebGL, []);
   const [failed, setFailed] = useState(false);
   const [hover, setHover] = useState<{ name: string; x: number; y: number } | null>(null);
@@ -52,14 +54,14 @@ export default function Building3D(props: Building3DProps) {
     let scene: BuildingScene;
     try {
       const { state, floor, selectedRoom } = latest.current;
-      scene = new BuildingScene(host, building, readTheme(), { state, floor, selectedRoom }, {
+      scene = new BuildingScene(host, activeRef.current.building, readTheme(), { state, floor, selectedRoom }, {
         onPick: (id) => {
-          const room = roomsById.get(id);
+          const room = activeRef.current.roomsById.get(id);
           if (!room) return;
           latest.current.onSelectRoom(id);
           latest.current.onSelectFloor(room.floor);
         },
-        onHover: (id, x, y) => setHover(id ? { name: roomsById.get(id)?.name ?? id, x, y } : null),
+        onHover: (id, x, y) => setHover(id ? { name: activeRef.current.roomsById.get(id)?.name ?? id, x, y } : null),
       });
     } catch {
       setFailed(true); // No usable WebGL context: the 2D floor plan stays the only view.
@@ -68,7 +70,8 @@ export default function Building3D(props: Building3DProps) {
     sceneRef.current = scene;
     const unwatch = watchTheme(() => scene.setTheme(readTheme()));
     return () => { unwatch(); scene.dispose(); sceneRef.current = null; setHover(null); };
-  }, [supported]);
+    // The scene is rebuilt only when the drawn shape changes (another building, or a new outline).
+  }, [supported, active.shapeKey]);
 
   useEffect(() => { sceneRef.current?.setState(state); }, [state]);
   useEffect(() => { sceneRef.current?.setFloor(floor); }, [floor]);
@@ -76,7 +79,7 @@ export default function Building3D(props: Building3DProps) {
 
   const origin = state?.origin ? roomsById.get(state.origin.roomId) : undefined;
   const label = [
-    `3D view of ${floorNumbers.length}-floor building`,
+    `3D view of ${floorNumbers.length}-floor building${active.isDemo ? "" : `, ${active.profile.name}`}`,
     origin ? `fire origin ${shortName(origin.name)} floor ${origin.floor}` : "no fire origin reported",
     `floor ${floor} highlighted`,
     state?.accepted ? "evacuation route lit in green" : "",
@@ -86,7 +89,7 @@ export default function Building3D(props: Building3DProps) {
     if (!canvas) return;
     canvas.setAttribute("role", "img");
     canvas.setAttribute("aria-label", label);
-  }, [label]);
+  }, [label, active.shapeKey]);
 
   if (!supported || failed) return null;
   return <section className="panel building3d-panel" aria-labelledby="building3d-heading">

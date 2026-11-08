@@ -1,7 +1,7 @@
 // The contract every agent tool follows. Each tool lives in its own file in this folder and
 // exports one AgentTool; agent.ts lists them. Types only.
 import type OpenAI from "openai";
-import type { Building, FloorExit, IncidentState, Occupant, Recommendation } from "@firewatch/shared/types";
+import type { Building, BuildingLookup, FloorExit, IncidentState, Occupant, Recommendation } from "@firewatch/shared/types";
 import type { LocateResult } from "./locateRoom.ts";
 
 // ---- The server's HTTP API (server/API.md), as the tools see it ----
@@ -28,8 +28,9 @@ export interface Forecast {
   recommendation: Recommendation;
 }
 
-/** GET /building response. */
+/** GET /building response: the ACTIVE incident building (the demo one unless an address was confirmed). */
 export interface BuildingInfo {
+  /** Has `profile` (name, address, use, floors, time zone) except on older servers' demo building. */
   building: Building;
   occupants: Occupant[];
   /** Room id -> sprinkler status. */
@@ -43,14 +44,25 @@ export interface ServerApi {
   getBuilding(): Promise<BuildingInfo>;
   /** POST /forecast. Throws on an unknown origin or a server error. */
   forecast(origin: string, minutes?: number): Promise<Forecast>;
+  /**
+   * POST /incident/address: start looking up the building at an address (returns at once; the
+   * operator confirms an outline on the console). The server ignores a repeat of the current query.
+   */
+  lookupAddress(address: string, caller?: string): Promise<BuildingLookup>;
 }
 
 // ---- What a tool gets when it runs ----
 
 /** Data passed in by whoever runs the agent. */
 export interface AgentContext {
+  /**
+   * The building the tools use. processReport() replaces it per report with the server's active
+   * building (GET /building); this one is the fallback when the server can't be reached.
+   */
   building: Building;
   server: ServerApi;
+  /** The chat model. Tests pass a fake; by default the NVIDIA client (agent/core/nvidia.ts). */
+  llm?: OpenAI;
 }
 
 /** The likely fire origin, from merge_reports. */
@@ -77,6 +89,10 @@ export interface RunState {
   exits?: FloorExit[];
   /** Set by write_recommendation, only once it passes its checks. */
   recommendation?: Recommendation;
+  /** The server's address lookup when this report came in (GET /state), if any. */
+  currentLookup?: BuildingLookup;
+  /** Set by find_building when it started a lookup: this report waits for the operator to confirm. */
+  lookup?: BuildingLookup;
 }
 
 export interface ToolEnv {

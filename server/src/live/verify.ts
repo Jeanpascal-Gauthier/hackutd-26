@@ -5,7 +5,8 @@ import { WebSocket } from "ws";
 import type { ServerEvent } from "@firewatch/shared/events";
 import type { IncidentState } from "@firewatch/shared/types";
 import { startServer, verifyPort } from "../testing/startServer.ts";
-import { doors, inspections } from "./buildingData.ts";
+import { DEMO } from "./buildingData.ts";
+const { doors, inspections } = DEMO;
 
 const PORT = verifyPort(18081);
 const base = `http://localhost:${PORT}`;

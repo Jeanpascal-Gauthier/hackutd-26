@@ -32,8 +32,8 @@ theme is light, with saved light/dark choices respected.
 - Read the incident summary and caller reports.
 - Select a floor or report location, then inspect a room's fire, smoke, occupants,
   assistance flags, and linked-report count. Missing occupant records mean unknown,
-  not zero. Geometry comes from `shared/building.json`, so a coordinated replacement
-  of that file automatically supplies the new floors.
+  not zero. Geometry comes from the active building (see below); floor tabs, the 3D
+  model and the plan follow it, from 1 to 40 floors.
 - Submit caller name and report text to `POST /ingest`. The server broadcasts the
   resulting report; the console does not invent a local copy.
 - Scrub the shared 0–30 minute forecast with `setSimMinute`, in both mock and live
@@ -65,6 +65,27 @@ theme is light, with saved light/dark choices respected.
   shown in the header rather than mixed into the server log.
 - Recover automatically when the socket drops. Last received data stays visible;
   controls are disabled until reconnection.
+
+## Incident building
+
+`activeBuilding.tsx` starts with the bundled `shared/building.json` (the demo) and fetches
+`GET /building` again whenever `state.building.id` or `version` changes; components read it
+with `useBuilding()`. A new building clears the selected room and shows the fire floor (else
+floor 1). When `profile.outline` is present, the plan and the 3D shell follow the real footprint
+(space no room covers is hatched); the demo, which has no outline, renders exactly as before.
+
+The Incident building panel shows the profile (name, address, use, floors, footprint, an
+"Estimated layout" badge, assumptions, the latest `estimate_occupancy` basis, attribution) and
+the address lookup: type an address (`lookupAddress`), follow searching/loading, confirm one of
+the candidate outlines on the mini map or list (`confirmBuilding`), retry a failed lookup, or
+go back to the demo (`useDemoBuilding`, after a confirmation step). The panel moves to the top
+of the left column while a lookup needs attention. Lookup is disabled in the scripted demo.
+Estimated people counts read "≈ 14 people" everywhere, with an "estimated" tooltip.
+
+Dev-only fixtures (never in the production bundle, and they send nothing to the server):
+`?fixture=lookup` (5-floor L-shaped building, lookup waiting for confirmation) and
+`?fixture=tower` (40 floors). Add `&view=plan`, `&theme=dark`, or
+`&lookup=searching|loading|failed`.
 
 ## Agent activity and remaining handoffs
 

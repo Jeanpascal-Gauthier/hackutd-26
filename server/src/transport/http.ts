@@ -3,8 +3,10 @@
 //   GET  /state       current IncidentState
 //   GET  /building    building + occupants + sprinklers + doors + inspections
 //   GET  /inspections inspection records, filtered by ?floor= &system= &status=
-//   POST /forecast    what-if forecast from an origin, state unchanged (agent tools)
+//   POST /forecast    what-if forecast from an origin (or several), state unchanged (agent tools)
 //   POST /voice/report phone-call webhook (ElevenLabs tool), token-protected; replies in speakable text
+//   POST /voice/address phone-call webhook: the caller's address starts a building lookup
+//   POST /incident/address, /incident/building, /incident/building/demo  building lookup (live/lookup.ts)
 //   GET  /health      POST /live/reset      POST /mock/reset, /mock/replay (mock mode)
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { Building, IncidentState, Occupant, Recommendation, TrailStep } from "@firewatch/shared/types";
@@ -12,7 +14,10 @@ import type { Forecast } from "../live/forecast.ts";
 import type { DoorRating, InspectionRecord } from "../live/buildingData.ts";
 import type { IngestInput, ProcessResult } from "../state/processor.ts";
 import type { Ingest } from "../state/ingest.ts";
-import { hasVoiceToken, speakable } from "./voice.ts";
+import { hasVoiceToken, speakable, VOICE_ADDRESS_PROMPT, VOICE_ADDRESS_REPLY } from "./voice.ts";
+import type { LookupResult } from "../live/lookup.ts";
+import { createBuildingRoutes } from "../buildings/routes.ts";
+import type { BuildingService } from "../buildings/service.ts";
 
 const MAX_BODY = 256 * 1024; // room for an agent trail
 const MAX_TRAIL = 50;
@@ -23,21 +28,32 @@ const MAX_CALLER = 100;
 export interface HttpDeps {
   ingest: Ingest;
   getState(): IncidentState;
-  buildingInfo: {
-    building: Building;
-    occupants: Occupant[];
-    sprinklers: Record<string, string>;
-    doors: DoorRating[];
-    inspections: InspectionRecord[];
-  };
-  /** Runs a forecast without touching incident state. Throws on an unknown origin. */
-  forecast(origin: string, minutes: number): Forecast;
+  /** GET /building: the active building (with `profile`) and its records. Read on every request. */
+  getBuildingInfo(): BuildingInfo;
+  /** Runs a forecast (one or more fires) without touching incident state. Throws on an unknown origin. */
+  forecast(origin: string | string[], minutes: number): Forecast;
   /** POST /live/reset: clear the incident (no fire, no reports). Also stops a running demo. */
   resetLive(): void;
   /** Present only in mock mode: POST /mock/reset and /mock/replay drive the scripted demo. */
   mock?: { reset(): void; replay(): void };
   /** Shared secret for POST /voice/report (env VOICE_TOKEN). Unset: the endpoint answers 503. */
   voiceToken?: string;
+  /** Public building lookups (GET /buildings/...), separate from the active incident. */
+  buildings?: BuildingService;
+  /** Address -> confirmed building -> active incident building (POST /incident/..., /voice/address). */
+  lookups?: {
+    lookupAddress(address: unknown, caller?: string): LookupResult;
+    confirmBuilding(buildingId: unknown): LookupResult;
+    useDemoBuilding(): LookupResult;
+  };
+}
+
+export interface BuildingInfo {
+  building: Building;
+  occupants: Occupant[];
+  sprinklers: Record<string, string>;
+  doors: DoorRating[];
+  inspections: InspectionRecord[];
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -54,7 +70,7 @@ function validateAgentResult(b: Record<string, unknown>, roomIds: ReadonlySet<st
 
   if (b.roomId !== undefined) {
     if (typeof b.roomId === "string" && roomIds.has(b.roomId)) out.roomId = b.roomId;
-    else errors.push("`roomId` must be a room id from shared/building.json");
+    else errors.push("`roomId` must be a room id from GET /building");
   }
   if (b.confidence !== undefined) {
     if (typeof b.confidence === "number" && b.confidence >= 0 && b.confidence <= 1) out.confidence = b.confidence;
@@ -157,18 +173,25 @@ async function readJson(req: IncomingMessage, res: ServerResponse): Promise<{ ok
   }
 }
 
-export function createHttpServer({ ingest, getState, buildingInfo, forecast, resetLive, mock, voiceToken }: HttpDeps) {
-  const roomIds = new Set(buildingInfo.building.rooms.map((r) => r.id));
+export function createHttpServer({ ingest, getState, getBuildingInfo, forecast, resetLive, mock, voiceToken, buildings, lookups }: HttpDeps) {
+  // The active building can change (address lookup), so room ids are read per request.
+  const activeRoomIds = () => new Set(getBuildingInfo().building.rooms.map((r) => r.id));
+  const lookupReply = (res: ServerResponse, r: LookupResult | undefined) =>
+    !r ? json(res, 404, { ok: false, error: "building lookup is not available" })
+      : r.ok ? json(res, 200, { ok: true, lookup: r.lookup ?? null, ...(r.unchanged && { unchanged: true }) })
+      : json(res, r.status, { ok: false, error: r.error });
+  const handleBuildingRequest = buildings && createBuildingRoutes(buildings);
   return createServer(async (req, res) => {
     const method = req.method;
     const url = (req.url ?? "").split("?")[0];
     if (method === "OPTIONS") return json(res, 204, null);
+    if (handleBuildingRequest && await handleBuildingRequest(req, res)) return;
     if (method === "GET" && url === "/health") return json(res, 200, { ok: true, mock: !!mock });
     if (method === "GET" && url === "/state") return json(res, 200, getState());
-    if (method === "GET" && url === "/building") return json(res, 200, buildingInfo);
+    if (method === "GET" && url === "/building") return json(res, 200, getBuildingInfo());
     if (method === "GET" && url === "/inspections") {
       const query = new URLSearchParams((req.url ?? "").split("?")[1] ?? "");
-      const r = filterInspections(buildingInfo.inspections, query);
+      const r = filterInspections(getBuildingInfo().inspections, query);
       return json(res, r.ok ? 200 : 400, r);
     }
 
@@ -177,13 +200,16 @@ export function createHttpServer({ ingest, getState, buildingInfo, forecast, res
       if (!r.ok) return;
       const b = isObj(r.body) ? r.body : {};
       const minutes = b.minutes ?? 30;
-      if (typeof b.origin !== "string" || !roomIds.has(b.origin))
-        return json(res, 400, { ok: false, errors: ["`origin` must be a room id from shared/building.json"] });
+      // `origin`: one room id; or `origins`: several room ids (separate fires, all burning at minute 0).
+      const origins = Array.isArray(b.origins) ? b.origins : [b.origin];
+      const roomIds = activeRoomIds();
+      if (!origins.length || origins.length > 20 || !origins.every((o) => typeof o === "string" && roomIds.has(o)))
+        return json(res, 400, { ok: false, errors: ["`origin` (or every entry of `origins`) must be a room id from GET /building"] });
       if (typeof minutes !== "number" || !Number.isInteger(minutes) || minutes < 1 || minutes > 60)
         return json(res, 400, { ok: false, errors: ["`minutes` must be an integer from 1 to 60"] });
-      const f = forecast(b.origin, minutes);
+      const f = forecast(origins as string[], minutes);
       // Snapshots are left out (108 rooms x 31 minutes); the summary and exits are what tools need.
-      return json(res, 200, { ok: true, origin: f.origin, minutes: f.minutes, summary: f.summary, exits: f.exits, recommendation: f.recommendation });
+      return json(res, 200, { ok: true, origin: f.origin, origins: f.origins, minutes: f.minutes, summary: f.summary, exits: f.exits, recommendation: f.recommendation });
     }
 
     if (method === "POST" && url === "/live/reset") {
@@ -205,7 +231,7 @@ export function createHttpServer({ ingest, getState, buildingInfo, forecast, res
       // Only the caller's words and number are taken from a call; never agent-result fields.
       const b = isObj(r.body) ? r.body : {};
       const caller = typeof b.caller === "string" && b.caller.trim() ? b.caller : "voice caller";
-      const input = validateIngest({ text: b.text, caller }, roomIds);
+      const input = validateIngest({ text: b.text, caller }, activeRoomIds());
       if (Array.isArray(input)) return json(res, 400, { ok: false, errors: input, reply: speakable(undefined) });
       try {
         const { report, reply } = await ingest({ ...input, channel: "voice" });
@@ -217,10 +243,41 @@ export function createHttpServer({ ingest, getState, buildingInfo, forecast, res
       }
     }
 
+    if (method === "POST" && url === "/voice/address") {
+      if (!voiceToken) return json(res, 503, { ok: false, error: "voice is off: start the server with VOICE_TOKEN set" });
+      if (!hasVoiceToken(req, voiceToken)) return json(res, 401, { ok: false, error: "missing or wrong x-firesight-token" });
+      const r = await readJson(req, res);
+      if (!r.ok) return;
+      const b = isObj(r.body) ? r.body : {};
+      const caller = typeof b.caller === "string" && b.caller.trim() ? b.caller.trim().slice(0, MAX_CALLER) : "voice caller";
+      const address = typeof b.address === "string" ? b.address.trim() : "";
+      if (address.length < 3) return json(res, 200, { ok: false, reply: VOICE_ADDRESS_PROMPT });
+      // Starts the lookup and answers at once: the voice agent must not wait on Overpass.
+      const started = lookups?.lookupAddress(address, caller);
+      if (started && !started.ok && started.status === 400) return json(res, 200, { ok: false, reply: VOICE_ADDRESS_PROMPT });
+      return json(res, 200, { ok: !!started?.ok, reply: VOICE_ADDRESS_REPLY });
+    }
+
+    if (method === "POST" && url === "/incident/address") {
+      const r = await readJson(req, res);
+      if (!r.ok) return;
+      const b = isObj(r.body) ? r.body : {};
+      if (b.caller !== undefined && !isStr(b.caller, MAX_CALLER)) return json(res, 400, { ok: false, error: "caller must be a non-empty string of at most 100 characters" });
+      return lookupReply(res, lookups?.lookupAddress(b.address, b.caller as string | undefined));
+    }
+
+    if (method === "POST" && url === "/incident/building/demo") return lookupReply(res, lookups?.useDemoBuilding());
+
+    if (method === "POST" && url === "/incident/building") {
+      const r = await readJson(req, res);
+      if (!r.ok) return;
+      return lookupReply(res, lookups?.confirmBuilding(isObj(r.body) ? r.body.buildingId : undefined));
+    }
+
     if (method === "POST" && url === "/ingest") {
       const r = await readJson(req, res);
       if (!r.ok) return;
-      const input = validateIngest(r.body, roomIds);
+      const input = validateIngest(r.body, activeRoomIds());
       if (Array.isArray(input)) return json(res, 400, { ok: false, errors: input });
 
       try {
