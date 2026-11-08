@@ -1,0 +1,48 @@
+<style>
+.panel-root { flex-direction: column; width: 480px; }
+.panel-content { flex-direction: column; gap: 8px; padding-top: 16px; padding-right: 16px; padding-bottom: 16px; padding-left: 16px; }
+.heading { color: #1c1d20; font-size: 24px; font-weight: 700; }
+.heading:dark { color: #fafaf7; }
+.status { color: #49515e; font-size: 18px; line-height: 1.2; }
+.status:dark { color: #c3c6cc; }
+.recommendation { flex-direction: column; gap: 6px; padding-top: 10px; padding-right: 10px; padding-bottom: 10px; padding-left: 10px; border-width: 1px; border-color: #c7cdd6; border-radius: 10px; background-color: #edf0f4; }
+.recommendation:dark { background-color: #26272b; border-color: #40414a; }
+.section-label { color: #6b5a00; font-size: 18px; font-weight: 700; }
+.section-label:dark { color: #f5d90a; }
+.recommendation-text { width: 416px; color: #1c1d20; font-size: 22px; line-height: 1.2; }
+.recommendation-text:dark { color: #fafaf7; }
+.action-label { font-size: 20px; font-weight: 700; }
+.radar-swatches { flex-direction: row; gap: 4px; }
+.radar-swatch { width: 46px; height: 10px; border-radius: 2px; }
+</style>
+<Panel class="panel-root"><div class="panel-content">
+<span class="heading">Building inspection</span>
+    <div class="recommendation">
+      <span class="section-label">HAZARD RADAR</span>
+      <div class="radar-swatches">
+        <div class="radar-swatch" style="background-color: #ece8de"></div>
+        <div class="radar-swatch" style="background-color: #3a6fd8"></div>
+        <div class="radar-swatch" style="background-color: #22b8e0"></div>
+        <div class="radar-swatch" style="background-color: #f2e14c"></div>
+        <div class="radar-swatch" style="background-color: #ff9a1f"></div>
+        <div class="radar-swatch" style="background-color: #e8331c"></div>
+        <div class="radar-swatch" style="background-color: #9e0d1e"></div>
+        <div class="radar-swatch" style="background-color: #d63bd6"></div>
+      </div>
+      <span class="status">Clear - Smoke - Fire - Extreme</span>
+      <span class="status">Faint halo = nearby hazard. Green = accepted clear route.</span>
+      <span id="people-pins-status" class="status">People pins: blue = people, red = needs help.</span>
+    </div>
+    <div class="recommendation">
+      <span class="section-label">SELECTED ROOM</span>
+      <span id="selected-room-hint" class="status">Point at a room and click or pinch to inspect it.</span>
+      <div id="selected-room-details" style="display: none; flex-direction: column; gap: 6px">
+        <div id="selected-room-swatch" style="height: 8px; background-color: #ece8de"></div>
+        <span id="selected-room-title" class="recommendation-text">No room selected</span>
+        <span id="selected-room-floor" class="status">Floor | Fire 0% | Smoke 0%</span>
+        <span id="selected-room-occupants" class="status">0 people</span>
+        <span id="selected-room-route" class="status">Not on accepted route</span>
+        <Button id="clear-room-selection"><ButtonLabel class="action-label">Clear selection</ButtonLabel></Button>
+      </div>
+    </div>
+</div></Panel>

@@ -26,5 +26,6 @@ export default defineAssets({
   'command-room': createCommandRoom(),
   'welcome-panel': uikitml('welcome.uikitml', 'Welcome Panel'),
   'voice-panel': uikitml('voice-panel.uikitml', 'Voice Panel'),
+  'inspection-panel': uikitml('inspection-panel.uikitml', 'Building Inspection Panel'),
   'resources-panel': uikitml('resources-panel.uikitml', 'Resources Panel'),
 });
