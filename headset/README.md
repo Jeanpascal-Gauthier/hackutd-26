@@ -38,6 +38,14 @@ Open `https://localhost:8081/` in Quest Browser and enter VR. Reuse the existing
 app tab for later reloads so there is only one headset tab. The experience uses
 an opaque virtual room rather than physical-room passthrough.
 
+## Room setup
+
+Enter VR, face the direction you want the front wall, then press **Center room here**
+on the setup panel. It centers the virtual room at your current position and brings
+the building within reach. **Bring building closer** resets its size and places it
+in front of you without moving the room. These controls do not change the Quest
+safety boundary.
+
 ## Building controls
 
 - Hands: pinch the building with one hand to pick it up. Move or turn your hand

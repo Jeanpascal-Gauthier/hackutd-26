@@ -60,10 +60,10 @@
 </style>
 <Panel class="panel-root">
   <div class="panel-content">
-    <div class="eyebrow">IMMERSIVE WEB SDK</div>
-    <div class="heading">Hello, Immersive Web!</div>
-    <div class="body">Try each station around you,</div>
-    <div class="body">then make this scene your own.</div>
+    <div class="eyebrow">FIREWATCH SETUP</div>
+    <div class="heading">Your command room</div>
+    <div class="body">Stand or sit comfortably, face forward,</div>
+    <div class="body">then center the room here.</div>
   </div>
   <Button id="xr-button" class="button">
     <ButtonIcon>
@@ -71,6 +71,13 @@
     </ButtonIcon>
     <ButtonLabel class="button-label">Enter XR</ButtonLabel>
   </Button>
+  <Button id="center-room-button" class="button">
+    <ButtonLabel>Center room here</ButtonLabel>
+  </Button>
+  <Button id="bring-building-button" class="button">
+    <ButtonLabel>Bring building closer</ButtonLabel>
+  </Button>
+  <div id="setup-status" class="body" style="padding: 16px">Pinch the building to grab. Use both hands to zoom.</div>
   <Button id="exit-button" class="button" style="display: none">
     <ButtonIcon>
       <LogIn></LogIn>
