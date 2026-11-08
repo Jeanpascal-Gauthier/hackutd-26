@@ -238,7 +238,8 @@ export class BuildingInspection {
         this.peopleSlots.push({
           x: (room.x + room.w * (0.15 + 0.7 * ((n % cols) + 0.5) / cols)) * BUILDING_SCALE,
           z: (room.z + room.d * (0.15 + 0.7 * (Math.floor(n / cols) + 0.5) / rows)) * BUILDING_SCALE,
-          y: 0.022 + (room.floor - 1) * FLOOR_HEIGHT, floor: room.floor,
+          // Cone is 0.01 tall and centred; its base rests on the slab top (0.014).
+          y: 0.019 + (room.floor - 1) * FLOOR_HEIGHT, floor: room.floor,
         });
         this.people.setColorAt(index, occupants.flags.length ? this.helpColor : this.personColor);
       }

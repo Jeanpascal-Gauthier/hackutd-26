@@ -1,5 +1,5 @@
 import {
-  BoxGeometry, BufferGeometry, ConeGeometry, EdgesGeometry, Float32BufferAttribute, Group, InstancedMesh, LineBasicMaterial,
+  BoxGeometry, BufferGeometry, Color, ConeGeometry, EdgesGeometry, Float32BufferAttribute, Group, InstancedMesh, LineBasicMaterial,
   LineSegments, Mesh, MeshStandardMaterial,
 } from '@iwsdk/core';
 import type { Building } from '../incident-types.js';
@@ -20,18 +20,22 @@ const templateNormal = unitBoxTemplate.attributes.normal.array as Float32Array;
 const templateUv = unitBoxTemplate.attributes.uv.array as Float32Array;
 const VERTS_PER_BOX = templatePosition.length / 3;
 
-interface StaticBox { x: number; y: number; z: number; w: number; h: number; d: number; }
+interface StaticBox { x: number; y: number; z: number; w: number; h: number; d: number; color?: Color; }
 
+/** Merge boxes into one geometry; per-box colours become vertex colours when present. */
 function mergeStaticBoxes(entries: StaticBox[]): BufferGeometry {
   const position = new Float32Array(entries.length * VERTS_PER_BOX * 3);
   const normal = new Float32Array(entries.length * VERTS_PER_BOX * 3);
   const uv = new Float32Array(entries.length * VERTS_PER_BOX * 2);
+  const colored = entries.some(entry => entry.color);
+  const color = colored ? new Float32Array(entries.length * VERTS_PER_BOX * 3) : null;
   entries.forEach((entry, i) => {
     const p3 = i * VERTS_PER_BOX * 3;
     for (let v = 0; v < VERTS_PER_BOX; v++) {
       position[p3 + v * 3] = templatePosition[v * 3] * entry.w + entry.x;
       position[p3 + v * 3 + 1] = templatePosition[v * 3 + 1] * entry.h + entry.y;
       position[p3 + v * 3 + 2] = templatePosition[v * 3 + 2] * entry.d + entry.z;
+      if (color && entry.color) entry.color.toArray(color, p3 + v * 3);
     }
     normal.set(templateNormal, p3);
     uv.set(templateUv, i * VERTS_PER_BOX * 2);
@@ -40,7 +44,22 @@ function mergeStaticBoxes(entries: StaticBox[]): BufferGeometry {
   geometry.setAttribute('position', new Float32BufferAttribute(position, 3));
   geometry.setAttribute('normal', new Float32BufferAttribute(normal, 3));
   geometry.setAttribute('uv', new Float32BufferAttribute(uv, 2));
+  if (color) geometry.setAttribute('color', new Float32BufferAttribute(color, 3));
   return geometry;
+}
+
+/** Crisp dark edges for a merged structural geometry. */
+function structureOutline(sources: Float32Array[], material: LineBasicMaterial, name: string): LineSegments {
+  const combinedPosition = new Float32Array(sources.reduce((sum, arr) => sum + arr.length, 0));
+  let offset = 0;
+  for (const arr of sources) { combinedPosition.set(arr, offset); offset += arr.length; }
+  const combined = new BufferGeometry();
+  combined.setAttribute('position', new Float32BufferAttribute(combinedPosition, 3));
+  const outline = new LineSegments(new EdgesGeometry(combined, 1), material);
+  combined.dispose();
+  outline.name = name;
+  (outline as LineSegments & { pointerEvents: string }).pointerEvents = 'none';
+  return outline;
 }
 
 /** Tabletop architectural model derived from the same footprint as the incident. */
@@ -67,15 +86,16 @@ export function createIncidentBuilding(building: Building) {
     parent.add(mesh);
     return mesh;
   }
-  // One Group per floor, holding that floor's hazard volumes, so a caller
-  // (FloorExplodeSystem) can pull a floor's hazard layer apart from the rest
-  // by offsetting the group — the structural shell stays fixed as a reference.
+  // One Group per floor, holding that floor's slab, partitions and hazard
+  // volumes, so BuildingSystem can pull floors apart by offsetting the group
+  // and people pins stay standing on their own floor. The facade, columns and
+  // plinth stay fixed as a reference.
   const floorGroups = new Map<number, Group>();
   function getFloorGroup(floor: number): Group {
     let group = floorGroups.get(floor);
     if (!group) {
       group = new Group();
-      group.name = `Floor ${floor} hazard layer`;
+      group.name = `Floor ${floor}`;
       root.add(group);
       floorGroups.set(floor, group);
     }
@@ -85,8 +105,22 @@ export function createIncidentBuilding(building: Building) {
   const staticLabel = new Map<MeshStandardMaterial, string>([
     [concrete, 'concrete'], [frame, 'frame'], [plinth, 'plinth'], [glass, 'glazing'], [door, 'entrance'],
   ]);
-  /** Same box as `box()`, but batched by material into one draw call instead of placed live. */
-  function addStatic(x: number, y: number, z: number, w: number, h: number, d: number, material: MeshStandardMaterial) {
+  // Per-floor structure merges concrete and frame into one vertex-coloured
+  // draw call per floor (plus one outline), keeping the draw-call cost of
+  // moving floors to two per storey.
+  const floorShell = new MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 0.85 });
+  const floorStatic = new Map<number, StaticBox[]>();
+  /**
+   * Same box as `box()`, but batched into one draw call instead of placed live.
+   * With `floor`, the box moves with that floor when the model is pulled apart.
+   */
+  function addStatic(x: number, y: number, z: number, w: number, h: number, d: number, material: MeshStandardMaterial, floor = 0) {
+    if (floor > 0) {
+      let list = floorStatic.get(floor);
+      if (!list) { list = []; floorStatic.set(floor, list); }
+      list.push({ x, y, z, w, h, d, color: material.color });
+      return;
+    }
     let list = staticGroups.get(material);
     if (!list) { list = []; staticGroups.set(material, list); }
     list.push({ x, y, z, w, h, d });
@@ -102,7 +136,8 @@ export function createIncidentBuilding(building: Building) {
   const height = floors * FLOOR_HEIGHT;
   addStatic(cx, 0.005, cz, width + 0.055, 0.01, depth + 0.055, plinth);
   for (let level = 0; level <= floors; level++) {
-    addStatic(cx, 0.012 + level * FLOOR_HEIGHT, cz, width + 0.008, 0.004, depth + 0.008, concrete);
+    // Each slab rides with the floor standing on it; the roof rides with the top floor.
+    addStatic(cx, 0.012 + level * FLOOR_HEIGHT, cz, width + 0.008, 0.004, depth + 0.008, concrete, Math.min(level + 1, floors));
   }
   // Two retained elevations establish the envelope; the near/right sides stay
   // open as an architectural section, exposing incident rooms without glass.
@@ -131,9 +166,9 @@ export function createIncidentBuilding(building: Building) {
   }
   addStatic(cx, 0.031, minZ - 0.002, 0.045, 0.035, 0.003, door);
   addStatic(cx, 0.055, minZ - 0.014, 0.08, 0.004, 0.03, concrete);
-  addStatic(cx - width * 0.23, height + 0.026, cz, 0.07, 0.025, 0.045, frame);
-  for (const x of [minX, maxX]) addStatic(x, height + 0.02, cz, 0.004, 0.015, depth, concrete);
-  for (const z of [minZ, maxZ]) addStatic(cx, height + 0.02, z, width, 0.015, 0.004, concrete);
+  addStatic(cx - width * 0.23, height + 0.026, cz, 0.07, 0.025, 0.045, frame, floors);
+  for (const x of [minX, maxX]) addStatic(x, height + 0.02, cz, 0.004, 0.015, depth, concrete, floors);
+  for (const z of [minZ, maxZ]) addStatic(cx, height + 0.02, z, width, 0.015, 0.004, concrete, floors);
   for (const room of building.rooms) {
     // Low sectional partitions describe the real room footprint while leaving
     // room-height hazard volumes visible over the top. They are diagrammatic.
@@ -141,10 +176,10 @@ export function createIncidentBuilding(building: Building) {
     const partitionHeight = FLOOR_HEIGHT * 0.38;
     if (room.x * s > minX + 0.001) {
       addStatic(room.x * s, baseY + partitionHeight / 2,
-        (room.z + room.d / 2) * s, 0.0015, partitionHeight, room.d * s, concrete);
+        (room.z + room.d / 2) * s, 0.0015, partitionHeight, room.d * s, concrete, room.floor);
     }
     addStatic((room.x + room.w / 2) * s, baseY + 0.001,
-      room.z * s, room.w * s, 0.002, 0.0015, frame);
+      room.z * s, room.w * s, 0.002, 0.0015, frame, room.floor);
     const material = new MeshStandardMaterial({ color: '#ece8de', transparent: true, opacity: 0.06, depthWrite: false, roughness: 0.7 });
     const roomMesh = box(`Room ${room.id}`, (room.x + room.w / 2) * s,
       0.014 + (room.floor - 0.5) * FLOOR_HEIGHT, (room.z + room.d / 2) * s,
@@ -171,7 +206,17 @@ export function createIncidentBuilding(building: Building) {
   // hazard volumes above stay unbatched since each needs its own live material.
   // The structural groups (concrete, frame) also feed a single crisp outline
   // pass below; glazing/plinth/entrance stay unlined since they read better soft.
+  const outlineMaterial = new LineBasicMaterial({ color: '#4b4f49' });
   const outlineSources: Float32Array[] = [];
+  for (const [floor, entries] of floorStatic) {
+    const geometry = mergeStaticBoxes(entries);
+    const mesh = new Mesh(geometry, floorShell);
+    mesh.name = `Floor ${floor} structure`;
+    (mesh as Mesh & { pointerEvents: string }).pointerEvents = 'none';
+    const group = getFloorGroup(floor);
+    group.add(mesh);
+    group.add(structureOutline([geometry.attributes.position.array as Float32Array], outlineMaterial, `Floor ${floor} structure outline`));
+  }
   for (const [material, entries] of staticGroups) {
     const geometry = mergeStaticBoxes(entries);
     const mesh = new Mesh(geometry, material);
@@ -184,19 +229,7 @@ export function createIncidentBuilding(building: Building) {
     }
   }
   if (outlineSources.length > 0) {
-    const totalFloats = outlineSources.reduce((sum, arr) => sum + arr.length, 0);
-    const combinedPosition = new Float32Array(totalFloats);
-    let offset = 0;
-    for (const arr of outlineSources) { combinedPosition.set(arr, offset); offset += arr.length; }
-    const combined = new BufferGeometry();
-    combined.setAttribute('position', new Float32BufferAttribute(combinedPosition, 3));
-    const outline = new LineSegments(
-      new EdgesGeometry(combined, 1),
-      new LineBasicMaterial({ color: '#4b4f49' }),
-    );
-    outline.name = 'Building structure outline';
-    (outline as LineSegments & { pointerEvents: string }).pointerEvents = 'none';
-    root.add(outline);
+    root.add(structureOutline(outlineSources, outlineMaterial, 'Building structure outline'));
   }
   return { root, roomMaterials, roomMeshes, floorGroups, verticalMaterials };
 }

@@ -1,15 +1,15 @@
 <style>
 .panel-root { flex-direction: column; width: 480px; }
-.panel-content { flex-direction: column; gap: 8px; padding-top: 16px; padding-right: 16px; padding-bottom: 16px; padding-left: 16px; }
-.heading { color: #1c1d20; font-size: 24px; font-weight: 700; }
+.panel-content { flex-direction: column; gap: 12px; padding-top: 24px; padding-right: 24px; padding-bottom: 24px; padding-left: 24px; }
+.heading { color: #1c1d20; font-size: 28px; font-weight: 700; }
 .heading:dark { color: #fafaf7; }
-.status { color: #49515e; font-size: 18px; line-height: 1.2; }
+.status { width: 408px; color: #49515e; font-size: 18px; line-height: 1.25; }
 .status:dark { color: #c3c6cc; }
 .recommendation { flex-direction: column; gap: 6px; padding-top: 10px; padding-right: 10px; padding-bottom: 10px; padding-left: 10px; border-width: 1px; border-color: #c7cdd6; border-radius: 10px; background-color: #edf0f4; }
 .recommendation:dark { background-color: #26272b; border-color: #40414a; }
 .section-label { color: #6b5a00; font-size: 18px; font-weight: 700; }
 .section-label:dark { color: #f5d90a; }
-.recommendation-text { width: 416px; color: #1c1d20; font-size: 22px; line-height: 1.2; }
+.recommendation-text { width: 408px; color: #1c1d20; font-size: 22px; line-height: 1.2; }
 .recommendation-text:dark { color: #fafaf7; }
 .action-label { font-size: 20px; font-weight: 700; }
 .radar-swatches { flex-direction: row; gap: 4px; }
