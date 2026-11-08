@@ -9,7 +9,8 @@ import { doors, inspections } from "./buildingData.ts";
 
 const PORT = verifyPort(18081);
 const base = `http://localhost:${PORT}`;
-const server = await startServer(PORT, { MOCK: "0" });
+const VOICE_TOKEN = "verify-voice-token";
+const server = await startServer(PORT, { MOCK: "0", VOICE_TOKEN });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const post = async (path: string, body?: unknown) =>
   (await fetch(base + path, { method: "POST", headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) })).json() as Promise<Record<string, any>>;
@@ -129,6 +130,33 @@ async function main() {
   assert.equal(st().accepted, undefined);
   assert.equal(st().log?.length, 0);
   console.log("ok  /live/reset clears the incident");
+
+  // Phone calls: the ElevenLabs webhook tool.
+  const voice = (body: unknown, token?: string) =>
+    fetch(base + "/voice/report", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(token && { "x-firesight-token": token }) },
+      body: JSON.stringify(body),
+    });
+  assert.equal((await voice({ text: "smoke on 7", caller: "+15555550100" })).status, 401);
+  assert.equal((await voice({ text: "smoke on 7", caller: "+15555550100" }, "wrong")).status, 401);
+  const call = (await (await voice({ text: "There's smoke in the break room on the 7th floor", caller: "+15555550100" }, VOICE_TOKEN)).json()) as Record<string, any>;
+  await sleep(100);
+  assert.equal(call.ok, true);
+  assert.equal(call.roomId, "7-break");
+  assert.match(call.reply, /Stairwell A/);
+  assert.doesNotMatch(call.reply, /[–()]/, "reply is speakable");
+  const stored = st().reports.at(-1)!;
+  assert.equal(stored.channel, "voice");
+  assert.equal(stored.reply, st().recommendation?.callerReply, "reply kept on the report for transcripts");
+  assert.ok(st().log?.some((l) => l.text.startsWith("Replied to +15555550100")));
+  assert.ok(st().log?.some((l) => l.text.startsWith("Call from +15555550100")));
+  console.log(`ok  /voice/report: 401 without token; call located 7-break; says "${call.reply}"`);
+
+  const vagueCall = (await (await voice({ text: "there's a fire alarm going off", caller: "+15555550101" }, VOICE_TOKEN)).json()) as Record<string, any>;
+  assert.equal(vagueCall.roomId, null);
+  assert.match(vagueCall.reply, /floor/i, "asks a follow-up");
+  console.log(`ok  vague call gets a follow-up: "${vagueCall.reply}"`);
   console.log("ALL PASSED");
 }
 

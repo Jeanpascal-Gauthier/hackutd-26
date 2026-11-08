@@ -16,6 +16,7 @@ const TICK_MS = Number(process.env.TICK_MS ?? 2000);
 const MOCK = process.env.MOCK !== "0"; // default on: scripted demo calls, no API keys needed
 const AUTOPLAY = process.env.AUTOPLAY !== "0";
 const AGENT = process.env.AGENT === "1"; // opt in: Nemotron agent (needs NVIDIA_API_KEY in .env)
+const VOICE_TOKEN = process.env.VOICE_TOKEN?.trim() || undefined; // enables POST /voice/report
 const AGENT_TIMEOUT_MS = Number(process.env.AGENT_TIMEOUT_MS ?? 20000);
 
 export const store = new IncidentStore();
@@ -48,6 +49,7 @@ const httpServer = createHttpServer({
   getState: () => store.get(),
   buildingInfo: { building: live.data.building, occupants: live.data.occupants, sprinklers, doors, inspections },
   forecast: (origin, minutes) => forecast(origin, live.data, minutes),
+  voiceToken: VOICE_TOKEN,
   resetLive: () => {
     resetAgent();
     mock ? mock.reset() : live.reset();
