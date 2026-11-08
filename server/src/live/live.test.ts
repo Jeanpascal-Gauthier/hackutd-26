@@ -57,6 +57,24 @@ test("merge: a fire report outweighs an earlier smoke report elsewhere", () => {
   assert.ok(m.confidence < 0.8, "the disagreeing report lowers confidence");
 });
 
+test("merge: flames get a bounded preference that corroborating smoke can overcome", () => {
+  const smoke = [
+    report("smoke in the break room", "7-break", 0.8),
+    report("smoke in stairwell B", "9-stair-b", 0.8),
+  ];
+  const flames = report("flames in the conference room", "10-conf", 0.8);
+  assert.deepEqual(mergeReports([...smoke, flames], building), { roomId: "10-conf", confidence: 0.4 });
+  // A third smoke report brings the lower candidate level with flames; the lower floor wins.
+  assert.deepEqual(
+    mergeReports([...smoke, flames, report("smoke in the hallway", "10-hall", 0.8)], building),
+    { roomId: "7-break", confidence: 0.46 },
+  );
+  assert.deepEqual(
+    mergeReports([...smoke, { ...flames, confidence: 0.2 }], building),
+    { roomId: "7-break", confidence: 0.66 },
+  );
+});
+
 test("exits + recommendation for the demo fire in 7-break", () => {
   const snaps = simulateSpread(building, "7-break", 30, { sprinklerRooms });
   const exits = findExits(building, snaps, occupants);

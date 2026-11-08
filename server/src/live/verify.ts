@@ -5,6 +5,7 @@ import { WebSocket } from "ws";
 import type { ServerEvent } from "@firewatch/shared/events";
 import type { IncidentState } from "@firewatch/shared/types";
 import { startServer, verifyPort } from "../testing/startServer.ts";
+import { doors, inspections } from "./buildingData.ts";
 
 const PORT = verifyPort(18081);
 const base = `http://localhost:${PORT}`;
@@ -62,9 +63,17 @@ async function main() {
   assert.equal(building.building.rooms.length, 108);
   assert.equal(building.sprinklers["7-break"], "impaired");
   assert.ok(building.occupants.length > 0);
+  assert.ok(inspections.length > 0, "inspection records loaded from data/out");
+  assert.deepEqual(building.inspections, inspections, "GET /building serves every inspection record");
+  assert.deepEqual(building.doors, doors, "GET /building serves door fire ratings");
+  const deficient = await (await fetch(base + "/inspections?floor=7&status=deficient")).json() as { ok: boolean; inspections: typeof inspections };
+  assert.equal(deficient.ok, true);
+  assert.deepEqual(deficient.inspections, inspections.filter((r) => r.floor === 7 && r.status === "deficient"));
+  assert.deepEqual(deficient.inspections.map((r) => r.id).sort(), ["fire-door:7-hall|7-stair-b", "sprinkler:7-break"]);
+  assert.equal((await fetch(base + "/inspections?floor=99")).status, 400);
   const remote = await (await fetch(base + "/state")).json() as IncidentState;
   assert.deepEqual(remote, st(), "GET /state matches the WebSocket state");
-  console.log("ok  GET /building and GET /state");
+  console.log("ok  GET /building includes inspections and door ratings; GET /inspections filters and validates; GET /state matches WebSocket");
 
   const before2 = JSON.stringify(st());
   const fc = await post("/forecast", { origin: "5-conf" });
