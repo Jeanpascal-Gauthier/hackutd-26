@@ -18,16 +18,19 @@ function floorList(floors: number[]): string {
   return `${word} ${parts.length > 1 ? parts.slice(0, -1).join(", ") + " and " + parts.at(-1) : parts[0]}`;
 }
 
-export function recommend(exits: FloorExit[], originRoomId: string, building: Building): Recommendation {
-  const origin = building.rooms.find((r) => r.id === originRoomId);
-  const originFloor = origin?.floor ?? 0;
+export function recommend(exits: FloorExit[], origin: string | readonly string[], building: Building): Recommendation {
+  // One or more fires; the first is the primary origin.
+  const fires = (typeof origin === "string" ? [origin] : [...origin])
+    .map((id) => building.rooms.find((r) => r.id === id))
+    .filter((r) => r !== undefined);
+  const fireFloors = new Set(fires.map((r) => r.floor));
 
-  // A floor is at risk if it is the fire floor, its rooms/hall get smoky, or one of its stairs fills.
+  // A floor is at risk if it is a fire floor, its rooms/hall get smoky, or one of its stairs fills.
   const atRisk = exits.filter(
-    (e) => e.floor === originFloor || e.atRiskAt !== null || Object.values(e.blockedAt).some((m) => m !== null),
+    (e) => fireFloors.has(e.floor) || e.atRiskAt !== null || Object.values(e.blockedAt).some((m) => m !== null),
   );
 
-  const actions: string[] = [];
+  const evacuate: string[] = [];
   // 1. Evacuation, grouped by recommended stairwell.
   const byStair = new Map<string | null, FloorExit[]>();
   for (const e of atRisk) byStair.set(e.stair, [...(byStair.get(e.stair) ?? []), e]);
@@ -38,14 +41,16 @@ export function recommend(exits: FloorExit[], originRoomId: string, building: Bu
       .filter(([id, m]) => id !== stair && m !== null) as [string, number][];
     const firstBlock = blocked.length ? blocked.reduce((a, b) => (b[1] < a[1] ? b : a)) : undefined;
     const why = firstBlock ? ` (${stairName(firstBlock[0])} fills with smoke from minute ${firstBlock[1]})` : "";
-    actions.push(`Evacuate ${floorList(group.map((e) => e.floor))} (${people} people) by ${stairName(stair)}${why}`);
+    evacuate.push(`Evacuate ${floorList(group.map((e) => e.floor))} (${people} people) by ${stairName(stair)}${why}`);
   }
 
-  // 2. First crew to the origin, via the stair that stays clear on that floor.
-  const originExit = exits.find((e) => e.floor === originFloor);
-  actions.push(
-    `Send Engine 3 to floor ${originFloor}${origin ? ` (${origin.name.replace(/^Floor \d+ /, "")})` : ""} via ${stairName(originExit?.stair ?? null)}`,
-  );
+  // 2. One crew per fire (Engine 3 to the primary origin), via the stair that stays clear there.
+  //    Kept to one action, and always included, so evacuation groups can't push it out.
+  const crews = fires.map((r, i) => {
+    const stair = exits.find((e) => e.floor === r.floor)?.stair ?? null;
+    return `Engine ${3 + 2 * i} to floor ${r.floor} (${r.name.replace(/^Floor \d+ /, "")}) via ${stairName(stair)}`;
+  });
+  const actions = [...evacuate.slice(0, 2), crews.length ? `Send ${crews.join("; ")}` : "Send Engine 3 to the reported fire"];
 
   // 3. People who need help to get out.
   const mobility = atRisk.filter((e) => e.flags.includes("mobility")).map((e) => e.floor);

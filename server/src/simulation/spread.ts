@@ -113,23 +113,25 @@ function step(prev: Map<string, RoomState>, edges: Edge[], sprinklers: Set<strin
 
 /**
  * Illustrative estimate (not a validated fire model) of fire and smoke per room.
+ * `origin` is one room id or several (separate fires, all ignited at minute 0).
  * Returns duration+1 snapshots: minutes 0..duration inclusive (default 30).
  */
 export function simulateSpread(
   building: Building,
-  originRoomId: string,
+  origin: string | readonly string[],
   durationMinutes = 30,
   options: SpreadOptions = {},
 ): SpreadSnapshot[] {
-  if (!building.rooms.some((r) => r.id === originRoomId)) {
-    throw new Error(`Unknown origin room: ${originRoomId}`);
-  }
+  const origins = new Set(typeof origin === "string" ? [origin] : origin);
+  if (!origins.size) throw new Error("No origin room");
+  for (const id of origins)
+    if (!building.rooms.some((r) => r.id === id)) throw new Error(`Unknown origin room: ${id}`);
   const edges = buildEdges(building, options);
   const sprinklers = new Set(options.sprinklerRooms ?? []);
   let cur = new Map<string, RoomState>(
     building.rooms.map((r) => [
       r.id,
-      { roomId: r.id, fire: r.id === originRoomId ? C.originInitialFire : 0, smoke: 0 },
+      { roomId: r.id, fire: origins.has(r.id) ? C.originInitialFire : 0, smoke: 0 },
     ]),
   );
   const snap = (minute: number): SpreadSnapshot => ({

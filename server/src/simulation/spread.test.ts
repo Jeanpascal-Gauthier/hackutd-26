@@ -113,3 +113,14 @@ test("real building: smoke rises up a shaft, it does not fill the floors below",
   assert.ok(at(s, 15, "10-stair-b").smoke > at(s, 15, "4-stair-b").smoke);
   assert.equal(firstSmoky(s, "2-stair-b"), -1);
 });
+
+test("several origins: each burns from minute 0 and grows; one origin as an array matches the string form", () => {
+  const two = simulateSpread(REAL, ["7-break", "4-east"], 30); // no sprinklers: both fires grow
+  for (const id of ["7-break", "4-east"]) {
+    assert.ok(at(two, 0, id).fire > 0, `${id} burns at minute 0`);
+    assert.ok(at(two, 30, id).fire > at(two, 0, id).fire, `${id} grows`);
+  }
+  assert.deepEqual(simulateSpread(REAL, ["7-break"], 10, { sprinklerRooms }), simulateSpread(REAL, "7-break", 10, { sprinklerRooms }));
+  assert.throws(() => simulateSpread(REAL, ["7-break", "nope"]), /Unknown origin room: nope/);
+  assert.throws(() => simulateSpread(REAL, []), /No origin room/);
+});

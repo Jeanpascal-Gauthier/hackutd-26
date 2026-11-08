@@ -3,7 +3,7 @@
 //   GET  /state       current IncidentState
 //   GET  /building    building + occupants + sprinklers + doors + inspections
 //   GET  /inspections inspection records, filtered by ?floor= &system= &status=
-//   POST /forecast    what-if forecast from an origin, state unchanged (agent tools)
+//   POST /forecast    what-if forecast from an origin (or several), state unchanged (agent tools)
 //   POST /voice/report phone-call webhook (ElevenLabs tool), token-protected; replies in speakable text
 //   GET  /health      POST /live/reset      POST /mock/reset, /mock/replay (mock mode)
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -30,8 +30,8 @@ export interface HttpDeps {
     doors: DoorRating[];
     inspections: InspectionRecord[];
   };
-  /** Runs a forecast without touching incident state. Throws on an unknown origin. */
-  forecast(origin: string, minutes: number): Forecast;
+  /** Runs a forecast (one or more fires) without touching incident state. Throws on an unknown origin. */
+  forecast(origin: string | string[], minutes: number): Forecast;
   /** POST /live/reset: clear the incident (no fire, no reports). Also stops a running demo. */
   resetLive(): void;
   /** Present only in mock mode: POST /mock/reset and /mock/replay drive the scripted demo. */
@@ -177,13 +177,15 @@ export function createHttpServer({ ingest, getState, buildingInfo, forecast, res
       if (!r.ok) return;
       const b = isObj(r.body) ? r.body : {};
       const minutes = b.minutes ?? 30;
-      if (typeof b.origin !== "string" || !roomIds.has(b.origin))
-        return json(res, 400, { ok: false, errors: ["`origin` must be a room id from shared/building.json"] });
+      // `origin`: one room id; or `origins`: several room ids (separate fires, all burning at minute 0).
+      const origins = Array.isArray(b.origins) ? b.origins : [b.origin];
+      if (!origins.length || origins.length > 20 || !origins.every((o) => typeof o === "string" && roomIds.has(o)))
+        return json(res, 400, { ok: false, errors: ["`origin` (or every entry of `origins`) must be a room id from shared/building.json"] });
       if (typeof minutes !== "number" || !Number.isInteger(minutes) || minutes < 1 || minutes > 60)
         return json(res, 400, { ok: false, errors: ["`minutes` must be an integer from 1 to 60"] });
-      const f = forecast(b.origin, minutes);
+      const f = forecast(origins as string[], minutes);
       // Snapshots are left out (108 rooms x 31 minutes); the summary and exits are what tools need.
-      return json(res, 200, { ok: true, origin: f.origin, minutes: f.minutes, summary: f.summary, exits: f.exits, recommendation: f.recommendation });
+      return json(res, 200, { ok: true, origin: f.origin, origins: f.origins, minutes: f.minutes, summary: f.summary, exits: f.exits, recommendation: f.recommendation });
     }
 
     if (method === "POST" && url === "/live/reset") {
