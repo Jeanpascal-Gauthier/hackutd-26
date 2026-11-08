@@ -96,11 +96,24 @@ building's location instead. The synthetic demo has no geographic location and s
 address-search prompt. Floor and forecast updates do not reload the map.
 Street View first queries the Maps JavaScript API Street View service with both `google`
 and `outdoor` source restrictions and a nearest-panorama preference. It searches within
-150 metres, extending to 500 metres only when no outdoor panorama is found. The returned
-panorama ID is then supplied to the Embed viewer, without a coordinate fallback that could
-open an indoor business tour. Its initial heading faces the building. If outdoor imagery is
-unavailable or the service fails, the console shows a message and retains the map/satellite
-options. Recenter repeats the outdoor lookup. The external link uses the selected panorama ID.
+150 metres, extending to 500 metres, then checks outdoor contributor imagery within 500 metres.
+The outdoor filter can still return landmark interiors (reproduced with the White House and
+Burj Khalifa). It is therefore not sufficient to assign the **Street View** label. Selection
+also requires a nonempty location description containing a named navigation link. If centre
+queries return tours without that street context, the service checks north/east/south/west
+locations 200 metres away, then 350 metres away. Each group runs in parallel and selects the
+closest panorama with street context, within 500 metres of the address. Its initial camera
+heading faces the building.
+
+If those searches find no street context, a tour within 50 metres of the address uses
+**Interior View** for the button and iframe title. An unrestricted 50-metre search is used
+only when there is no saved nearby tour. Its caption says "Indoor or unclassified panorama
+near the address": this is a conservative metadata heuristic, not visual detection or proof
+that imagery is indoors or belongs to the selected building. Unnamed outdoor paths may also
+receive this label. The SDK supplies no reliable indoor flag. The returned panorama ID is
+supplied to the Embed viewer and external link without a coordinate fallback. If no usable
+imagery exists, or the service fails, a message appears and map/satellite options remain.
+Provider errors do not trigger the interior fallback. Recenter repeats the selection process.
 Street View is disabled without geographic coordinates.
 
 Set `GOOGLE_MAPS_API_KEY` in the root `.env` and enable **Maps Embed API** in that key's
