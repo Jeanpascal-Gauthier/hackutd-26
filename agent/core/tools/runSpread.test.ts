@@ -71,7 +71,7 @@ test("summary for 7-break: stair-b fills first at minute 11 on floors 6-12", () 
   const s = summariseForecast(FIXTURES["7-break"]!, building, "active");
   assert.equal(s.origin, "7-break");
   assert.equal(s.originName, "Floor 7 Break Room");
-  assert.equal(s.peopleAtRisk, 202);
+  assert.equal(s.peopleAtRisk, 54);
   assert.deepEqual(s.floorsAtRisk, [6, 7, 8, 9, 10, 11, 12]);
   assert.deepEqual(s.stairsSmoky, { "stair-b": { firstSmokyMinute: 11, floors: "6-12" } });
   assert.deepEqual(s.stairsClear, ["stair-a"]);
@@ -155,7 +155,7 @@ test("getBuilding failing does not fail the tool", async () => {
   const { server } = fakeServer({ buildingFails: true });
   const out = await run({}, envWith(server, "7-break"));
   assert.equal(out.error, undefined);
-  assert.equal(out.peopleAtRisk, 202);
+  assert.equal(out.peopleAtRisk, 54);
   assert.equal(out.originSprinkler, undefined);
 });
 

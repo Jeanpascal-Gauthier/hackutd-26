@@ -167,11 +167,14 @@ test("mention polarity heuristic", () => {
   assert.deepEqual(uses("No elevators."), ["elevator:avoid"]);
 });
 
-test("safeDraft: the server draft that says 'or the elevator' is replaced before use", () => {
+test("safeDraft: a draft that says 'or the elevator' is replaced before use", () => {
   const { ok: _ok2, ...east } = eastFixture;
   const eastForecast = east as Forecast;
-  assert.match(eastForecast.recommendation.callerReply ?? "", /Stairwell B or the elevator/);
-  const safe = safeDraft(eastForecast.recommendation, eastForecast.exits, 10, 12)!;
+  // The server fixed this wording (recommend.ts), but the guard must still hold if it regresses.
+  const unsafe = { ...eastForecast.recommendation, callerReply: "Fire crews are on the way. Leave now by Stairwell B or the elevator." };
+  assert.ok(checkRecommendation(unsafe, eastForecast.exits, 10, 12).length > 0);
+  assert.deepEqual(checkRecommendation(eastForecast.recommendation, eastForecast.exits, 10, 12), [], "server draft passes now");
+  const safe = safeDraft(unsafe, eastForecast.exits, 10, 12)!;
   assert.deepEqual(checkRecommendation(safe, eastForecast.exits, 10, 12), []);
   assert.match(safe.callerReply ?? "", /Leave now by Stairwell B\. Do not use the elevator\./);
   // A draft that already passes is kept unchanged.

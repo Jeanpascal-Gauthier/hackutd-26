@@ -10,14 +10,20 @@
     "typecheck": "tsc --noEmit",
     "smoke": "tsx --env-file-if-exists=../.env scripts/smoke.ts",
     "try": "tsx --env-file-if-exists=../.env scripts/try.ts",
-    "test": "tsx --test core/*/*.test.ts"
+    "test": "tsx --test core/*/*.test.ts form/*.test.ts photon/*.test.ts",
+    "form": "tsx --env-file-if-exists=../.env form/index.ts",
+    "photon": "tsx --env-file-if-exists=../.env photon/index.ts",
+    "photon:assign": "tsx --env-file-if-exists=../.env photon/assign-cli.ts"
   },
   "dependencies": {
     "@firewatch/shared": "*",
-    "openai": "^7.53.0"
+    "@photon-ai/api": "^0.5.0",
+    "openai": "^7.53.0",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "@types/qrcode": "^1.5.6",
     "tsx": "^4.23.15"
   }
 }
