@@ -36,6 +36,7 @@ export default defineConfig(({ mode }) => ({
       '/fs-ws': {
         target: incidentServer.replace(/^http/u, 'ws'),
         ws: true,
+        changeOrigin: true,
         rewrite: (path) => path.replace(/^\/fs-ws/, ''),
       },
     },
