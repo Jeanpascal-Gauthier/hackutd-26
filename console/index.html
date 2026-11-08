@@ -3,9 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0b1116" />
+    <meta name="theme-color" content="#0a0f13" />
+    <meta name="color-scheme" content="dark light" />
+    <script>
+      // Resolve the theme before first paint (no flash). Kept in sync with src/theme.ts.
+      (function () {
+        var theme;
+        try { theme = localStorage.getItem("firesight-theme"); } catch (e) {}
+        if (theme !== "light" && theme !== "dark") theme = window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        document.documentElement.dataset.theme = theme;
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute("content", theme === "light" ? "#f6f7f8" : "#0a0f13");
+      })();
+    </script>
     <meta name="description" content="FireSight dispatch console: shared incident reports, building conditions, and operator recommendations." />
     <title>FireSight · Incident Command</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>
   <body>
     <div id="root"></div>
