@@ -37,6 +37,7 @@ export class BuildingInspection {
   private lastPeopleStretch = -1;
   private peopleDirty = false;
   private picking: ReturnType<typeof createRoomPicking>;
+  private pickingEntity: Entity;
   private cleanups: (() => void)[] = [];
 
   constructor(
@@ -77,7 +78,10 @@ export class BuildingInspection {
     // are siblings of the actual rooms, so neither input path steals the other.
     this.picking = createRoomPicking(model.roomMeshes);
     this.picking.root.position.copy(model.root.position);
-    world.createTransformEntity(this.picking.root, { parent: entity }).addComponent(RayInteractable);
+    // Same desk fit as the model, so ray targets line up with the rooms.
+    this.picking.root.scale.copy(model.root.scale);
+    this.pickingEntity = world.createTransformEntity(this.picking.root, { parent: entity });
+    this.pickingEntity.addComponent(RayInteractable);
     (this.picking.root as Object3D & { pointerEventsType: { deny: string } }).pointerEventsType = { deny: 'grab' };
     const click = (event: RoomClick) => {
       this.canvasHit = true;
@@ -269,6 +273,7 @@ export class BuildingInspection {
 
   stop(): void {
     for (const cleanup of this.cleanups) cleanup();
+    this.pickingEntity.dispose({ disposeResources: false });
     this.picking.root.removeFromParent();
     this.picking.material.dispose();
     this.outline.removeFromParent();

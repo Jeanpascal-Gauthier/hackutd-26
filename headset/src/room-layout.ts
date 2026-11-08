@@ -11,11 +11,15 @@ const BUILDING_DESK_DISTANCE = 1.28;
 const BUILDING_HEIGHT = 0.647;
 export const BUILDING_HOME_SCALE = 1;
 
-/** Rest the building on the left desk section, centred on it and facing the room centre. */
+/**
+ * Rest the building on the left desk section, centred on it and facing the room centre.
+ * A fitted (looked-up) building records its own height in `userData.modelHeight`.
+ */
 export function placeBuildingOnDesk(object: Object3D, scale = BUILDING_HOME_SCALE): void {
+  const height = typeof object.userData.modelHeight === 'number' ? object.userData.modelHeight : BUILDING_HEIGHT;
   object.position.set(
     Math.sin(LEFT_DESK_ANGLE) * BUILDING_DESK_DISTANCE,
-    DESK_TOP_Y + (BUILDING_HEIGHT / 2) * scale,
+    DESK_TOP_Y + (height / 2) * scale,
     -Math.cos(LEFT_DESK_ANGLE) * BUILDING_DESK_DISTANCE,
   );
   object.rotation.set(0, -LEFT_DESK_ANGLE, 0);

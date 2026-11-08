@@ -1,12 +1,18 @@
 import {
-  Box3, Color, Group, MeshStandardMaterial, TwoHandsGrabbable, Vector3, createSystem,
+  Box3, Color, Group, MeshStandardMaterial, TwoHandsGrabbable, UIKitMLAsset, Vector3, createSystem,
 } from '@iwsdk/core';
+import type { Entity } from '@iwsdk/core';
 import { BuildingModel } from './components.js';
 import { BuildingInspection } from './building-inspection.js';
 import { fetchBuilding, IncidentSocket } from './incident-client.js';
 import { placeBuildingOnDesk } from './room-layout.js';
 import { createIncidentBuilding, FLOOR_HEIGHT } from './scene-assets/incident-building.scene-asset.js';
 import type { Building, IncidentState } from './incident-types.js';
+
+/** The building the incident runs on, as named in state.building (absent: the demo). */
+type BuildingRef = { id: string; version: number | null; name?: string };
+const DEMO_ID = 'demo';
+const panelText = (value: string): string => value.replace(/[\u2013\u2014]/g, '-').replace(/[^\x20-\x7e]/g, '');
 
 const unit = (value: number): number => Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
 interface RoomVisual {
@@ -48,38 +54,90 @@ export class BuildingSystem extends createSystem({}) {
   private stopped = false;
   private loadTimer: ReturnType<typeof setTimeout> | null = null;
   private loadAbort: AbortController | null = null;
+  private entity: Entity | null = null;
+  /** Building currently drawn; version null = loaded before any state named one. */
+  private loaded: BuildingRef | null = null;
+  /** Building the latest state says is active (null until a state arrives). */
+  private wanted: BuildingRef | null = null;
+  private loadGeneration = 0;
+  private latestState: IncidentState | null = null;
+  private panel: UIKitMLAsset | null = null;
 
   init(): void {
     this.cleanupFuncs.push(() => this.stop());
+    this.panel = this.world.getSceneObject<UIKitMLAsset>('inspection-panel') ?? null;
+    this.showBuildingLabel(null, 'Loading building...');
+    // Listen first, so a building switch is seen even while the first load runs.
+    this.socket = new IncidentSocket(state => this.onState(state));
+    this.socket.connect();
     void this.loadBuilding();
   }
 
+  /** Fetch GET /building and draw it, unless a newer switch superseded this load. */
   private async loadBuilding(): Promise<void> {
     if (this.stopped) return;
+    if (this.loadTimer != null) clearTimeout(this.loadTimer);
+    this.loadTimer = null;
+    this.loadAbort?.abort();
+    const generation = ++this.loadGeneration;
     const abort = new AbortController();
     this.loadAbort = abort;
     const timeout = setTimeout(() => abort.abort(), 8000);
+    const target = this.wanted;
     let building: Building;
     try {
       building = (await fetchBuilding(abort.signal)).building;
     } catch (error) {
-      if (!this.stopped) {
+      if (!this.stopped && generation === this.loadGeneration) {
         console.warn('[BuildingSystem] waiting for building server', error);
+        if (target && target.id !== DEMO_ID) this.showBuildingLabel(null, `Could not load ${target.name ?? 'the active building'} yet. Retrying.`);
         this.loadTimer = setTimeout(() => { void this.loadBuilding(); }, 2000);
       }
       return;
     } finally {
       clearTimeout(timeout);
     }
-    if (this.stopped) return;
+    if (this.stopped || generation !== this.loadGeneration) return;
+    const id = building.profile?.id ?? DEMO_ID;
+    // Never draw a building other than the active one: the server may still be switching.
+    if (this.wanted && this.wanted.id !== id) {
+      this.loadTimer = setTimeout(() => { void this.loadBuilding(); }, 1000);
+      return;
+    }
+    this.loaded = { id, version: this.wanted?.id === id ? this.wanted.version : null, name: building.profile?.name };
+    this.buildModel(building);
+    if (this.latestState && this.matches(this.latestState)) this.onState(this.latestState);
+  }
+
+  /** Remove the drawn building and everything bound to it (rooms, picking, pins). */
+  private clearModel(): void {
+    this.inspection?.stop();
+    this.inspection = null;
+    this.entity?.dispose();
+    this.entity = null;
+    this.handle = null;
+    this.floorGroups = null;
+    this.roomMaterials = new Map();
+    this.visuals = [];
+    this.byId.clear();
+    this.selected = null;
+    this.origin = undefined;
+  }
+
+  private buildModel(building: Building): void {
+    this.clearModel();
     const model = createIncidentBuilding(building);
-    const center = new Box3().setFromObject(model.root).getCenter(new Vector3());
+    model.root.updateMatrixWorld(true);
+    const bounds = new Box3().setFromObject(model.root);
+    const center = bounds.getCenter(new Vector3());
     model.root.position.copy(center).multiplyScalar(-1);
     const handle = new Group();
     handle.name = 'Incident Building';
+    handle.userData.modelHeight = bounds.max.y - bounds.min.y;
     handle.add(model.root);
     placeBuildingOnDesk(handle);
     const entity = this.world.createTransformEntity(handle);
+    this.entity = entity;
     entity.addComponent(BuildingModel);
     entity.addComponent(TwoHandsGrabbable, {
       translate: true, rotate: true, scale: true,
@@ -107,8 +165,33 @@ export class BuildingSystem extends createSystem({}) {
       this.severityColor(this.byId.get(id)?.own ?? 0, this.mixColor);
       return `#${this.mixColor.getHexString()}`;
     });
-    this.socket = new IncidentSocket(state => this.onState(state));
-    this.socket.connect();
+    this.showBuildingLabel(building);
+  }
+
+  /** The inspection panel's BUILDING card: name, floors and source, plus the estimate warning. */
+  private showBuildingLabel(building: Building | null, status?: string): void {
+    const panel = this.panel;
+    if (!panel) return;
+    const set = (id: string, props: Record<string, unknown>) => panel.getElementById(id)?.setProperties(props);
+    if (!building) {
+      set('building-name', { text: panelText(this.wanted?.name ?? 'Building') });
+      set('building-detail', { text: panelText(status ?? '') });
+      set('building-estimated', { display: 'none' });
+      return;
+    }
+    const profile = building.profile;
+    const floors = profile?.floors ?? Math.max(...building.rooms.map(room => room.floor));
+    const source = !profile || profile.source === 'demo' ? 'Demo building' : 'Outline from OpenStreetMap';
+    set('building-name', { text: panelText(profile?.name ?? 'Meridian Tower (demo)') });
+    set('building-detail', { text: panelText(`${floors} floor${floors === 1 ? '' : 's'} | ${source}${profile?.address ? ` | ${profile.address}` : ''}`) });
+    set('building-estimated', { display: profile?.layoutEstimated ? 'flex' : 'none' });
+  }
+
+  /** Does this state belong to the building that is drawn? */
+  private matches(state: IncidentState): boolean {
+    const ref = state.building ?? { id: DEMO_ID, version: null };
+    return !!this.loaded && this.loaded.id === ref.id
+      && (this.loaded.version === null || ref.version === null || this.loaded.version === ref.version);
   }
 
   stop(): void {
@@ -138,6 +221,9 @@ export class BuildingSystem extends createSystem({}) {
 
   private paint(room: RoomVisual): void {
     const material = room.material;
+    // A clear room is a 6% ghost; skipping its draw call keeps tall looked-up
+    // buildings (up to ~480 rooms) inside the Quest 2 draw-call budget.
+    material.visible = room.route || room.displayed > 0.01 || room.own > 0 || this.selected === room.id;
     if (room.route && room.fire < 0.15 && room.smoke < 0.15) {
       material.opacity = 0.9;
       material.color.copy(this.routeColor);
@@ -172,6 +258,23 @@ export class BuildingSystem extends createSystem({}) {
   }
 
   private onState(state: IncidentState): void {
+    this.latestState = state;
+    const ref: BuildingRef = state.building
+      ? { id: state.building.id, version: state.building.version, name: state.building.name }
+      : { id: DEMO_ID, version: null };
+    this.wanted = ref;
+    if (this.loaded && this.loaded.id === ref.id && this.loaded.version === null) this.loaded.version = ref.version;
+    if (!this.matches(state)) {
+      // The active building changed (new address, or back to the demo): drop the old
+      // model at once so the headset never shows the wrong building, then load the new one.
+      if (this.loaded) {
+        this.clearModel();
+        this.loaded = null;
+        this.showBuildingLabel(null, 'Loading the active building...');
+        void this.loadBuilding();
+      }
+      return;
+    }
     this.origin = state.origin?.roomId;
     const routeRooms = new Set(state.accepted ? (state.exits ?? []).flatMap(exit => exit.route ?? []) : []);
     for (const room of this.visuals) {
