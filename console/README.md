@@ -1,4 +1,4 @@
-# FireSight console
+# FireWatch console
 
 Run `npm.cmd run dev` from the repository root, then open http://localhost:5173.
 The root script starts both the server and this React/Vite app.
@@ -7,6 +7,27 @@ The console uses the current shared contract. Source changes are confined to
 `console/`; no new dependencies are needed.
 
 ## Available workflow
+
+The dispatch screen prioritizes suspected origin, people at risk, stair smoke
+concerns, next actions, and evacuation priorities. Risk totals cover the whole
+30-minute model forecast, not only the currently selected minute. Missing analysis
+is displayed as pending rather than zero risk.
+
+The primary map defaults to the 3D building; the floor-plan switch replaces it in
+the same workspace. Unsupported 3D automatically returns to the floor plan. Caller report
+entry stays visible. The feed initially shows the latest three complete reports,
+with a control to reveal all reports and explicit uncertain-location labels.
+
+Detailed forecasts, shared activity/decisions, agent calls, and demo reset/replay
+controls start collapsed under Additional details. Their summaries show counts.
+The latest pending or accepted recommendation stays visible in Next actions,
+including when another client accepts it. The full decision history remains
+available under Activity & decisions.
+
+The header labels the selected forecast minute and offers a return to minute 0.
+Last update is the time this browser received state. Disconnection keeps the last
+snapshot visible with an alert and disables state-changing controls. The default
+theme is light, with saved light/dark choices respected.
 
 - Read the incident summary and caller reports.
 - Select a floor or report location, then inspect a room's fire, smoke, occupants,

@@ -12,6 +12,7 @@ export interface Building3DProps {
   selectedRoom: string | null;
   onSelectRoom(id: string): void;
   onSelectFloor(floor: number): void;
+  onUnavailable?(): void;
 }
 
 const floorNumbers = [...new Set(building.rooms.map((room) => room.floor))].sort((a, b) => a - b);
@@ -40,6 +41,10 @@ export default function Building3D(props: Building3DProps) {
   const sceneRef = useRef<BuildingScene | null>(null);
   const latest = useRef(props);
   latest.current = props;
+
+  useEffect(() => {
+    if (!supported || failed) latest.current.onUnavailable?.();
+  }, [supported, failed]);
 
   useEffect(() => {
     const host = hostRef.current;

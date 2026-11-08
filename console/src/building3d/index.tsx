@@ -5,5 +5,5 @@ import type { Building3DProps } from "./Building3D";
 const Building3D = lazy(() => import("./Building3D"));
 
 export function Building3DPanel(props: Building3DProps) {
-  return <Suspense fallback={null}><Building3D {...props} /></Suspense>;
+  return <Suspense fallback={<p className="map-hint" role="status">Loading 3D view…</p>}><Building3D {...props} /></Suspense>;
 }
