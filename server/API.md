@@ -2,7 +2,9 @@
 
 One port (default `8080`) serves both HTTP and the WebSocket. All bodies are JSON. CORS is open.
 
-`npm run dev` starts **mock mode**: scripted calls replay through the real model. `MOCK=0 npm run dev` starts **live mode**: it waits for real reports. Both modes support every endpoint below.
+`npm run dev` starts **live mode**: it waits for reports and supports address lookup.
+`MOCK=1` opts into scripted calls on the demo building; `npm run demo -- --mock` sets this
+automatically. Address lookup is disabled in mock mode.
 
 ## Public building lookup
 
@@ -22,15 +24,35 @@ GEOAPIFY_API_KEY=your_key_here
 OVERPASS_API_URL=https://overpass-api.de/api/interpreter
 ```
 
-Overpass normally needs no key. `OVERPASS_API_URL` is optional and allows a hosted or self-managed
-instance. Public instances have capacity limits; use bounded lookups and caching during a prototype,
-and a suitable hosted or self-managed instance for deployment. Overture dataset imports and
+With `GEOAPIFY_API_KEY` configured, outlines use Geoapify's managed Place Details API
+(`features=building`) with the same key. This returns the containing building's OSM identity,
+footprint and available height/floor tags. It does not query public Overpass servers or import
+mapped interiors. A building candidate still requires operator confirmation. If no containing
+outline is returned, the record is explicitly location-only; nearby buildings are not searched.
+
+Set `BUILDING_PROVIDER=overpass` to opt into nearby outlines and mapped indoor features instead.
+Without a Geoapify key, coordinate-based resolve also defaults to Overpass. Overpass normally needs
+no key. `OVERPASS_API_URL` allows a hosted or self-managed instance. Public instances have capacity
+limits; use bounded lookups and caching during a prototype, and a suitable hosted or self-managed
+instance for deployment. Overture dataset imports and
 Mappedin venue imports are separate future integrations; neither is enabled by these settings.
 
 Start the server and console from the repository root using `npm.cmd run dev` on Windows.
 Open `http://localhost:8080/buildings/providers` first: `geoapify.configured` should be `true`
 after filling the key and restarting. Configuration status does not test provider credentials or
 network connectivity.
+
+`GET /buildings/providers` also reports `buildingLookup.provider` so the selected outline
+provider is visible without exposing credentials. If it reports `overpass` and address search
+succeeds but the outline lookup times out, remove `BUILDING_PROVIDER=overpass` or set it to
+`geoapify` and restart. Switching public Overpass hosts or increasing timeouts does not fix an
+unresponsive backend. Overpass requests identify the project, allow up to 45 seconds of query
+execution, and use a 60-second HTTP deadline to accommodate queueing and response transfer.
+These limits apply to both outline and interior requests; Geoapify retains its 10-second deadline.
+Address lookup starts asynchronously, so clients receive progress updates while the provider runs.
+Overpass is an explicitly selectable provider, not an automatic fallback after a Geoapify error.
+Provider failures keep the current incident active;
+they are never interpreted as an empty map.
 
 | Endpoint | Purpose |
 |---|---|
@@ -78,7 +100,7 @@ Confirm the correct outline, then submit the same coordinates with its returned 
 ```
 
 `osm:way:123` is an illustrative ID; use the actual candidate ID. A selected building must be one
-of the candidates for that location. With no mapped outlines, the response contains a location-only
+of the candidates for that location. With no outline returned, the response contains a location-only
 record and explicit warnings. The API does not choose the nearest building automatically.
 
 After choosing the correct candidate, put its actual ID into this request:
@@ -119,6 +141,7 @@ failures return **502**, timeouts return **504**, and unknown cached IDs return 
 errors are sanitized so API keys and upstream error bodies are not returned to clients.
 
 References: [Geoapify geocoding](https://apidocs.geoapify.com/docs/geocoding/),
+[Geoapify building details](https://apidocs.geoapify.com/docs/place-details/),
 [OSM indoor tagging](https://wiki.openstreetmap.org/wiki/Simple_Indoor_Tagging),
 [Overpass instance guidance](https://dev.overpass-api.de/overpass-doc/en/preface/commons.html).
 
@@ -128,7 +151,7 @@ A caller (voice or text) gives the address of the burning building. The server g
 OpenStreetMap outlines there, the **operator confirms one on the console**, and the server turns that
 record into a simulation `Building` and makes it the incident building. The spread model, exits,
 recommendation, `GET /building`, `/inspections`, `/forecast` and the locator all run on it. With no
-address, everything runs on the demo building exactly as before. **Mock mode (`MOCK=1`, `npm run dev`)
+address, everything runs on the demo building exactly as before. **Mock mode (`MOCK=1`)
 never leaves the demo building**: lookup events and endpoints are ignored (HTTP 409) with a `building`
 log line.
 
@@ -136,9 +159,9 @@ log line.
 
 | Status | Meaning |
 |---|---|
-| `searching` | Geocoding the address (Geoapify, top result), then finding outlines near it (Overpass). `match` appears once geocoded. |
+| `searching` | Geocoding the address (Geoapify, top result), then looking up its building outline (Geoapify by default; nearby Overpass outlines when opted in). `match` appears once geocoded. |
 | `needs_confirmation` | `candidates` (summaries, nearest first; `distanceMeters` 0 = the point is inside) wait for the operator. Always asked, even with one candidate. |
-| `loading` | The confirmed record is loaded, a `Building` synthesized (`server/src/buildings/synthesize.ts`), occupants estimated. With no mapped outline at all, the server skips confirmation and builds from the location-only record. |
+| `loading` | The confirmed record is loaded, a `Building` synthesized (`server/src/buildings/synthesize.ts`), occupants estimated. With no outline returned by the chosen provider, the server skips confirmation and builds from the location-only record. |
 | `active` | The building is the incident building. |
 | `failed` | `error` says why. The incident stays on the previous building. Retry with the same or another address; after a failed confirmation, `confirmBuilding` can be sent again. |
 
@@ -177,7 +200,7 @@ export async function processReport(input: { text: string; caller: string }): Pr
 }>
 ```
 
-Start with `AGENT=1 npm run dev` (add `MOCK=0` for live mode). The server loads it from `server/src/agent/bridge.ts`, and `POST /ingest` calls it for every report, including the mock demo's scripted calls. The startup log line says which one is active (`reports->agent processReport()`).
+Start with `AGENT=1 npm run dev` (live mode by default; `MOCK=1` opts into scripted calls). The server loads it from `server/src/agent/bridge.ts`, and `POST /ingest` calls it for every report, including the mock demo's scripted calls. The startup log line says which one is active (`reports->agent processReport()`).
 - If the export is missing, the server logs a warning and uses its rule-based locator.
 - If one call throws, takes longer than `AGENT_TIMEOUT_MS` (default 20000), or returns a non-object, **that report** falls back to the rule-based locator. The error is logged as `[agent] …`.
 - The `/ingest` response carries `reply`, which the Photon adapter texts to the caller.

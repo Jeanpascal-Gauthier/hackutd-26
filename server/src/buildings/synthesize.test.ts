@@ -206,7 +206,7 @@ test("profile: name, address, attribution, time zone, use", () => {
   assert.ok(anon.assumptions.some((a) => a.includes("30 m × 20 m")));
 });
 
-test("floors: levels, else height / 3.5, else a default by use; clamped to 1..40", () => {
+test("floors: levels, else height / 3.5, else a default by use; no upper generation cap", () => {
   const floors = (extra: Partial<BuildingRecord>) => synthesizeBuilding(record(polygon(rect(0, 0, 30, 20)), extra)).building.profile!;
   assert.equal(floors({ floorsAboveGround: 7, heightMeters: 99 }).floors, 7);
   const byHeight = floors({ floorsAboveGround: null, heightMeters: 21 });
@@ -215,10 +215,29 @@ test("floors: levels, else height / 3.5, else a default by use; clamped to 1..40
   const none = floors({ floorsAboveGround: null, tags: { building: "school" } });
   assert.equal(none.floors, 2);
   assert.ok(none.assumptions.some((a) => a.includes("no floor count or height")));
-  assert.equal(floors({ floorsAboveGround: 120 }).floors, 40);
-  const tall = synthesizeBuilding(record(polygon(rect(0, 0, 30, 20)), { floorsAboveGround: 120 })).building;
-  assert.equal(tall.verticals[0].floors[1], 40);
+  assert.equal(floors({ floorsAboveGround: 120 }).floors, 120);
+  assert.equal(floors({ floorsAboveGround: null, heightMeters: 828 }).floors, Math.round(828 / 3.5));
   assert.equal(floors({ floorsAboveGround: null, heightMeters: 1 }).floors, 1);
+  assert.equal(floors({ floorsAboveGround: Infinity, heightMeters: 21 }).floors, 6);
+  assert.equal(floors({ floorsAboveGround: null, heightMeters: Infinity }).floors, 4);
+});
+
+test("163-floor tower: top-floor rooms, shafts, report location and forecast remain usable", () => {
+  const generated = synthesizeBuilding(record(polygon(rect(0, 0, 30, 20)), { floorsAboveGround: 163, heightMeters: 828 }));
+  assert.deepEqual(check(generated), []);
+  const { building } = generated;
+  assert.equal(building.profile!.floors, 163);
+  assert.equal(new Set(building.rooms.map(r => r.floor)).size, 163);
+  assert.ok(building.rooms.some(r => r.id === "163-hall"));
+  assert.ok(building.verticals.every(v => v.floors[1] === 163));
+  assert.equal(building.profile!.assumptions.some(a => a.includes("capped")), false);
+  assert.equal(locate("fire in the hallway on floor 163", building).roomId, "163-hall");
+  const snapshots = simulateSpread(building, "163-hall", 2);
+  assert.ok(snapshots[2].rooms.some(r => r.roomId === "163-hall" && r.fire > 0));
+  const exits = findExits(building, snapshots, [{ room: "163-office", count: 2, flags: [] }]);
+  assert.equal(exits[0].floor, 163);
+  assert.ok(exits[0].route?.includes("163-stair-a"));
+  assert.ok(exits[0].route?.includes("1-stair-a"));
 });
 
 test("use: OSM tags pick room kinds and names", () => {

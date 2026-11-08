@@ -27,6 +27,15 @@ test("parseFloor understands digits, words and ordinals", () => {
   for (const [text, floor] of cases) assert.equal(parseFloor(text, 12), floor, text);
 });
 
+test("parseFloor supports tower floors without truncating out-of-range numbers", () => {
+  for (const text of ["floor 163", "level 163", "163rd floor", "on the 163rd", "smoke near the 163rd"]) {
+    assert.equal(parseFloor(text, 163), 163, text);
+    assert.equal(parseFloor(text, 40), undefined, text);
+  }
+  assert.equal(parseFloor("floor 164", 163), undefined);
+  assert.equal(parseFloor("floor 1163", 163), undefined);
+});
+
 test("locate: floor + room -> room id; floor only -> hallway + follow-up; nothing -> follow-up", () => {
   assert.deepEqual(locate("There's smoke coming from the break room on the 7th floor", building), {
     roomId: "7-break", confidence: 0.8, floor: 7,

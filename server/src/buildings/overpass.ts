@@ -3,6 +3,9 @@ import { BuildingApiError, isObject, providerJson, type RequestOptions } from ".
 
 export const DEFAULT_OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 export const SEARCH_RADIUS_METERS = 150;
+// Leave time for the public server's queue and response transfer after query execution.
+const REQUEST_TIMEOUT_MS = 60000;
+const QUERY_TIMEOUT_SECONDS = 45;
 export interface Bounds { south: number; west: number; north: number; east: number }
 
 export function validateLocation(value: unknown): Coordinates {
@@ -64,17 +67,23 @@ export function validOverpassUrl(input: string): string {
 }
 
 async function queryOverpass(query: string, url: string, options: RequestOptions): Promise<OsmElement[]> {
+  // Public instances may queue a request before its query execution timeout starts.
   const body = await providerJson(validOverpassUrl(url), "OpenStreetMap", {
-    method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+    method: "POST", headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      accept: "application/json",
+      // Public instances may reject the generic Node fetch user agent.
+      "user-agent": "FireWatch/0.0.0 (HackUTD building lookup prototype)",
+    },
     body: new URLSearchParams({ data: query }).toString(),
-  }, options);
+  }, { ...options, timeoutMs: options.timeoutMs ?? REQUEST_TIMEOUT_MS });
   return elements(body);
 }
 
 export async function nearbyBuildings(location: Coordinates, url = DEFAULT_OVERPASS_URL, options: RequestOptions = {}, radius = SEARCH_RADIUS_METERS): Promise<OsmElement[]> {
   const { lat, lon } = validateLocation(location);
   const around = `(around:${radius},${lat},${lon})`;
-  return queryOverpass(`[out:json][timeout:8];(way["building"]${around};relation["building"]${around};);out meta geom;`, url, options);
+  return queryOverpass(`[out:json][timeout:${QUERY_TIMEOUT_SECONDS}];(way["building"]${around};relation["building"]${around};);out meta geom;`, url, options);
 }
 
 /** Drivable roads near a point, with node ids so that shared nodes join them into a street graph. */
@@ -92,5 +101,5 @@ export async function buildingInteriors(bounds: Bounds, url = DEFAULT_OVERPASS_U
     throw new BuildingApiError(422, "building_area_too_large", "Interior lookup is unavailable for this building's geographic bounds.");
   const box = `(${south},${west},${north},${east})`;
   const indoor = `["indoor"]${box};nwr["room"]${box};nwr["stairs"]${box};nwr["highway"="steps"]${box};nwr["highway"="corridor"]${box};nwr["highway"="elevator"]${box};nwr["door"]${box};nwr["entrance"]${box}`;
-  return queryOverpass(`[out:json][timeout:8];(nwr${indoor};);(._;>;);out meta geom;`, url, options);
+  return queryOverpass(`[out:json][timeout:${QUERY_TIMEOUT_SECONDS}];(nwr${indoor};);(._;>;);out meta geom;`, url, options);
 }

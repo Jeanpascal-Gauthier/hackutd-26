@@ -131,7 +131,7 @@ export function fakeApp(options: Partial<AppOptions> = {}) {
   const f = fakes();
   const app = createApp({
     mock: false,
-    buildings: createBuildingService({ fetch: fakeFetch(world), geoapifyApiKey: "test-key", overpassApiUrl: "https://overpass.test/api/interpreter" }),
+    buildings: createBuildingService({ fetch: fakeFetch(world), geoapifyApiKey: "test-key", buildingProvider: "overpass", overpassApiUrl: "https://overpass.test/api/interpreter" }),
     synthesize: f.synthesize,
     summarize: f.summarize,
     estimateOccupancy: f.estimateOccupancy,
