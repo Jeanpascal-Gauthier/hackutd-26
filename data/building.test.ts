@@ -73,3 +73,17 @@ test("validator catches broken data", () => {
   bad((g) => (g.meta.inspections.find((r) => r.id === "sprinkler:7-break")!.status = "pass"), /impaired sprinkler 7-break/);
   bad((g) => (g.meta.inspections.find((r) => r.id === "fire-door:7-hall|7-stair-b")!.status = "pass"), /propped-open rated door/);
 });
+
+test("demo occupancy: evening, 40 people on floors 8-12, floor 7 occupied", () => {
+  const { meta } = generate();
+  const floorOf = (room: string) => Number.parseInt(room);
+  const on = (lo: number, hi: number) => meta.occupants.filter((o) => floorOf(o.room) >= lo && floorOf(o.room) <= hi);
+  const sum = (os: typeof meta.occupants) => os.reduce((n, o) => n + o.count, 0);
+  assert.equal(sum(on(8, 12)), 40);
+  assert.ok(on(8, 12).some((o) => o.flags.includes("mobility")));
+  assert.ok(sum(on(7, 7)) > 0, "fire floor occupied");
+  assert.equal(meta.occupants.find((o) => o.room === "7-break")?.count, 3);
+  assert.deepEqual(meta.occupants.find((o) => o.room === "10-east")?.flags, ["mobility"]);
+  for (let f = 1; f <= 12; f++) assert.ok(sum(on(f, f)) > 0, `floor ${f} has someone (exits need it)`);
+  assert.ok(sum(meta.occupants) < 120, "evening: lighter than a workday");
+});

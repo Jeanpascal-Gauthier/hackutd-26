@@ -12,6 +12,27 @@ export const ROOM_D = 8;
 const SEED = 26;
 /** Floor of the demo fire (7-break); stair B's door is propped open here. */
 const DEMO_FLOOR = 7;
+/**
+ * Evening (about 7 pm) on the fire floor and above, fixed so the pitch numbers hold:
+ * 9 people on floor 7, 40 on floors 8-12. Floors below 7 come from the seeded rng.
+ */
+const DEMO_OCCUPANTS: [room: string, count: number, flags: string[]][] = [
+  ["7-break", 3, []],
+  ["7-east", 2, []],
+  ["7-office", 4, []],
+  ["8-west", 1, ["mobility"]],
+  ["8-office", 5, []],
+  ["8-conf", 4, []],
+  ["9-east", 2, []],
+  ["9-office", 3, []],
+  ["10-break", 2, []],
+  ["10-east", 6, ["mobility"]],
+  ["10-conf", 3, []],
+  ["11-west", 2, ["child"]],
+  ["11-office", 6, []],
+  ["12-east", 3, []],
+  ["12-office", 3, []],
+];
 
 /** Room name slots in priority order. Every floor has the first 4..6. */
 const ROOM_SLOTS: [string, string][] = [
@@ -146,8 +167,9 @@ export function generate(): { building: Building; meta: BuildingMeta } {
       // room has a rated door that is kept shut (as fire code expects).
       addLink(hall, id, "door", key === "break" ? 0 : 20, key !== "break");
 
-      const count = key === "storage" ? 0 : Math.floor(rand() * 9) + 2;
-      const flags = FLAGS.filter(() => count > 0 && rand() < 0.15);
+      // Evening: most rooms are empty, the rest hold 1-4 people.
+      const count = key === "storage" || rand() < 0.6 ? 0 : Math.floor(rand() * 4) + 1;
+      const flags = FLAGS.filter(() => count > 0 && rand() < 0.05);
       if (count > 0) occupants.push({ room: id, count, flags: [...flags] });
     }
     // Neighbouring rooms share a (closed) wall.
@@ -172,15 +194,11 @@ export function generate(): { building: Building; meta: BuildingMeta } {
     }
   }
 
-  // Demo overrides: fixed, readable story on the two demo rooms.
+  // Demo overrides: fixed, readable story from the fire floor up.
   sprinklers["7-break"] = "impaired";
-  const setOcc = (room: string, count: number, flags: string[]) => {
-    const o = occupants.find((x) => x.room === room);
-    if (o) Object.assign(o, { count, flags });
-    else occupants.push({ room, count, flags });
-  };
-  setOcc("7-break", 3, []);
-  setOcc("10-east", 6, ["mobility"]);
+  const below = occupants.filter((o) => Number.parseInt(o.room) < DEMO_FLOOR);
+  occupants.length = 0;
+  occupants.push(...below, ...DEMO_OCCUPANTS.map(([room, count, flags]) => ({ room, count, flags: [...flags] })));
 
   const verticals: Vertical[] = SHAFTS.map((id) => ({
     id,
@@ -209,6 +227,7 @@ export function generate(): { building: Building; meta: BuildingMeta } {
         "7-hall connects to 7-stair-b through a 60-min rated door that is propped OPEN (link.closed=false; verticals[stair-b].doorsClosed=false). Smoke enters stair B, rises and pools at the top: stair B is smoke-logged on floors 7-12 by about minute 11-17.",
         "Stair A and the elevator have rated doors that are closed (link.closed=true, doorsClosed=true): they stay smoke-free until a door is opened or a rating (60 min) is exceeded.",
         "10-east holds 6 occupants including a mobility-limited person; their nearest stair (B) fills with smoke, so they must use stair A.",
+        "Evening, about 7 pm: 9 people on floor 7 and 40 on floors 8-12 (mobility-limited occupants in 8-west and 10-east, a child in 11-west). Floors 1-6 are lightly occupied.",
         "Inspection records tell the same story: the 7-break sprinkler is deficient (obstructed head, repair ticket open) and its annual inspection is overdue; the 7-hall|7-stair-b 60-min door is deficient (found propped open).",
       ],
     },

@@ -595,155 +595,62 @@
   },
   "occupants": [
     {
-      "room": "1-break",
-      "count": 6,
-      "flags": []
-    },
-    {
-      "room": "1-conf",
-      "count": 9,
-      "flags": []
-    },
-    {
       "room": "1-east",
-      "count": 2,
-      "flags": []
-    },
-    {
-      "room": "1-office",
-      "count": 9,
-      "flags": [
-        "child"
-      ]
-    },
-    {
-      "room": "1-west",
-      "count": 10,
-      "flags": []
-    },
-    {
-      "room": "2-break",
-      "count": 2,
-      "flags": []
-    },
-    {
-      "room": "2-conf",
-      "count": 8,
-      "flags": []
-    },
-    {
-      "room": "2-east",
-      "count": 8,
+      "count": 3,
       "flags": [
         "mobility"
       ]
     },
     {
-      "room": "2-office",
-      "count": 7,
+      "room": "1-office",
+      "count": 3,
       "flags": []
     },
     {
-      "room": "2-west",
+      "room": "2-east",
       "count": 4,
+      "flags": [
+        "child"
+      ]
+    },
+    {
+      "room": "2-west",
+      "count": 3,
       "flags": []
     },
     {
       "room": "3-break",
-      "count": 2,
-      "flags": [
-        "child"
-      ]
+      "count": 4,
+      "flags": []
     },
     {
       "room": "3-east",
-      "count": 2,
-      "flags": []
-    },
-    {
-      "room": "3-office",
-      "count": 5,
-      "flags": []
-    },
-    {
-      "room": "3-west",
-      "count": 7,
-      "flags": []
-    },
-    {
-      "room": "4-break",
-      "count": 9,
+      "count": 3,
       "flags": []
     },
     {
       "room": "4-conf",
-      "count": 3,
-      "flags": [
-        "child"
-      ]
-    },
-    {
-      "room": "4-east",
-      "count": 9,
-      "flags": []
-    },
-    {
-      "room": "4-office",
-      "count": 9,
-      "flags": []
-    },
-    {
-      "room": "4-west",
-      "count": 7,
-      "flags": []
-    },
-    {
-      "room": "5-break",
-      "count": 8,
-      "flags": [
-        "child"
-      ]
-    },
-    {
-      "room": "5-conf",
       "count": 4,
       "flags": []
     },
     {
       "room": "5-east",
-      "count": 2,
-      "flags": []
-    },
-    {
-      "room": "5-office",
       "count": 4,
       "flags": []
     },
     {
       "room": "5-west",
-      "count": 8,
-      "flags": [
-        "mobility"
-      ]
+      "count": 3,
+      "flags": []
     },
     {
       "room": "6-break",
-      "count": 6,
+      "count": 4,
       "flags": []
     },
     {
       "room": "6-east",
-      "count": 8,
-      "flags": []
-    },
-    {
-      "room": "6-office",
-      "count": 7,
-      "flags": []
-    },
-    {
-      "room": "6-west",
-      "count": 10,
+      "count": 1,
       "flags": []
     },
     {
@@ -752,13 +659,8 @@
       "flags": []
     },
     {
-      "room": "7-conf",
-      "count": 4,
-      "flags": []
-    },
-    {
       "room": "7-east",
-      "count": 10,
+      "count": 2,
       "flags": []
     },
     {
@@ -767,65 +669,40 @@
       "flags": []
     },
     {
-      "room": "7-west",
-      "count": 5,
-      "flags": []
-    },
-    {
-      "room": "8-break",
-      "count": 2,
-      "flags": []
-    },
-    {
       "room": "8-conf",
-      "count": 2,
-      "flags": []
-    },
-    {
-      "room": "8-east",
-      "count": 7,
+      "count": 4,
       "flags": []
     },
     {
       "room": "8-office",
-      "count": 3,
+      "count": 5,
+      "flags": []
+    },
+    {
+      "room": "8-west",
+      "count": 1,
       "flags": [
         "mobility"
       ]
     },
     {
-      "room": "8-west",
-      "count": 8,
-      "flags": []
-    },
-    {
-      "room": "9-break",
-      "count": 10,
-      "flags": []
-    },
-    {
       "room": "9-east",
-      "count": 6,
+      "count": 2,
       "flags": []
     },
     {
       "room": "9-office",
-      "count": 10,
-      "flags": []
-    },
-    {
-      "room": "9-west",
-      "count": 5,
+      "count": 3,
       "flags": []
     },
     {
       "room": "10-break",
-      "count": 7,
+      "count": 2,
       "flags": []
     },
     {
       "room": "10-conf",
-      "count": 8,
+      "count": 3,
       "flags": []
     },
     {
@@ -836,62 +713,25 @@
       ]
     },
     {
-      "room": "10-office",
-      "count": 7,
-      "flags": [
-        "child"
-      ]
-    },
-    {
-      "room": "10-west",
-      "count": 7,
-      "flags": [
-        "child"
-      ]
-    },
-    {
-      "room": "11-break",
-      "count": 6,
-      "flags": []
-    },
-    {
-      "room": "11-conf",
-      "count": 9,
-      "flags": []
-    },
-    {
-      "room": "11-east",
-      "count": 10,
-      "flags": []
-    },
-    {
       "room": "11-office",
-      "count": 4,
+      "count": 6,
       "flags": []
     },
     {
       "room": "11-west",
-      "count": 5,
-      "flags": []
-    },
-    {
-      "room": "12-break",
-      "count": 5,
-      "flags": []
+      "count": 2,
+      "flags": [
+        "child"
+      ]
     },
     {
       "room": "12-east",
-      "count": 10,
+      "count": 3,
       "flags": []
     },
     {
       "room": "12-office",
-      "count": 6,
-      "flags": []
-    },
-    {
-      "room": "12-west",
-      "count": 2,
+      "count": 3,
       "flags": []
     }
   ],
@@ -2528,6 +2368,7 @@
       "7-hall connects to 7-stair-b through a 60-min rated door that is propped OPEN (link.closed=false; verticals[stair-b].doorsClosed=false). Smoke enters stair B, rises and pools at the top: stair B is smoke-logged on floors 7-12 by about minute 11-17.",
       "Stair A and the elevator have rated doors that are closed (link.closed=true, doorsClosed=true): they stay smoke-free until a door is opened or a rating (60 min) is exceeded.",
       "10-east holds 6 occupants including a mobility-limited person; their nearest stair (B) fills with smoke, so they must use stair A.",
+      "Evening, about 7 pm: 9 people on floor 7 and 40 on floors 8-12 (mobility-limited occupants in 8-west and 10-east, a child in 11-west). Floors 1-6 are lightly occupied.",
       "Inspection records tell the same story: the 7-break sprinkler is deficient (obstructed head, repair ticket open) and its annual inspection is overdue; the 7-hall|7-stair-b 60-min door is deficient (found propped open)."
     ]
   }
