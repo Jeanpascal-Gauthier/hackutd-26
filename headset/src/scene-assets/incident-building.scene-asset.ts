@@ -126,18 +126,35 @@ export function createIncidentBuilding(building: Building) {
     list.push({ x, y, z, w, h, d });
   }
   const s = BUILDING_SCALE;
-  const minX = Math.min(...building.rooms.map(r => r.x)) * s;
-  const maxX = Math.max(...building.rooms.map(r => r.x + r.w)) * s;
-  const minZ = Math.min(...building.rooms.map(r => r.z)) * s;
-  const maxZ = Math.max(...building.rooms.map(r => r.z + r.d)) * s;
   const floors = Math.max(...building.rooms.map(r => r.floor));
+  // Stairwells and the elevator are rooms named `${floor}-${vertical.id}`; they
+  // stick out of the main block, so the facade wraps only the main block.
+  const verticalRoomIds = new Set(building.rooms
+    .filter(room => building.verticals.some(v => room.id === `${room.floor}-${v.id}`))
+    .map(room => room.id));
+  const mainRooms = building.rooms.filter(room => !verticalRoomIds.has(room.id));
+  const blockRooms = mainRooms.length ? mainRooms : building.rooms;
+  const minX = Math.min(...blockRooms.map(r => r.x)) * s;
+  const maxX = Math.max(...blockRooms.map(r => r.x + r.w)) * s;
+  const minZ = Math.min(...blockRooms.map(r => r.z)) * s;
+  const maxZ = Math.max(...blockRooms.map(r => r.z + r.d)) * s;
   const width = maxX - minX, depth = maxZ - minZ;
   const cx = (minX + maxX) / 2, cz = (minZ + maxZ) / 2;
   const height = floors * FLOOR_HEIGHT;
-  addStatic(cx, 0.005, cz, width + 0.055, 0.01, depth + 0.055, plinth);
-  for (let level = 0; level <= floors; level++) {
-    // Each slab rides with the floor standing on it; the roof rides with the top floor.
-    addStatic(cx, 0.012 + level * FLOOR_HEIGHT, cz, width + 0.008, 0.004, depth + 0.008, concrete, Math.min(level + 1, floors));
+  // The plinth is the site base, so it spans every room including the towers.
+  const siteMinX = Math.min(...building.rooms.map(r => r.x)) * s;
+  const siteMaxX = Math.max(...building.rooms.map(r => r.x + r.w)) * s;
+  const siteMinZ = Math.min(...building.rooms.map(r => r.z)) * s;
+  const siteMaxZ = Math.max(...building.rooms.map(r => r.z + r.d)) * s;
+  addStatic((siteMinX + siteMaxX) / 2, 0.005, (siteMinZ + siteMaxZ) / 2,
+    siteMaxX - siteMinX + 0.055, 0.01, siteMaxZ - siteMinZ + 0.055, plinth);
+  // Slabs follow the real room footprints (no empty, unselectable floor plate).
+  // Each slab rides with the floor standing on it; the roof rides with the top floor.
+  for (const room of building.rooms) {
+    const slab = (level: number) => addStatic((room.x + room.w / 2) * s, 0.012 + level * FLOOR_HEIGHT,
+      (room.z + room.d / 2) * s, room.w * s, 0.004, room.d * s, concrete, room.floor);
+    slab(room.floor - 1);
+    if (room.floor === floors) slab(floors);
   }
   // Two retained elevations establish the envelope; the near/right sides stay
   // open as an architectural section, exposing incident rooms without glass.
@@ -164,8 +181,10 @@ export function createIncidentBuilding(building: Building) {
   for (let bay = 0; bay <= 4; bay++) {
     addStatic(minX + width * bay / 4, 0.012 + height / 2, maxZ - 0.004, 0.0035, height, 0.0035, concrete);
   }
-  addStatic(cx, 0.031, minZ - 0.002, 0.045, 0.035, 0.003, door);
-  addStatic(cx, 0.055, minZ - 0.014, 0.08, 0.004, 0.03, concrete);
+  // Entrance sits on the front face beside the elevator tower, not under it.
+  const entranceX = minX + width * 0.3;
+  addStatic(entranceX, 0.031, minZ - 0.002, 0.045, 0.035, 0.003, door);
+  addStatic(entranceX, 0.055, minZ - 0.014, 0.08, 0.004, 0.03, concrete);
   addStatic(cx - width * 0.23, height + 0.026, cz, 0.07, 0.025, 0.045, frame, floors);
   for (const x of [minX, maxX]) addStatic(x, height + 0.02, cz, 0.004, 0.015, depth, concrete, floors);
   for (const z of [minZ, maxZ]) addStatic(cx, height + 0.02, z, width, 0.015, 0.004, concrete, floors);
@@ -188,6 +207,7 @@ export function createIncidentBuilding(building: Building) {
     roomMeshes.set(room.id, roomMesh);
     roomMaterials.set(room.id, material);
   }
+  const stairTread = new MeshStandardMaterial({ color: '#a9b0b6' });
   for (const vertical of building.verticals) {
     const served = building.rooms.filter(room => room.id === `${room.floor}-${vertical.id}`
       && room.floor >= vertical.floors[0] && room.floor <= vertical.floors[1]);
@@ -196,10 +216,39 @@ export function createIncidentBuilding(building: Building) {
     const last = served.reduce((a, b) => a.floor > b.floor ? a : b);
     const material = new MeshStandardMaterial({ color: vertical.kind === 'stair' ? '#434d57' : '#657180', roughness: 0.8 });
     const height = (last.floor - first.floor + 1) * FLOOR_HEIGHT;
-    const mesh = box(`${vertical.kind === 'stair' ? 'Stair' : 'Elevator'} core ${vertical.id}`,
-      (first.x + first.w / 2) * s, 0.014 + (first.floor - 1) * FLOOR_HEIGHT + height / 2,
-      (first.z + first.d / 2) * s, first.w * s * 0.34, height, first.d * s * 0.34, material);
-    (mesh as Mesh & { pointerEvents: string }).pointerEvents = 'none';
+    const isStair = vertical.kind === 'stair';
+    let mesh: Mesh;
+    if (isStair) {
+      // Switchback stair on every floor: flight up along one half, landing,
+      // flight back along the other half. Treads join the per-floor structure
+      // (no extra draw calls); the spine wall between the flights keeps the
+      // live route colour (green when on an accepted, clear route).
+      const steps = 6;
+      const rise = FLOOR_HEIGHT / (steps * 2);
+      for (const room of served) {
+        const x0 = room.x * s, z0 = room.z * s, w = room.w * s, d = room.d * s;
+        const base = 0.014 + (room.floor - 1) * FLOOR_HEIGHT;
+        const run = w * 0.72, start = x0 + w * 0.04, tread = run / steps, flightD = d * 0.44;
+        for (let i = 0; i < steps; i++) {
+          const top1 = base + (i + 1) * rise;
+          const h1 = i === 0 ? rise : rise * 2;
+          addStatic(start + (i + 0.5) * tread, top1 - h1 / 2, z0 + d * 0.25, tread, h1, flightD, stairTread, room.floor);
+          const top2 = base + FLOOR_HEIGHT / 2 + (i + 1) * rise;
+          addStatic(start + run - (i + 0.5) * tread, top2 - rise, z0 + d * 0.75, tread, rise * 2, flightD, stairTread, room.floor);
+        }
+        const landingW = x0 + w * 0.97 - (start + run);
+        addStatic(start + run + landingW / 2, base + FLOOR_HEIGHT / 2 - rise, z0 + d / 2, landingW, rise * 2, d * 0.94, stairTread, room.floor);
+      }
+      mesh = box(`Stair spine ${vertical.id}`,
+        (first.x * s + first.w * s * 0.04) + first.w * s * 0.36, 0.014 + (first.floor - 1) * FLOOR_HEIGHT + height / 2,
+        (first.z + first.d / 2) * s, first.w * s * 0.72, height, first.d * s * 0.06, material);
+    } else {
+      mesh = box(`Elevator core ${vertical.id}`,
+        (first.x + first.w / 2) * s, 0.014 + (first.floor - 1) * FLOOR_HEIGHT + height / 2,
+        (first.z + first.d / 2) * s, first.w * s * 0.34, height, first.d * s * 0.34, material);
+    }
+    // Grab-only: hands can take hold of it, pointing rays pass through to rooms.
+    (mesh as Mesh & { pointerEventsType: { allow: string } }).pointerEventsType = { allow: 'grab' };
     verticalMaterials.set(vertical.id, material);
   }
   // Batch every static group into one draw call per material — the room
@@ -212,7 +261,9 @@ export function createIncidentBuilding(building: Building) {
     const geometry = mergeStaticBoxes(entries);
     const mesh = new Mesh(geometry, floorShell);
     mesh.name = `Floor ${floor} structure`;
-    (mesh as Mesh & { pointerEvents: string }).pointerEvents = 'none';
+    // Grab-only: a hand reaching for a slab or wall can take hold of the model,
+    // while pointing rays pass through to the room picking targets.
+    (mesh as Mesh & { pointerEventsType: { allow: string } }).pointerEventsType = { allow: 'grab' };
     const group = getFloorGroup(floor);
     group.add(mesh);
     group.add(structureOutline([geometry.attributes.position.array as Float32Array], outlineMaterial, `Floor ${floor} structure outline`));
@@ -221,8 +272,9 @@ export function createIncidentBuilding(building: Building) {
     const geometry = mergeStaticBoxes(entries);
     const mesh = new Mesh(geometry, material);
     mesh.name = `Building structure (${staticLabel.get(material) ?? 'static'})`;
-    // Static shell must not intercept room selection, especially above a cut.
-    (mesh as Mesh & { pointerEvents: string }).pointerEvents = 'none';
+    // Static shell must not intercept room selection, especially above a cut,
+    // but hands should still be able to grab the model by it.
+    (mesh as Mesh & { pointerEventsType: { allow: string } }).pointerEventsType = { allow: 'grab' };
     root.add(mesh);
     if (material === concrete || material === frame) {
       outlineSources.push(geometry.attributes.position.array as Float32Array);
