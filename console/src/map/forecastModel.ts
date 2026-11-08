@@ -6,6 +6,10 @@ export interface MitigationAction {
   owner: string;
   lossReduction: number;
   peopleProtected: number;
+  /** Live scenarios: the server already ran this action. */
+  done?: boolean;
+  /** Live scenarios: why the action works, one line. */
+  reason?: string;
 }
 
 export interface RiskBuilding {
@@ -18,6 +22,8 @@ export interface RiskBuilding {
   firstImpactMinute: number;
   chain: { minute: number; title: string; detail: string; preventedBy?: string }[];
   actions: MitigationAction[];
+  /** Live scenarios: the risk the server gave the building. Without it, the loss alone decides. */
+  baseRisk?: RiskLevel;
 }
 
 export interface ForecastScenario {
@@ -25,7 +31,7 @@ export interface ForecastScenario {
   buildings: RiskBuilding[];
   floods: { id: string; incidentId: string; steps: { minute: number; water: GeoPoint[] }[] }[];
   roads: { id: string; incidentId: string; road: string; reason: string; minute: number; path: GeoPoint[] }[];
-  blasts: { id: string; incidentId: string; center: GeoPoint; radiusMeters: number }[];
+  blasts: { id: string; incidentId: string; center: GeoPoint; radiusMeters: number; reasons?: string[] }[];
   links: { from: string; to: string; reason: string }[];
 }
 
@@ -80,8 +86,8 @@ export function readExecutions(scenario: ForecastScenario, raw: string | null): 
 
 export function buildingRisk(building: RiskBuilding, executions: Execution[], minute: number): RiskLevel {
   const fraction = buildingImpact(building, executions).loss / Math.max(1, building.loss);
-  if (fraction <= 0.3) return "low";
-  return minute >= building.firstImpactMinute && fraction > 0.65 ? "high" : "moderate";
+  if (fraction <= 0.3 || building.baseRisk === "low") return "low";
+  return building.baseRisk !== "moderate" && minute >= building.firstImpactMinute && fraction > 0.65 ? "high" : "moderate";
 }
 
 export function radiusRing(center: GeoPoint, meters: number): GeoPoint[] {
@@ -152,8 +158,8 @@ export function buildForecastScene(incidents: MapIncident[], minute: number, sce
     }
     for (const blast of scenario.blasts) if (activeIds.has(blast.incidentId)) {
       const ring = radiusRing(blast.center, blast.radiusMeters);
-      add({ id: `${blast.id}-fill`, kind: "polygon", path: ring, color: "#e8b04e", opacity: 0.08, weight: 0, title: `${blast.radiusMeters} m blast radius`, zIndex: 2 });
-      add({ id: blast.id, kind: "line", path: [...ring, ring[0]!], color: "#e8b04e", opacity: 0.9, weight: 2, dashed: true, title: `${blast.radiusMeters} m blast radius`, zIndex: 4 });
+      add({ id: `${blast.id}-fill`, kind: "polygon", path: ring, color: "#e8b04e", opacity: 0.08, weight: 0, title: `${blast.radiusMeters} m blast radius${blast.reasons?.length ? ` · ${blast.reasons.join(", ")}` : ""}`, zIndex: 2 });
+      add({ id: blast.id, kind: "line", path: [...ring, ring[0]!], color: "#e8b04e", opacity: 0.9, weight: 2, dashed: true, title: `${blast.radiusMeters} m blast radius${blast.reasons?.length ? ` · ${blast.reasons.join(", ")}` : ""}`, zIndex: 4 });
     }
     for (const link of scenario.links) {
       const from = active.find((item) => item.id === link.from)?.location;
