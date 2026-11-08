@@ -1,6 +1,22 @@
 // Pure validation: returns a list of error strings (empty = valid).
 import type { Building } from "@firewatch/shared/types";
-import { ELEVATOR, FLAGS, FLOORS, SHAFTS, STAIRS, roomId, type BuildingMeta } from "./model.ts";
+import {
+  ELEVATOR,
+  FLAGS,
+  FLOORS,
+  INSPECTION_AS_OF,
+  INSPECTION_STATUSES,
+  INSPECTION_SYSTEMS,
+  SHAFTS,
+  STAIRS,
+  daysFromIso,
+  doorId,
+  isoFromDays,
+  roomId,
+  type BuildingMeta,
+} from "./model.ts";
+
+const isIsoDate = (s: unknown) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && isoFromDays(daysFromIso(s)) === s;
 
 export function validate(b: Building, meta: BuildingMeta): string[] {
   const errs: string[] = [];
@@ -111,8 +127,65 @@ export function validate(b: Building, meta: BuildingMeta): string[] {
     if (o.flags.length > 0 && o.count === 0) err(`${o.room}: flags set on empty room`);
   }
 
+  // Inspections: known system/status, target exists on the stated floor, valid dates
+  const inspections = meta.inspections ?? [];
+  if (!Array.isArray(meta.inspections)) err("meta.inspections missing");
+  const ratedDoors = new Map(meta.doors.filter((d) => d.ratingMinutes > 0).map((d) => [doorId(d), d]));
+  const insp = new Map<string, BuildingMeta["inspections"][number]>();
+  for (const r of inspections) {
+    const at = `inspection ${r.id}`;
+    if (insp.has(r.id)) err(`duplicate inspection id: ${r.id}`);
+    insp.set(r.id, r);
+    if (r.id !== `${r.system}:${r.target}`) err(`${at}: id should be ${r.system}:${r.target}`);
+    if (!(INSPECTION_SYSTEMS as readonly string[]).includes(r.system)) err(`${at}: unknown system ${r.system}`);
+    if (!(INSPECTION_STATUSES as readonly string[]).includes(r.status)) err(`${at}: unknown status ${r.status}`);
+    let floor: number | undefined;
+    if (r.system === "sprinkler") {
+      floor = rooms.get(r.target)?.floor;
+      if (floor === undefined) err(`${at}: unknown room ${r.target}`);
+      else if (meta.sprinklers[r.target] === "none") err(`${at}: room ${r.target} has no sprinkler`);
+    } else if (r.system === "fire-door") {
+      const d = ratedDoors.get(r.target);
+      floor = d && rooms.get(d.a)?.floor;
+      if (!d) err(`${at}: no fire-rated door ${r.target}`);
+    } else {
+      const m = /^floor-(\d+)$/.exec(r.target);
+      floor = m ? Number(m[1]) : undefined;
+      if (!m || floor! < 1 || floor! > meta.floors) err(`${at}: bad floor target ${r.target}`);
+    }
+    if (floor !== undefined && r.floor !== floor) err(`${at}: floor ${r.floor}, target is on floor ${floor}`);
+    if (!isIsoDate(r.lastInspected)) err(`${at}: bad lastInspected ${r.lastInspected}`);
+    if (!isIsoDate(r.nextDue)) err(`${at}: bad nextDue ${r.nextDue}`);
+    if (!(r.nextDue > r.lastInspected)) err(`${at}: nextDue ${r.nextDue} not after lastInspected ${r.lastInspected}`);
+    if (r.lastInspected > INSPECTION_AS_OF) err(`${at}: lastInspected ${r.lastInspected} is after ${INSPECTION_AS_OF}`);
+    if (r.status === "pass" && r.nextDue < INSPECTION_AS_OF) err(`${at}: status pass but due ${r.nextDue}`);
+    if (r.status === "overdue" && !(r.nextDue < INSPECTION_AS_OF)) err(`${at}: status overdue but due ${r.nextDue}`);
+    if (r.status === "deficient" && !r.finding) err(`${at}: deficient without a finding`);
+    if (r.status === "pass" && r.finding) err(`${at}: pass with a finding`);
+  }
+  // Coverage: every sprinkler, every rated door, a fire alarm + standpipe per floor
+  const want = [
+    ...Object.entries(meta.sprinklers).filter(([, s]) => s !== "none").map(([id]) => `sprinkler:${id}`),
+    ...[...ratedDoors.keys()].map((id) => `fire-door:${id}`),
+    ...Array.from({ length: meta.floors }, (_, i) => [`fire-alarm:floor-${i + 1}`, `standpipe:floor-${i + 1}`]).flat(),
+  ];
+  for (const id of want) if (!insp.has(id)) err(`missing inspection record: ${id}`);
+  // Consistency with the simulation inputs: impaired sprinklers and propped-open rated doors
+  // must show up as deficient records.
+  for (const [id, s] of Object.entries(meta.sprinklers))
+    if (s === "impaired" && insp.get(`sprinkler:${id}`)?.status !== "deficient") err(`impaired sprinkler ${id} has no deficient inspection`);
+  for (const l of b.links)
+    if (l.kind === "door" && l.fireRated && !l.closed) {
+      const id = `fire-door:${doorId(l)}`;
+      if (insp.get(id)?.status !== "deficient") err(`propped-open rated door ${doorId(l)} has no deficient inspection`);
+    }
+
   // Demo ids
   for (const id of ["7-break", "10-east", meta.demo.origin]) if (!rooms.has(id)) err(`demo room missing: ${id}`);
+  const demoSprinkler = insp.get("sprinkler:7-break");
+  if (demoSprinkler?.status !== "deficient" || !(demoSprinkler.nextDue < INSPECTION_AS_OF))
+    err("demo: sprinkler:7-break should be deficient and overdue");
+  if (insp.get("fire-door:7-hall|7-stair-b")?.status !== "deficient") err("demo: fire-door:7-hall|7-stair-b should be deficient");
 
   return errs;
 }

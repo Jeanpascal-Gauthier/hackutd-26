@@ -1,5 +1,6 @@
 import type { TrailStep } from "@firewatch/shared/types";
 import { Empty, PanelHeading } from "./ui";
+import { SparkIcon } from "./Icons";
 
 function formatValue(value: unknown) {
   return JSON.stringify(value, null, 2) ?? "No value supplied";
@@ -12,7 +13,7 @@ function hasError(output: unknown): boolean {
 export function AgentTrail({ steps = [], demo = false }: { steps?: readonly TrailStep[]; demo?: boolean }) {
   return (
     <section className="panel" aria-labelledby="agent-heading">
-      <PanelHeading label="SERVER TOOL ACTIVITY" title="Tool-call trail" id="agent-heading" count={steps.length} />
+      <PanelHeading label="Server tool activity" title="Tool-call trail" id="agent-heading" count={steps.length} aside={<span className="agent-icon" aria-hidden="true"><SparkIcon size={18} /></span>} />
       <p className="panel-note trail-note">
         {demo ? "Scripted scenario: tool entries and timings may be illustrative." : "Recorded tool calls in execution order, with the server's input, output, and duration."}
       </p>

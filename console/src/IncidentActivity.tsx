@@ -1,5 +1,6 @@
 import type { IncidentState, LogEntry } from "@firewatch/shared/types";
 import { Empty, PanelHeading, roomName, Timestamp } from "./ui";
+import { CheckIcon } from "./Icons";
 
 export function IncidentDecisions({ state, onSelectRoom }: {
   state: IncidentState | null;
@@ -11,9 +12,9 @@ export function IncidentDecisions({ state, onSelectRoom }: {
     <section className="panel decisions-panel" aria-labelledby="decisions-heading">
       <PanelHeading label="SHARED DECISIONS" title="Accepted & dispatched" id="decisions-heading" />
       {accepted ? (
-        <div className="accepted-decision">
+        <div className="accepted-decision fade-in" key={accepted.time}>
           <div className="decision-meta">
-            <span className="review-badge">ACCEPTED ON SERVER</span>
+            <span className="pill safe"><CheckIcon size={13} />Accepted on server</span>
             <Timestamp value={accepted.time} />
           </div>
           <h3>Last accepted recommendation</h3>
@@ -52,7 +53,7 @@ const kinds: Record<LogEntry["kind"], string> = {
   report: "Report", origin: "Origin", recommendation: "Recommendation", accepted: "Accepted", dispatch: "Dispatch",
 };
 
-export function IncidentLog({ entries = [] }: { entries?: readonly LogEntry[] }) {
+export function IncidentLog({ entries = [], freshIds }: { entries?: readonly LogEntry[]; freshIds?: ReadonlySet<string> }) {
   return (
     <section className="panel" aria-labelledby="log-heading">
       <PanelHeading label="SHARED HISTORY" title="Incident log" id="log-heading" count={entries.length} />
@@ -60,7 +61,7 @@ export function IncidentLog({ entries = [] }: { entries?: readonly LogEntry[] })
       {entries.length ? (
         <ol className="incident-log" aria-label="Shared incident log, newest first">
           {[...entries].reverse().map((entry, index) => (
-            <li key={`${entry.time}-${entry.kind}-${index}`}>
+            <li key={`${entry.time}-${entry.kind}-${index}`} className={freshIds?.has(`${entry.time}-${entry.kind}-${entry.text}`) ? "is-new" : undefined}>
               <span className={`log-dot ${entry.kind}`} />
               <div><span className="log-kind">{kinds[entry.kind]}</span><p>{entry.text}</p><Timestamp value={entry.time} /></div>
             </li>

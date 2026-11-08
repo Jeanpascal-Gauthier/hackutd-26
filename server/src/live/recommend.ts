@@ -53,10 +53,11 @@ export function recommend(exits: FloorExit[], originRoomId: string, building: Bu
 
   const mainStair = [...byStair.entries()].sort((a, b) => b[1].length - a[1].length)[0]?.[0] ?? null;
   const avoid = exits.flatMap((e) => Object.entries(e.blockedAt)).find(([id, m]) => m !== null && id !== mainStair)?.[0];
+  // Always warn against the elevator, with or without a smoky stairwell to avoid.
   const callerReply =
     `Fire crews are on the way. Leave now by ${stairName(mainStair)}` +
-    (avoid ? `; do not use ${stairName(avoid)}` : "") +
-    ` or the elevator. Stay low if there is smoke.`;
+    (avoid ? `; do not use ${stairName(avoid)} or the elevator.` : `. Do not use the elevator.`) +
+    ` Stay low if there is smoke.`;
 
   return { actions: actions.slice(0, 3), callerReply };
 }

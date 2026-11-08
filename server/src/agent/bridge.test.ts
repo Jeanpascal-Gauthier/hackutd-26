@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ReportProcessor } from "../state/processor.ts";
-import { guardAgent, loadAgentProcessor } from "./bridge.ts";
+import { guardAgent, loadAgentProcessor, loadAgentReset } from "./bridge.ts";
 
 const input = { text: "smoke on 7", caller: "test" };
 const fallback: ReportProcessor = () => ({ roomId: "7-hall", confidence: 0.4 });
@@ -43,4 +43,17 @@ test("missing export or missing module -> undefined, no crash", async () => {
   } finally {
     console.warn = warn;
   }
+});
+
+test("loads resetConversations when exported; undefined when not", async () => {
+  const url = new URL("./fixtures/good-agent.ts", import.meta.url);
+  const reset = await loadAgentReset(url);
+  assert.ok(reset);
+  const fixture = (await import(url.href)) as { resets: number };
+  const before = fixture.resets;
+  reset();
+  assert.equal(fixture.resets, before + 1);
+  assert.equal(await loadAgentReset(new URL("./fixtures/no-export-agent.ts", import.meta.url)), undefined);
+  // The real agent/index.ts exports it.
+  assert.equal(typeof (await loadAgentReset()), "function");
 });

@@ -26,9 +26,14 @@ The console uses the current shared contract. Source changes are confined to
   backup control. The server moves it to `accepted`, including the server time.
   Acceptance from another client is also shown. The wire format does not identify
   the actor or whether it was manual, so the console never labels it human approved.
-- Accepted route segments use dashed green outlines while retaining hazard colors.
+- Forecast route segments use dashed green outlines; accepted segments become solid
+  and draw on once when acceptance arrives, while retaining hazard colors.
   Only rooms with known fire <= 0.01 and smoke < 0.3 are marked at the selected
   minute; this is a visualization of the server route, not a new route calculation.
+- The themed 3D building view shares floor/room selection with the 2D map and report
+  feed. Theme controls, forecast playback, and new-report/log highlights are retained
+  alongside the detailed server panels. Playback pauses on reset, replay, disconnect,
+  or manual scrubbing. Three.js is provided by the merged console dependencies.
 - Read `dispatches` as destinations/times and click a destination to inspect it.
   The console does not invent unit names, travel states, or crew arrival times.
 - Reset/replay the scripted demo using existing endpoints. These actions affect all

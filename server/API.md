@@ -33,7 +33,8 @@ The agent never imports server code. Its tools call these endpoints:
 | `locate_room` | `GET /building` (room ids, names, floors) and the agent's own reasoning |
 | `merge_reports` | `GET /state` → `reports`, `origin` (the server also merges) |
 | `run_spread` / `find_clear_exits` | `POST /forecast` |
-| `write_recommendation` | `POST /forecast` → `recommendation` is a draft to improve |
+| `check_inspections` | `GET /inspections?floor=7` (or `GET /building` → `inspections`, `doors`, `sprinklers`) |
+| `write_recommendation` | `POST /forecast` → `recommendation` is a draft to improve. Add the fire-floor's inspection findings as context, e.g. "Sprinkler in 7-break impaired (head obstructed, inspection overdue); 60-min door to Stairwell B found propped open: expect smoke in stair B." |
 | (final) | `POST /ingest` with the agent's result |
 
 ### `POST /ingest`
@@ -83,9 +84,26 @@ A what-if run. **It does not change the incident.**
 Returns the current `IncidentState` (`shared/types.ts`), the same object the WebSocket sends.
 
 ### `GET /building`
-`{ building, occupants, sprinklers }`
+`{ building, occupants, sprinklers, doors, inspections }`
 - `building` is `shared/building.json`.
+- `occupants[]`: `{ room, count, flags }`, one per occupied room.
 - `sprinklers` maps room id → `active` | `impaired` | `none`.
+- `doors[]`: `{ a, b, ratingMinutes }` for every door link; `ratingMinutes` 0 = ordinary door, 20 = room door, 60 = stair/elevator door.
+- `inspections[]`: the building's inspection records, as of 2026-11-07 (annual cycle). One per sprinklered room, one per fire-rated door, and one fire alarm and one standpipe record per floor (180 in all).
+
+```json
+{ "id": "fire-door:7-hall|7-stair-b", "system": "fire-door", "target": "7-hall|7-stair-b", "floor": 7,
+  "lastInspected": "2026-10-21", "nextDue": "2027-10-21", "status": "deficient",
+  "finding": "Door found propped open (hold-open device not released to fire alarm)" }
+```
+  - `system`: `sprinkler` | `fire-door` | `fire-alarm` | `standpipe`.
+  - `target`: a room id (sprinkler), the door's `a|b` (fire-door), or `floor-N` (fire-alarm, standpipe). `id` is `system:target`.
+  - `status`: `pass` | `overdue` (`nextDue` is past) | `deficient` (open `finding`). Most records pass.
+  - Demo: `sprinkler:7-break` is `deficient` and overdue ("Sprinkler head obstructed; repair ticket open."), and `fire-door:7-hall|7-stair-b` is `deficient` (propped open). These match the spread model's inputs: the 7-break sprinkler is impaired and the stair B door is open.
+
+### `GET /inspections`
+The same records, filtered. Query parameters are all optional and combine: `floor` (number), `system`, `status`.
+`GET /inspections?floor=7&status=deficient` → `{ ok: true, inspections: [ …the two demo records… ] }`. An unknown value returns `400 { ok:false, errors:[…] }`.
 
 ## For the headset and console (WebSocket)
 
