@@ -64,7 +64,7 @@ test("HTTP building lookup selects a source building, preserves labels, and leav
     }
     return Response.json({ elements });
   };
-  const { server, state, building } = makeServer(createBuildingService({ fetch: upstream, geoapifyApiKey: key }));
+  const { server, state, building } = makeServer(createBuildingService({ fetch: upstream, geoapifyApiKey: key, buildingProvider: "overpass" }));
   const base = await listen(server);
   try {
     const search = await fetch(`${base}/buildings/search?q=Test%20Building`);

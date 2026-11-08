@@ -33,7 +33,6 @@ export interface SynthesizedBuilding {
   doors: DoorRating[];
 }
 
-const MAX_FLOORS = 40;
 const MAX_OUTLINE_POINTS = 64;
 const FLOOR_HEIGHT_M = 3.5;
 /** Same ids as the demo (data/model.ts STAIRS / ELEVATOR). */
@@ -321,19 +320,15 @@ function planFor(shape: Shape, style: Style, notes: string[]): FloorLayout {
 
 function floorsFor(record: BuildingRecord, style: Style, notes: string[]): number {
   let floors: number;
-  if (record.floorsAboveGround !== null && record.floorsAboveGround > 0) floors = record.floorsAboveGround;
-  else if (record.heightMeters !== null && record.heightMeters > 0) {
+  if (record.floorsAboveGround !== null && Number.isFinite(record.floorsAboveGround) && record.floorsAboveGround > 0) floors = record.floorsAboveGround;
+  else if (record.heightMeters !== null && Number.isFinite(record.heightMeters) && record.heightMeters > 0) {
     floors = Math.max(1, Math.round(record.heightMeters / FLOOR_HEIGHT_M));
     notes.push(`The map gives a height of ${Math.round(record.heightMeters * 10) / 10} m but no floor count; assumed ${floors} floor${floors === 1 ? "" : "s"} at about ${FLOOR_HEIGHT_M} m each.`);
   } else {
     floors = DEFAULT_FLOORS[style];
     notes.push(`The map gives no floor count or height; assumed ${floors} floor${floors === 1 ? "" : "s"}, typical for ${ARTICLE[style]}.`);
   }
-  if (floors > MAX_FLOORS) {
-    notes.push(`The map says ${floors} floors; the model is capped at ${MAX_FLOORS}.`);
-    floors = MAX_FLOORS;
-  }
-  return Math.max(1, Math.min(MAX_FLOORS, Math.round(floors)));
+  return Math.max(1, Math.round(floors));
 }
 
 /** Floor (1 = ground) for an OSM level value: level 0 is the ground floor. Null for basements/non-numeric. */

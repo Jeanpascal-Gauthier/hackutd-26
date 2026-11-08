@@ -33,7 +33,7 @@ theme is light, with saved light/dark choices respected.
 - Select a floor or report location, then inspect a room's fire, smoke, occupants,
   assistance flags, and linked-report count. Missing occupant records mean unknown,
   not zero. Geometry comes from the active building (see below); floor tabs, the 3D
-  model and the plan follow it, from 1 to 40 floors.
+  model and the plan follow every generated floor, including towers above 40 floors.
 - Submit caller name and report text to `POST /ingest`. The server broadcasts the
   resulting report; the console does not invent a local copy.
 - Scrub the shared 0–30 minute forecast with `setSimMinute`, in both mock and live

@@ -82,7 +82,7 @@ test("indoor lookup failure preserves the footprint with an explicit warning", a
 
 test("identical simultaneous resolutions share requests and search results are cached", async () => {
   let requests = 0;
-  const service = createBuildingService({ geoapifyApiKey: "test-key", fetch: async (input) => {
+  const service = createBuildingService({ geoapifyApiKey: "test-key", buildingProvider: "overpass", fetch: async (input) => {
     requests++;
     if (String(input).includes("api.geoapify.com")) return Response.json({ results: [] });
     return Response.json({ elements: [] });
