@@ -14,13 +14,9 @@ function stored(): Theme | null {
   } catch { return null; }
 }
 
-function systemTheme(): Theme {
-  return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
-}
-
 function current(): Theme {
   const value = document.documentElement.dataset.theme;
-  return value === "light" || value === "dark" ? value : stored() ?? systemTheme();
+  return value === "light" || value === "dark" ? value : stored() ?? "light";
 }
 
 /** Swap the theme without every transition on the page animating to the new colours. */
@@ -38,14 +34,7 @@ export function useTheme() {
 
   useEffect(() => {
     if (document.documentElement.dataset.theme !== theme) applyTheme(theme);
-    // Follow the OS setting until the operator picks a theme.
-    const query = window.matchMedia?.("(prefers-color-scheme: light)");
-    if (!query) return;
-    const onChange = () => { if (!stored()) { const next = systemTheme(); applyTheme(next); setTheme(next); } };
-    query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [theme]);
 
   const toggle = useCallback(() => {
     setTheme((previous) => {
