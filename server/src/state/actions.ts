@@ -41,7 +41,7 @@ export function applyClientEvent(event: ClientEvent, store: IncidentStore, hooks
       break;
     }
     case "dispatch":
-      // No state field for dispatches in shared/types.ts yet; logged only.
+      store.addDispatch(event.roomId);
       console.log(`[action] dispatch -> ${event.roomId}`);
       break;
   }

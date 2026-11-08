@@ -67,6 +67,11 @@ test("exits + recommendation for the demo fire in 7-break", () => {
     assert.equal(e.blockedAt["stair-a"], null);
   }
   assert.ok(exits.find((x) => x.floor === 7)!.atRiskAt! <= 5);
+  const route10 = exits.find((x) => x.floor === 10)!.route!;
+  assert.deepEqual(route10.slice(0, 2), ["10-hall", "10-stair-a"]);
+  assert.equal(route10.at(-1), "1-stair-a");
+  assert.equal(route10.length, 11);
+  assert.ok(route10.every((id) => !id.includes("stair-b")));
 
   const rec = recommend(exits, "7-break", building);
   assert.ok(rec.actions.length >= 1 && rec.actions.length <= 3);
