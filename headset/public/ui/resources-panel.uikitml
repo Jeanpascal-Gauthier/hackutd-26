@@ -10,17 +10,47 @@
 
   .panel-content {
     flex-direction: column;
-    gap: 20px;
-    padding: 32px;
+    gap: 12px;
+    padding-top: 24px;
+    padding-right: 24px;
+    padding-bottom: 24px;
+    padding-left: 24px;
+  }
+
+  .heading {
+    color: #1c1d20;
+    font-size: 28px;
+    font-weight: 700;
+  }
+
+  .heading:dark {
+    color: #fafaf7;
+  }
+
+  .status {
+    color: #49515e;
+    font-size: 18px;
+    line-height: 1.25;
+  }
+
+  .status:dark {
+    color: #c3c6cc;
+  }
+
+  .stats {
+    flex-direction: row;
+    gap: 9px;
   }
 
   .stat-row {
-    flex-direction: row;
-    justify-content: space-between;
+    flex-direction: column;
     align-items: center;
-    padding: 14px;
-    background-color: #ececec;
-    border-color: #c7c7c7;
+    justify-content: center;
+    width: 138px;
+    height: 86px;
+    gap: 4px;
+    background-color: #edf0f4;
+    border-color: #c7cdd6;
     border-width: 2px;
     border-radius: 12px;
   }
@@ -32,7 +62,7 @@
 
   .stat-label {
     color: #3a3b40;
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 700;
   }
 
@@ -42,7 +72,7 @@
 
   .stat-count {
     color: #1c1d20;
-    font-size: 44px;
+    font-size: 36px;
     font-weight: 700;
   }
 
@@ -51,15 +81,18 @@
   }
 
   .risk-block {
-    flex-direction: column;
+    flex-direction: row;
+    justify-content: space-between;
     align-items: center;
-    gap: 10px;
-    padding: 30px;
-    margin-top: 8px;
+    gap: 12px;
+    padding-top: 12px;
+    padding-right: 20px;
+    padding-bottom: 12px;
+    padding-left: 20px;
     background-color: #f6e4e4;
     border-color: #a33a3a;
     border-width: 3px;
-    border-radius: 18px;
+    border-radius: 12px;
   }
 
   .risk-block:dark {
@@ -69,7 +102,7 @@
 
   .risk-label {
     color: #7a2020;
-    font-size: 26px;
+    font-size: 24px;
     font-weight: 700;
     text-align: center;
   }
@@ -80,7 +113,7 @@
 
   .risk-count {
     color: #1c1d20;
-    font-size: 96px;
+    font-size: 60px;
     font-weight: 700;
     text-align: center;
   }
@@ -88,24 +121,90 @@
   .risk-count:dark {
     color: #fafaf7;
   }
+
+  .recommendation {
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 16px;
+    padding-right: 16px;
+    padding-bottom: 16px;
+    padding-left: 16px;
+    border-width: 2px;
+    border-color: #c7cdd6;
+    border-radius: 12px;
+    background-color: #edf0f4;
+  }
+
+  .recommendation:dark {
+    background-color: #26272b;
+    border-color: #40414a;
+  }
+
+  .section-label {
+    color: #6b5a00;
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .section-label:dark {
+    color: #f5d90a;
+  }
+
+  .recommendation-text {
+    width: 396px;
+    min-height: 54px;
+    color: #1c1d20;
+    font-size: 22px;
+    line-height: 1.25;
+  }
+
+  .recommendation-text:dark {
+    color: #fafaf7;
+  }
+
+  .action {
+    width: 432px;
+    min-height: 48px;
+    justify-content: center;
+  }
+
+  .action-label {
+    font-size: 22px;
+    font-weight: 700;
+  }
 </style>
 <Panel class="panel-root">
   <div class="panel-content">
+    <span class="heading">Resources &amp; people</span>
+    <span id="connection-status" class="status">Awaiting connection</span>
+    <div class="stats">
     <div class="stat-row">
       <span class="stat-label">Dispatched</span>
       <span id="stat-dispatched-count" class="stat-count">0</span>
     </div>
     <div class="stat-row">
-      <span class="stat-label">En Route</span>
+      <span class="stat-label">En route</span>
       <span id="stat-enroute-count" class="stat-count">0</span>
     </div>
     <div class="stat-row">
-      <span class="stat-label">On Scene</span>
+      <span class="stat-label">On scene</span>
       <span id="stat-onscene-count" class="stat-count">0</span>
     </div>
+    </div>
     <div class="risk-block">
-      <span class="risk-label">People at Risk</span>
+      <span class="risk-label">People at risk</span>
       <span id="stat-people-at-risk" class="risk-count">0</span>
     </div>
+    <div class="recommendation">
+      <span class="section-label">RECOMMENDATION</span>
+      <span id="recommendation-text" class="recommendation-text">Waiting for incident data.</span>
+      <span id="recommendation-status" class="status">Awaiting recommendation</span>
+    </div>
+    <Button id="accept-recommendation-button" class="action" disabled>
+      <ButtonLabel class="action-label">Accept recommendation</ButtonLabel>
+    </Button>
+    <Button id="dispatch-button" class="action" disabled>
+      <ButtonLabel class="action-label">Dispatch crew</ButtonLabel>
+    </Button>
   </div>
 </Panel>

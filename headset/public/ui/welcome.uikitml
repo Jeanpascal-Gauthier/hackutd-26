@@ -11,15 +11,17 @@
 
   .panel-content {
     flex-direction: column;
-    gap: 7px;
-    padding: 22px;
+    gap: 6px;
+    padding-top: 18px;
+    padding-right: 22px;
+    padding-bottom: 14px;
+    padding-left: 22px;
   }
 
   .eyebrow {
     color: #6b5a00;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 700;
-    letter-spacing: 1.4px;
   }
 
   .eyebrow:dark {
@@ -30,7 +32,7 @@
     color: #1c1d20;
     font-size: 30px;
     font-weight: 700;
-    line-height: 36px;
+    line-height: 1.2;
   }
 
   .heading:dark {
@@ -40,7 +42,7 @@
   .body {
     color: #3a3b40;
     font-size: 20px;
-    line-height: 27px;
+    line-height: 1.25;
   }
 
   .body:dark {
@@ -49,39 +51,47 @@
 
   .button {
     justify-content: flex-start;
+    min-height: 46px;
     margin-left: 22px;
     margin-right: 22px;
-    margin-bottom: 22px;
+    margin-bottom: 10px;
   }
 
   .button-label {
-    transform-translate-y: 1px;
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  .setup-status {
+    width: 376px;
+    margin-left: 22px;
+    margin-right: 22px;
+    margin-bottom: 18px;
   }
 </style>
 <Panel class="panel-root">
   <div class="panel-content">
     <div class="eyebrow">FIREWATCH SETUP</div>
     <div class="heading">Your command room</div>
-    <div class="body">Stand or sit comfortably, face forward,</div>
-    <div class="body">then center the room here.</div>
+    <div class="body">Face forward, then center the room.</div>
   </div>
   <Button id="xr-button" class="button">
     <ButtonIcon>
       <RectangleGoggles></RectangleGoggles>
     </ButtonIcon>
-    <ButtonLabel class="button-label">Enter XR</ButtonLabel>
+    <ButtonLabel class="button-label">Enter VR</ButtonLabel>
   </Button>
   <Button id="center-room-button" class="button">
-    <ButtonLabel>Center room here</ButtonLabel>
+    <ButtonLabel class="button-label">Center room here</ButtonLabel>
   </Button>
   <Button id="bring-building-button" class="button">
-    <ButtonLabel>Bring building closer</ButtonLabel>
+    <ButtonLabel class="button-label">Bring building closer</ButtonLabel>
   </Button>
-  <div id="setup-status" class="body" style="padding: 16px">Pinch the building to grab. Use both hands to zoom.</div>
+  <div id="setup-status" class="body setup-status">Pinch the building to grab. Use both hands to zoom.</div>
   <Button id="exit-button" class="button" style="display: none">
     <ButtonIcon>
       <LogIn></LogIn>
     </ButtonIcon>
-    <ButtonLabel class="button-label">Exit to Browser</ButtonLabel>
+    <ButtonLabel class="button-label">Exit to browser</ButtonLabel>
   </Button>
 </Panel>
