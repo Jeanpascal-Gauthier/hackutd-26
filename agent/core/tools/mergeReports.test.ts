@@ -66,6 +66,19 @@ test("tool: the current report is included and written to run.origin", async () 
   assert.deepEqual(e.run.origin, { roomId: "10-conf", roomName: "Floor 10 Conference", confidence: 0.4 });
 });
 
+test("corroborating smoke can overcome flames, and uncertain flames do not override it", () => {
+  const extraSmoke = report("smoke in the hallway", "10-hall");
+  const corroborated = mergeReports([...fixture.reports, extraSmoke], building)!;
+  assert.equal(corroborated.origin.roomId, "7-break");
+  assert.equal(corroborated.origin.confidence, 0.46);
+  assert.equal(corroborated.score, 1.6);
+  assert.deepEqual(corroborated.runnerUp, { roomId: "10-conf", score: 1.6 });
+
+  const uncertain = mergeReports(fixture.reports.map((r, i) => i === 2 ? { ...r, confidence: 0.2 } : r), building)!;
+  assert.equal(uncertain.origin.roomId, "7-break");
+  assert.equal(uncertain.origin.confidence, 0.66);
+});
+
 test("tool: a report already in the state is not counted twice", async () => {
   const [, , c] = fixture.reports as [Report, Report, Report];
   const e = env(fakeServer(fixture), { ...c });

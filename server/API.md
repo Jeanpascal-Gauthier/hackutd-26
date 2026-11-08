@@ -64,6 +64,29 @@ On its own, this runs the server's rule-based locator. **If the agent already di
 - **Response:** `{ ok, report, reply }`. `reply` is the agent's `reply`, else the recommendation's `callerReply`. This is the text to send back to the caller through Photon.
 - **Errors:** `400 { ok:false, errors:[…] }` names each bad field.
 
+### Origin merge rule (demo decision)
+
+Keep the current rule in both `server/src/live/merge.ts` and `agent/core/tools/mergeReports.ts`:
+each located report contributes its location confidence, doubled if its text contains a fire word
+(`fire`, `flame(s)`, `burning`, `blaze`). A report supports its own room at full weight. Smoke-only
+reports on higher floors support a lower candidate at half weight; other reports count against
+that candidate. Highest supporting score wins; ties prefer the lower floor, then the earlier candidate.
+Conflicting evidence reduces the winner's confidence, which is capped at 0.95.
+
+Ready answer for judges: "We give reported flames more weight because they point more directly to
+the source; smoke can travel. That preference is bounded, and conflicting reports lower confidence."
+For example, at 0.8 location confidence per report:
+
+| Reports | Origin | Confidence |
+|---|---|---|
+| Smoke in `7-break` and `9-stair-b`; flames in `10-conf` | `10-conf` (1.6 support vs 1.2) | 0.40 |
+| Same reports plus smoke in `10-hall` | `7-break` (1.6 tie; lower floor wins) | 0.46 |
+| Original reports, but flames located at only 0.2 confidence | `7-break` (1.2 vs 0.4) | 0.66 |
+
+This is a demo heuristic, not a calibrated probability or a multiple-fire model. Fire words are
+matched literally, so negated phrases such as "no flames" also get doubled. Inspection deficiencies
+explain the building's vulnerabilities; they do not add votes to the origin score.
+
 ### `POST /forecast`
 A what-if run. **It does not change the incident.**
 
