@@ -16,6 +16,8 @@ export type ClientEvent =
   | { type: "dispatchIncident"; incidentId: string; unit?: string }
   | { type: "setIncidentPhase"; incidentId: string; phase: IncidentPhase }
   | { type: "addIncidentNote"; incidentId: string; text: string }
+  /** Run one planned action on a portfolio building: marks it done and lowers the $ at risk. */
+  | { type: "executeAction"; propertyId: string; actionId: string }
   /** Start an address lookup (operator typed it, or corrected the one heard on a call). */
   | { type: "lookupAddress"; address: string }
   /** Operator confirms one of `buildingLookup.candidates`: the server builds it and makes it active. */
