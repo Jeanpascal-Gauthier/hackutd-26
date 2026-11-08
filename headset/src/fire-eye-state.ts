@@ -16,4 +16,10 @@ export interface FireEyeState {
   longitude: number | null;
   tilesLoaded: number;
   perspective: 'overview' | 'north' | 'east' | 'south' | 'west';
+  /** off -> aiming (toggle on) -> loading -> street (panorama) or ground (3D city, no imagery). */
+  street: StreetMode;
+  /** Current panorama id while street === 'street'. */
+  panoId: string | null;
 }
+
+export type StreetMode = 'off' | 'aiming' | 'loading' | 'street' | 'ground';

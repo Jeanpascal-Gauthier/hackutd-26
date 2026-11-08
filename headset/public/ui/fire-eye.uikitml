@@ -42,6 +42,11 @@
       <Button id="fireeye-south" class="button"><ButtonLabel class="button-label">South</ButtonLabel></Button>
       <Button id="fireeye-west" class="button"><ButtonLabel class="button-label">West</ButtonLabel></Button>
     </div>
+    <div id="fireeye-street-row" class="row" style="display: none">
+      <Button id="fireeye-streetview" class="button"><ButtonLabel class="button-label">Street View</ButtonLabel></Button>
+      <Button id="fireeye-streetview-cancel" class="button" style="display: none"><ButtonLabel class="button-label">Cancel Street View</ButtonLabel></Button>
+      <Button id="fireeye-streetview-exit" class="button" style="display: none"><ButtonLabel class="button-label">Exit Street View</ButtonLabel></Button>
+    </div>
     <span id="fireeye-attribution" class="small">Google Maps</span>
   </div>
 </Panel>

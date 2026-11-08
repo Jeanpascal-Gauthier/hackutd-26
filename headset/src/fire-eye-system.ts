@@ -1,8 +1,17 @@
-import { Color, Group, UIKitMLAsset, VisibilityState, createSystem, type Entity, type Object3D } from '@iwsdk/core';
+import { Box3, Color, Group, Quaternion, Raycaster, UIKitMLAsset, Vector3, VisibilityState, createSystem, type Entity, type Object3D } from '@iwsdk/core';
 import { fetchBuilding, IncidentSocket } from './incident-client.js';
 import type { IncidentState } from './incident-types.js';
 import { FireEyeMap } from './fire-eye-map.js';
 import { FireEyeStatus, type FireEyePhase, type FireEyeState } from './fire-eye-state.js';
+import { PullGesture } from './pull-gesture.js';
+import { StreetViewClient, type PanoMetadata } from './street-view-client.js';
+import { AimReticle, StreetViewScene } from './street-view.js';
+
+type Hand = 'left' | 'right';
+const HANDS: Hand[] = ['right', 'left'];
+/** Search radius around an aimed point; aiming is coarse at city distance. */
+const AIM_RADIUS_METRES = 50;
+const INCIDENT_RADIUS_METRES = 100;
 
 /** Keep the original command desk available at ?view=firewatch. */
 export const fireEyeRequested = (): boolean => new URLSearchParams(location.search).get('view') !== 'firewatch';
@@ -18,7 +27,22 @@ export class FireEyeSystem extends createSystem({}) {
   private lifecycle: Entity | null = null;
   private socket: IncidentSocket | null = null;
   private abort: AbortController | null = null;
-  private state: FireEyeState = { phase: 'briefing', status: 'Waiting for agent recommendations', latitude: null, longitude: null, tilesLoaded: 0, perspective: 'overview' };
+  private state: FireEyeState = { phase: 'briefing', status: 'Waiting for agent recommendations', latitude: null, longitude: null, tilesLoaded: 0, perspective: 'overview', street: 'off', panoId: null };
+  private streetClient: StreetViewClient | null = null;
+  private streetScene: StreetViewScene | null = null;
+  private reticle: AimReticle | null = null;
+  private streetAbort: AbortController | null = null;
+  private hopping = false;
+  private readonly gesture = new PullGesture();
+  private gestureHand: Hand | null = null;
+  private gestureTarget: Vector3 | null = null;
+  private aimHand: Hand = 'right';
+  private readonly raycaster = new Raycaster();
+  private readonly eye = new Vector3();
+  private readonly handPos = new Vector3();
+  private readonly handDir = new Vector3();
+  private readonly handQuat = new Quaternion();
+  private readonly panelBox = new Box3();
   private actions: string[] = [];
   private actionLines: string[] = [];
   private actionPage = 0;
@@ -58,6 +82,14 @@ export class FireEyeSystem extends createSystem({}) {
     this.lifecycle = this.world.createTransformEntity(statusObject);
     this.lifecycle.addComponent(FireEyeStatus);
     this.token = import.meta.env.GOOGLE_MAPS_API_KEY ?? '';
+    // Street View reuses the same Map Tiles API key with its own session.
+    this.streetClient = this.token ? new StreetViewClient(this.token) : null;
+    this.streetScene = new StreetViewScene();
+    this.streetScene.setAnisotropy(Math.min(4, this.world.renderer.capabilities.getMaxAnisotropy()));
+    this.reticle = new AimReticle();
+    const streetEntities = [this.world.createTransformEntity(this.streetScene.root), this.world.createTransformEntity(this.reticle.root)];
+    this.raycaster.far = 3000;
+    for (const id of ['fireeye-streetview', 'fireeye-streetview-cancel', 'fireeye-streetview-exit']) this.bind(id, () => this.toggleStreet());
     this.bind('fireeye-enter', () => { void this.world.launchXR(); });
     this.bind('fireeye-retry', () => { void this.resolveLocation(); });
     this.bind('fireeye-back', () => { this.manualPreview = false; this.paused = true; this.showBriefing(); });
@@ -69,6 +101,7 @@ export class FireEyeSystem extends createSystem({}) {
     for (const view of ['overview', 'north', 'east', 'south', 'west'] as const) {
       this.bind(`fireeye-${view}`, () => {
         if (this.state.phase !== 'city') return;
+        this.exitStreet();
         this.map?.setPerspective(view);
         if (this.marker && this.map) this.marker.position.copy(this.map.anchor.position);
         this.state.perspective = view;
@@ -93,6 +126,9 @@ export class FireEyeSystem extends createSystem({}) {
       this.socket?.close();
       this.clearMap();
       this.lifecycle?.dispose();
+      this.streetScene?.dispose();
+      this.reticle?.dispose();
+      for (const entity of streetEntities) entity.dispose();
     });
     if (import.meta.env.DEV) (window as unknown as { __fireeye: unknown }).__fireeye = { state: this.state, system: this };
   }
@@ -162,6 +198,7 @@ export class FireEyeSystem extends createSystem({}) {
   }
 
   private clearMap(): void {
+    this.exitStreet();
     this.map?.dispose();
     this.mapEntity?.dispose();
     this.mapEntity = null; this.map = null;
@@ -221,7 +258,9 @@ export class FireEyeSystem extends createSystem({}) {
   }
 
   private showBriefing(): void {
+    this.exitStreet();
     this.phase('briefing'); this.countdown = 0; this.transition = 0;
+    this.renderStreetButtons();
     if (this.room) this.room.visible = true;
     if (this.marker) this.marker.visible = false;
     if (this.map) this.map.anchor.visible = false;
@@ -249,7 +288,8 @@ export class FireEyeSystem extends createSystem({}) {
     const visible = document.visibilityState !== 'hidden' && this.world.visibilityState.peek() !== VisibilityState.VisibleBlurred;
     if (!visible) return;
     const dt = Math.min(delta, 0.1);
-    if (map.update(dt, this.world.camera, this.world.renderer)) {
+    // The hidden city needs no tile streaming while a panorama surrounds the user.
+    if (this.state.street !== 'street' && map.update(dt, this.world.camera, this.world.renderer)) {
       this.lifecycle?.setValue(FireEyeStatus, 'mapReady', true);
       this.set('fireeye-map-status', { text: 'Google 3D city ready' });
       this.set('fireeye-resume', { display: this.state.phase === 'briefing' ? 'flex' : 'none' });
@@ -276,13 +316,202 @@ export class FireEyeSystem extends createSystem({}) {
         this.set('fireeye-map-status', { text: `City view / ${this.state.perspective} / target 45 degrees below eye level` });
         this.set('fireeye-perspectives', { display: 'flex' });
         this.set('fireeye-back', { display: 'flex' });
+        this.renderStreetButtons();
       }
     }
+    this.updateStreet(dt);
     this.elapsed += dt;
     if (this.elapsed >= 1) {
       this.elapsed = 0;
       this.state.tilesLoaded = map.tiles.visibleTiles.size;
-      this.set('fireeye-attribution', { text: clean(`Google Maps | ${map.attribution()}`) });
+      const pano = this.state.street === 'street' ? this.streetScene?.meta : null;
+      this.set('fireeye-attribution', { text: clean(pano ? `Google Street View | ${pano.copyright}${pano.date ? ` | ${pano.date}` : ''}` : `Google Maps | ${map.attribution()}`) });
     }
+  }
+
+  // --- Street View -------------------------------------------------------------
+
+  private street(mode: FireEyeState['street']): void {
+    this.state.street = mode;
+    this.renderStreetButtons();
+  }
+
+  private renderStreetButtons(): void {
+    const mode = this.state.street;
+    this.set('fireeye-street-row', { display: this.state.phase === 'city' ? 'flex' : 'none' });
+    this.set('fireeye-streetview', { display: mode === 'off' ? 'flex' : 'none' });
+    this.set('fireeye-streetview-cancel', { display: mode === 'aiming' || mode === 'loading' ? 'flex' : 'none' });
+    this.set('fireeye-streetview-exit', { display: mode === 'street' || mode === 'ground' ? 'flex' : 'none' });
+  }
+
+  /** The panel toggle: arm aiming, or leave Street View from any street state. */
+  private toggleStreet(): void {
+    if (this.state.phase !== 'city' || !this.map) return;
+    if (this.state.street !== 'off') { this.exitStreet(); return; }
+    // A flat browser has no hands or rays to aim with; drop straight to the incident.
+    if (!this.world.renderer.xr.isPresenting) { void this.diveAt(null); return; }
+    this.street('aiming');
+    this.set('fireeye-map-status', { text: 'Street View / Point at the city, pinch, then pull toward you' });
+  }
+
+  private exitStreet(): void {
+    if (this.state.street === 'off') return;
+    this.streetAbort?.abort(); this.streetAbort = null;
+    this.hopping = false;
+    this.gesture.reset(); this.gestureHand = null; this.gestureTarget = null;
+    this.reticle?.hide();
+    this.streetScene?.hide();
+    this.state.panoId = null;
+    this.world.camera.near = 0.5; this.world.camera.updateProjectionMatrix();
+    const map = this.map;
+    if (map) {
+      // Restores the elevated observer after a ground-level drop.
+      map.setPerspective(this.state.perspective);
+      if (this.state.phase === 'city') {
+        map.anchor.visible = true;
+        if (this.marker) { this.marker.position.copy(map.anchor.position); this.marker.visible = true; }
+        this.set('fireeye-title', { text: 'Incident overview' });
+        this.set('fireeye-map-status', { text: `City view / ${this.state.perspective} / target 45 degrees below eye level` });
+      }
+    }
+    this.street('off');
+  }
+
+  /** Eye position in world space: the tracked head in XR, the flat camera otherwise. */
+  private eyePosition(): Vector3 {
+    if (this.world.renderer.xr.isPresenting) this.player.head.getWorldPosition(this.eye);
+    else this.world.camera.getWorldPosition(this.eye);
+    return this.eye;
+  }
+
+  /** Aim the shared raycaster along a hand's target ray. False when that hand is not tracked. */
+  private castFrom(hand: Hand): boolean {
+    if (!this.input.xr.getPrimaryInputSource(hand)) return false;
+    const space = this.player.raySpaces[hand];
+    space.getWorldPosition(this.handPos);
+    space.getWorldQuaternion(this.handQuat);
+    this.handDir.set(0, 0, -1).applyQuaternion(this.handQuat);
+    this.raycaster.set(this.handPos, this.handDir);
+    return true;
+  }
+
+  /** Pinches aimed at the panel belong to its buttons, not to the street gestures. */
+  private rayHitsPanel(): boolean {
+    if (!this.panel?.visible) return false;
+    this.panelBox.setFromObject(this.panel);
+    return this.raycaster.ray.intersectsBox(this.panelBox);
+  }
+
+  private updateStreet(dt: number): void {
+    const map = this.map;
+    if (!map || this.state.phase !== 'city') return;
+    const eye = this.eyePosition();
+    this.streetScene?.update(dt, eye);
+    if (!this.world.renderer.xr.isPresenting) return;
+    const xr = this.input.xr;
+    for (const hand of HANDS) if (xr.getSelectState(hand).start) this.aimHand = hand;
+
+    if (this.state.street === 'aiming') {
+      if (this.gesture.active && this.gestureHand) {
+        if (!this.castFrom(this.gestureHand)) { this.gesture.reset(); this.reticle?.hide(); return; }
+        const result = this.gesture.update(this.handPos, xr.getSelectState(this.gestureHand).active);
+        if (result === 'commit') { void this.diveAt(this.gestureTarget); this.gestureTarget = null; return; }
+        if (result === 'pulling') {
+          this.reticle?.place(this.gestureTarget ?? map.anchor.position, eye, this.gesture.progress, true);
+          return;
+        }
+        this.gestureTarget = null;
+      }
+      if (!this.castFrom(this.aimHand)) { this.reticle?.hide(); return; }
+      const overPanel = this.rayHitsPanel();
+      const point = overPanel ? null : map.hit(this.raycaster);
+      if (point) this.reticle?.place(point, eye, 0, false); else this.reticle?.hide();
+      if (!overPanel && xr.getSelectState(this.aimHand).start) {
+        // Pinching at the sky still works: it lands at the incident coordinate.
+        this.gestureHand = this.aimHand;
+        this.gestureTarget = point;
+        this.gesture.begin(this.handPos, this.handDir);
+      }
+      return;
+    }
+
+    if (this.state.street === 'street' && this.streetScene) {
+      let hovered = -1;
+      if (!this.hopping && this.castFrom(this.aimHand) && !this.rayHitsPanel()) hovered = this.streetScene.pick(this.raycaster);
+      this.streetScene.setHovered(hovered);
+      const link = hovered >= 0 && xr.getSelectState(this.aimHand).start ? this.streetScene.link(hovered) : undefined;
+      if (link) void this.hop(link.panoId);
+    }
+  }
+
+  /**
+   * Drop to street level at a world point on the city (null: the incident coordinate).
+   * Uses the nearest Street View panorama; without imagery, stands on the 3D city.
+   */
+  async diveAt(target: Vector3 | null): Promise<void> {
+    const map = this.map;
+    if (!map || this.state.phase !== 'city') return;
+    // The incident coordinate sits at the city anchor (recentred, surface-levelled).
+    const ground = target ?? map.anchor.position.clone();
+    const location = target ? map.toLatLon(target) : this.state.latitude !== null && this.state.longitude !== null ? { lat: this.state.latitude, lon: this.state.longitude } : null;
+    const radius = target ? AIM_RADIUS_METRES : INCIDENT_RADIUS_METRES;
+    this.streetAbort?.abort();
+    const abort = new AbortController(); this.streetAbort = abort;
+    this.reticle?.hide();
+    this.street('loading');
+    this.set('fireeye-map-status', { text: 'Street View / Finding street imagery...' });
+    try {
+      const meta = this.streetClient && location
+        ? await this.streetClient.nearest(location.lat, location.lon, radius, abort.signal)
+        : null;
+      if (abort.signal.aborted) return;
+      if (meta) { await this.openPano(meta, abort); return; }
+      // No Google imagery here: stand on the photorealistic city instead.
+      const eye = this.eyePosition();
+      map.standAt(ground, eye.x, eye.z);
+      this.world.camera.near = 0.1; this.world.camera.updateProjectionMatrix();
+      if (this.marker) this.marker.visible = false;
+      this.street('ground');
+      this.set('fireeye-title', { text: 'Street level' });
+      this.set('fireeye-map-status', { text: `Street level / 3D city / No Street View imagery within ${radius} m` });
+    } catch (error) {
+      if (abort.signal.aborted) return;
+      this.exitStreet();
+      this.set('fireeye-map-status', { text: clean(`Street View unavailable / ${error instanceof Error ? error.message : 'request failed'}`) });
+    }
+  }
+
+  /** Move to a linked panorama from a floor chevron. */
+  async hop(panoId: string): Promise<void> {
+    if (!this.streetClient || this.hopping || this.state.street !== 'street') return;
+    this.hopping = true;
+    this.streetAbort?.abort();
+    const abort = new AbortController(); this.streetAbort = abort;
+    this.set('fireeye-map-status', { text: 'Street View / Moving...' });
+    try {
+      const meta = await this.streetClient.metadata(panoId, abort.signal);
+      if (abort.signal.aborted) return;
+      if (!meta) { this.set('fireeye-map-status', { text: 'Street View / That direction is no longer available' }); return; }
+      await this.openPano(meta, abort);
+    } catch {
+      if (!abort.signal.aborted) this.set('fireeye-map-status', { text: 'Street View / Could not load the next panorama' });
+    } finally {
+      if (this.streetAbort === abort) this.hopping = false;
+    }
+  }
+
+  private async openPano(meta: PanoMetadata, abort: AbortController): Promise<void> {
+    if (!this.streetClient || !this.streetScene || !this.map) return;
+    const map = this.map;
+    await this.streetScene.open(meta, this.streetClient, map.yaw, abort.signal, () => {
+      map.anchor.visible = false;
+      if (this.marker) this.marker.visible = false;
+      this.hopping = false;
+      this.state.panoId = meta.panoId;
+      this.street('street');
+      const place = [meta.street, meta.date ? `imagery ${meta.date}` : ''].filter(Boolean).join(' / ');
+      this.set('fireeye-title', { text: 'Street View' });
+      this.set('fireeye-map-status', { text: clean(`Street View / ${place || 'Street level'}${meta.links.length ? ' / Point at an arrow and pinch to move' : ''}`) });
+    });
   }
 }
