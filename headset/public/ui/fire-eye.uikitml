@@ -1,0 +1,47 @@
+<style>
+  .root { width: 540px; flex-direction: column; }
+  .body { flex-direction: column; gap: 12px; padding-top: 24px; padding-right: 28px; padding-bottom: 24px; padding-left: 28px; }
+  .title { font-size: 30px; font-weight: 700; color: #172331; }
+  .title:dark { color: #eef3f6; }
+  .text { font-size: 19px; color: #384c5d; }
+  .text:dark { color: #ced9e2; }
+  .small { font-size: 14px; color: #4f6474; }
+  .small:dark { color: #a8bccb; }
+  .status { background-color: #193b48; border-radius: 12px; padding-top: 16px; padding-right: 16px; padding-bottom: 16px; padding-left: 16px; flex-direction: column; gap: 8px; }
+  .status-text { font-size: 22px; font-weight: 700; color: #f0f8fb; }
+  .row { flex-direction: row; gap: 8px; justify-content: center; }
+  .button { min-height: 42px; }
+  .button-label { font-size: 18px; }
+</style>
+<Panel class="root">
+  <div class="body">
+    <span class="small">FIREEYE / INCIDENT INTELLIGENCE</span>
+    <span id="fireeye-title" class="title">Incident briefing</span>
+    <span id="fireeye-location" class="text">Resolving the active incident location...</span>
+    <span id="fireeye-coordinates" class="small">Waiting for a mapped location</span>
+    <div id="fireeye-status-box" class="status">
+      <span id="fireeye-status" class="status-text">Waiting for agent recommendations</span>
+      <span id="fireeye-map-status" class="status-text">Connecting to the map...</span>
+    </div>
+    <span id="fireeye-action-0" class="text">Recommendations appear here when the agent finishes.</span>
+    <span id="fireeye-action-1" class="text" style="display: none"></span>
+    <span id="fireeye-action-2" class="text" style="display: none"></span>
+    <span id="fireeye-page" class="small"></span>
+    <Button id="fireeye-more" class="button" style="display: none"><ButtonLabel class="button-label">More recommendations</ButtonLabel></Button>
+    <span id="fireeye-note" class="small">Confirm the selected building with the caller. Map imagery is not a live view.</span>
+    <div class="row">
+      <Button id="fireeye-enter" class="button"><ButtonLabel class="button-label">Enter VR</ButtonLabel></Button>
+      <Button id="fireeye-retry" class="button" style="display: none"><ButtonLabel class="button-label">Retry map</ButtonLabel></Button>
+      <Button id="fireeye-resume" class="button" style="display: none"><ButtonLabel class="button-label">Preview city</ButtonLabel></Button>
+      <Button id="fireeye-back" class="button" style="display: none"><ButtonLabel class="button-label">Briefing</ButtonLabel></Button>
+    </div>
+    <div id="fireeye-perspectives" class="row" style="display: none">
+      <Button id="fireeye-overview" class="button"><ButtonLabel class="button-label">Overview</ButtonLabel></Button>
+      <Button id="fireeye-north" class="button"><ButtonLabel class="button-label">North</ButtonLabel></Button>
+      <Button id="fireeye-east" class="button"><ButtonLabel class="button-label">East</ButtonLabel></Button>
+      <Button id="fireeye-south" class="button"><ButtonLabel class="button-label">South</ButtonLabel></Button>
+      <Button id="fireeye-west" class="button"><ButtonLabel class="button-label">West</ButtonLabel></Button>
+    </div>
+    <span id="fireeye-attribution" class="small">Google Maps</span>
+  </div>
+</Panel>
