@@ -30,10 +30,10 @@ function fakeIngest(result: IngestResult) {
 }
 
 test("a text goes to ingest with the sender as caller, and the reply comes back", async () => {
-  const ing = fakeIngest({ ok: true, reply: "Leave by Stairwell A. Do not use the elevator.", incidentId: "inc-1", status: "needs_location" });
+  const ing = fakeIngest({ ok: true, reply: "Leave by Stairwell A. Do not use the elevator.", roomId: "7-break", confidence: 0.85 });
   const { space, sent, typing } = fakeSpace();
   const reply = await createHandler(ing.send, () => {})(space, msg("m1", " smoke in the break room on 7 "));
-  assert.deepEqual(ing.calls, [{ text: "smoke in the break room on 7", caller: "+15551230000", channel: "sms" }]);
+  assert.deepEqual(ing.calls, [{ text: "smoke in the break room on 7", caller: "+15551230000" }]);
   assert.deepEqual(sent, ["Leave by Stairwell A. Do not use the elevator."]);
   assert.equal(reply, sent[0]);
   assert.deepEqual(typing, ["start", "stop"]);

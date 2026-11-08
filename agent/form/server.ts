@@ -167,9 +167,9 @@ export function createFormServer({
             log(`[form] building lookup failed for ${caller}: ${err instanceof Error ? err.message : String(err)}`);
           }
         }
-        const result = await ingest({ text: text.trim(), caller: `form:${caller}`, channel: "form", ...(where && { address: where }) });
+        const result = await ingest({ text: text.trim(), caller: `form:${caller}` });
         if (!result.ok) log(`[form] ingest failed for ${caller}: ${result.error}`);
-        else log(`[form] -> ${caller}: incident ${result.incidentId ?? "-"} (${result.status ?? "?"})`);
+        else log(`[form] -> ${caller}: room ${result.roomId ?? "-"} (${result.confidence ?? 0})`);
         return json(res, 200, { ok: result.ok, reply: result.reply ?? FALLBACK_REPLY });
       } finally {
         inFlight.delete(caller);

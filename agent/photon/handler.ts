@@ -17,7 +17,7 @@ export interface ChatMessage {
   content: { type: string; text?: string };
 }
 
-export const NOT_TEXT_REPLY = "Please text us in words: what is happening, and where? An address or the nearest cross street helps.";
+export const NOT_TEXT_REPLY = "Please text us in words: which floor are you on, and where is the smoke or fire?";
 
 /** Remembers recent message ids: Photon delivery is at-least-once. */
 const SEEN_LIMIT = 500;
@@ -57,10 +57,10 @@ export function createHandler(send: (input: IngestInput) => Promise<IngestResult
     await space.startTyping?.().catch(() => {});
     let reply: string;
     try {
-      const result = await send({ text, caller, channel: "sms" });
+      const result = await send({ text, caller });
       if (!result.ok) log(`[photon] ingest failed for ${caller}: ${result.error}`);
       reply = result.reply ?? FALLBACK_REPLY;
-      if (result.ok) log(`[photon] -> ${caller}: incident ${result.incidentId ?? "-"} (${result.status ?? "?"}), reply ${JSON.stringify(reply)}`);
+      if (result.ok) log(`[photon] -> ${caller}: room ${result.roomId ?? "-"} (${result.confidence ?? 0}), reply ${JSON.stringify(reply)}`);
     } finally {
       await space.stopTyping?.().catch(() => {});
     }

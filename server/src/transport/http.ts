@@ -7,7 +7,7 @@
 //   POST /voice/report phone-call webhook (ElevenLabs tool), token-protected; replies in speakable text
 //   POST /voice/address phone-call webhook: the caller's address starts a building lookup
 //   POST /voice/incident phone-call webhook: any emergency, placed on the map (incidents/service.ts)
-//   POST /map-incidents  the same report from a screen, the text line or the QR form, without the voice token
+//   POST /map-incidents  the same report from a screen or script, without the voice token
 //   POST /incident/address, /incident/building, /incident/building/demo  building lookup (live/lookup.ts)
 //   GET  /health      POST /live/reset      POST /mock/reset, /mock/replay (mock mode)
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -319,9 +319,7 @@ export function createHttpServer({ ingest, getState, getBuildingInfo, forecast, 
     if (method === "POST" && url === "/map-incidents") {
       const r = await readJson(req, res);
       if (!r.ok) return;
-      // The text line and the QR form say so, which lets a caller's next message join their incident.
-      const channel = oneOf(isObj(r.body) ? r.body.channel : undefined, ["sms", "form", "console"], "console");
-      const input = parseMapIncident(r.body, channel);
+      const input = parseMapIncident(r.body, "console");
       if (Array.isArray(input)) return json(res, 400, { ok: false, errors: input });
       try {
         const out = await mapIncidents!.report(input);
