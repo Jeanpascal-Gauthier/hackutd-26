@@ -9,7 +9,7 @@ import { LiveIncident } from "./live/incident.ts";
 import { forecast } from "./live/forecast.ts";
 import { sprinklers } from "./live/buildingData.ts";
 import { MockIncident } from "./mock/controller.ts";
-import { AGENT_EXPORT, guardAgent, loadAgentProcessor } from "./agent/bridge.ts";
+import { AGENT_EXPORT, guardAgent, loadAgentProcessor, loadAgentReset } from "./agent/bridge.ts";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const TICK_MS = Number(process.env.TICK_MS ?? 2000);
@@ -29,10 +29,13 @@ live.reset(); // minute 0, no fire, so the first client sees a valid state
 let processor: ReportProcessor = live.processor;
 export const setReportProcessor = (p: ReportProcessor) => void (processor = p);
 let agentOn = false;
+// Clears the agent's memory of each caller's earlier texts, so one demo run doesn't leak into the next.
+let resetAgent = () => {};
 if (AGENT) {
   const agent = await loadAgentProcessor();
   if (agent) {
     setReportProcessor(guardAgent(agent, live.processor, AGENT_TIMEOUT_MS));
+    resetAgent = (await loadAgentReset()) ?? resetAgent;
     agentOn = true;
   }
 }
@@ -45,8 +48,20 @@ const httpServer = createHttpServer({
   getState: () => store.get(),
   buildingInfo: { building: live.data.building, occupants: live.data.occupants, sprinklers },
   forecast: (origin, minutes) => forecast(origin, live.data, minutes),
-  resetLive: () => (mock ? mock.reset() : live.reset()),
-  mock,
+  resetLive: () => {
+    resetAgent();
+    mock ? mock.reset() : live.reset();
+  },
+  mock: mock && {
+    reset: () => {
+      resetAgent();
+      mock.reset();
+    },
+    replay: () => {
+      resetAgent();
+      void mock.replay();
+    },
+  },
 });
 attachWebSocket(httpServer, store, {
   setSimMinute: (minute) => live.goTo(minute),
