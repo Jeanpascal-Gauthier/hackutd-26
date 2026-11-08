@@ -6,10 +6,21 @@
  */
 
 import { createSystem, UIKitMLAsset } from '@iwsdk/core';
-import { IncidentSocket } from './incident-client.js';
+import { IncidentSocket, type ConnectionStatus } from './incident-client.js';
 import type { IncidentState, Report } from './incident-types.js';
 
 const MAX_SLOTS = 8;
+
+/** The panel font only ships ASCII glyphs; map common typographic characters so server text never renders as boxes. */
+function panelText(text: string): string {
+  return text
+    .replace(/[\u2013\u2014\u2212]/g, '-')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/\u2026/g, '...')
+    .replace(/\u00A0/g, ' ')
+    .replace(/[^\x20-\x7E]/g, '');
+}
 const CALLER_BORDER = '#3a7bd5';
 const CALLER_BG = '#1a2430';
 const FIREFIGHTER_BORDER = '#c2502f';
@@ -28,8 +39,8 @@ const FIREFIGHTER_PROGRESSION: { status: FirefighterStatus; afterMs: number }[] 
  * the real FireSight server over its WebSocket: callers from state.reports,
  * people-at-risk from state.exits. There is no "firefighter unit" concept in
  * the shared contract (server/API.md: dispatch is logged only, for now), so
- * that half stays a simulated single-unit dispatch, triggered by a real
- * state.recommendation appearing rather than a fixed timer.
+ * that half stays a simulated single-unit dispatch, triggered by confirmed server dispatch records. Acceptance and dispatch
+ * require explicit operator button presses.
  */
 export class ConsoleSystem extends createSystem({}) {
   private voicePanel: UIKitMLAsset | null = null;
@@ -40,7 +51,9 @@ export class ConsoleSystem extends createSystem({}) {
 
   private socket: IncidentSocket | null = null;
   private latestState: IncidentState | null = null;
-  private lastRecommendationKey: string | null = null;
+  private connection: ConnectionStatus = 'connecting';
+  private lastDispatchTime: number | null = null;
+  private actionPending: 'accept' | 'dispatch' | null = null;
   private firefighterStatus: FirefighterStatus | null = null;
   private firefighterTimers: ReturnType<typeof setTimeout>[] = [];
 
@@ -60,7 +73,31 @@ export class ConsoleSystem extends createSystem({}) {
       );
     }
 
-    this.socket = new IncidentSocket((state) => this.onState(state));
+    this.socket = new IncidentSocket((state) => this.onState(state), (status) => {
+      this.connection = status;
+      if (status !== 'connected') this.actionPending = null;
+      this.render();
+    });
+    const acceptButton = this.resourcesPanel?.getElementById('accept-recommendation-button');
+    const dispatchButton = this.resourcesPanel?.getElementById('dispatch-button');
+    const accept = () => {
+      if (!this.latestState?.recommendation || this.actionPending) return;
+      if (this.socket?.send({ type: 'acceptRecommendation' })) this.actionPending = 'accept';
+      this.render();
+    };
+    const dispatch = () => {
+      const roomId = this.latestState?.origin?.roomId;
+      if (!roomId || this.actionPending) return;
+      if (this.socket?.send({ type: 'dispatch', roomId })) this.actionPending = 'dispatch';
+      this.render();
+    };
+    acceptButton?.addEventListener('click', accept);
+    dispatchButton?.addEventListener('click', dispatch);
+    this.cleanupFuncs.push(
+      () => acceptButton?.removeEventListener('click', accept),
+      () => dispatchButton?.removeEventListener('click', dispatch),
+      () => this.stop(),
+    );
     this.socket.connect();
     this.render();
   }
@@ -75,39 +112,40 @@ export class ConsoleSystem extends createSystem({}) {
   private onState(state: IncidentState): void {
     this.latestState = state;
 
-    const recommendationKey = state.recommendation
-      ? JSON.stringify(state.recommendation)
-      : null;
-    if (recommendationKey != null && recommendationKey !== this.lastRecommendationKey) {
-      this.lastRecommendationKey = recommendationKey;
-      this.startFirefighterDispatch(state.origin?.roomId);
+    this.actionPending = null;
+    const dispatches = state.dispatches ?? [];
+    const lastDispatch = dispatches[dispatches.length - 1];
+    if (!lastDispatch) {
+      this.lastDispatchTime = null;
+      this.firefighterStatus = null;
+      for (const timer of this.firefighterTimers) clearTimeout(timer);
+      this.firefighterTimers = [];
+    } else if (lastDispatch.time !== this.lastDispatchTime) {
+      this.lastDispatchTime = lastDispatch.time;
+      this.startFirefighterDispatch(lastDispatch.time);
     }
 
     this.render();
   }
 
-  private startFirefighterDispatch(roomId: string | undefined): void {
+  private startFirefighterDispatch(dispatchedAt: number): void {
     for (const timer of this.firefighterTimers) {
       clearTimeout(timer);
     }
     this.firefighterTimers = [];
 
+    const elapsed = Math.max(0, Date.now() - dispatchedAt);
+    this.firefighterStatus = 'dispatched';
     for (const step of FIREFIGHTER_PROGRESSION) {
-      const timer = setTimeout(() => {
+      if (step.afterMs <= elapsed) {
         this.firefighterStatus = step.status;
-        this.render();
-      }, step.afterMs);
-      this.firefighterTimers.push(timer);
+      } else {
+        this.firefighterTimers.push(setTimeout(() => {
+          this.firefighterStatus = step.status;
+          this.render();
+        }, step.afterMs - elapsed));
+      }
     }
-
-    if (roomId != null) {
-      this.socket?.send({ type: 'dispatch', roomId });
-    }
-    // Closes the loop so the server moves recommendation -> accepted and
-    // BuildingSystem lights the evacuation route green (server/API.md).
-    // No separate "accept" UI yet; the commander's real approval step is a
-    // natural next addition once there's a button to wire it to.
-    this.socket?.send({ type: 'acceptRecommendation' });
   }
 
   private recentCallers(): Report[] {
@@ -127,6 +165,7 @@ export class ConsoleSystem extends createSystem({}) {
   private render(): void {
     this.renderVoicePanel();
     this.renderResourcesPanel();
+    this.renderServerControls();
   }
 
   private renderVoicePanel(): void {
@@ -134,10 +173,11 @@ export class ConsoleSystem extends createSystem({}) {
     let slot = 0;
 
     for (const report of callers) {
+      const text = panelText(report.text);
       this.setSlot(slot, {
         isFirefighter: false,
-        label: report.roomId ?? report.caller,
-        status: report.text.length > 40 ? `${report.text.slice(0, 40)}...` : report.text,
+        label: panelText(report.roomId ?? report.caller),
+        status: text.length > 40 ? `${text.slice(0, 40)}...` : text,
       });
       slot++;
     }
@@ -172,6 +212,24 @@ export class ConsoleSystem extends createSystem({}) {
     });
     this.slotLabels[index]?.setProperties({ text: entry.label });
     this.slotStatuses[index]?.setProperties({ text: entry.status });
+  }
+
+  private renderServerControls(): void {
+    const connected = this.connection === 'connected';
+    const panel = this.resourcesPanel;
+    const pending = this.latestState?.recommendation;
+    panel?.getElementById('connection-status')?.setProperties({
+      text: connected ? 'Server connected' : this.connection === 'reconnecting' ? 'Reconnecting - showing last state' : 'Connecting to server',
+      color: connected ? '#64d9aa' : '#ffca7a',
+    });
+    panel?.getElementById('recommendation-text')?.setProperties({
+      text: panelText(pending?.actions.join(' / ') ?? this.latestState?.accepted?.recommendation.actions.join(' / ') ?? 'Waiting for an incident recommendation.'),
+    });
+    panel?.getElementById('recommendation-status')?.setProperties({
+      text: this.actionPending ? 'Sending to server...' : pending ? 'Awaiting your approval' : this.latestState?.accepted ? 'Recommendation accepted' : 'No pending recommendation',
+    });
+    panel?.getElementById('accept-recommendation-button')?.setProperties({ disabled: !connected || !pending || this.actionPending != null });
+    panel?.getElementById('dispatch-button')?.setProperties({ disabled: !connected || !this.latestState?.origin || this.actionPending != null });
   }
 
   private renderResourcesPanel(): void {

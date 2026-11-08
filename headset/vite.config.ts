@@ -8,6 +8,8 @@
 import { iwsdkDev } from '@iwsdk/vite-plugin-dev';
 import { defineConfig } from 'vite';
 
+const incidentServer = process.env.FIREWATCH_SERVER_URL ?? 'http://localhost:8080';
+
 export default defineConfig({
   plugins: [iwsdkDev()],
   server: {
@@ -20,12 +22,12 @@ export default defineConfig({
     // server directly, so the browser only ever sees https/wss to :8081.
     proxy: {
       '/fs-api': {
-        target: 'http://localhost:8080',
+        target: incidentServer,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/fs-api/, ''),
       },
       '/fs-ws': {
-        target: 'ws://localhost:8080',
+        target: incidentServer.replace(/^http/u, 'ws'),
         ws: true,
         rewrite: (path) => path.replace(/^\/fs-ws/, ''),
       },

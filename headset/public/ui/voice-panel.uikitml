@@ -13,7 +13,45 @@
   .panel-content {
     flex-direction: column;
     gap: 16px;
-    padding: 24px;
+    padding-top: 24px;
+    padding-right: 24px;
+    padding-bottom: 24px;
+    padding-left: 24px;
+  }
+
+  .heading {
+    color: #1c1d20;
+    font-size: 28px;
+    font-weight: 700;
+  }
+
+  .heading:dark {
+    color: #fafaf7;
+  }
+
+  .legend {
+    flex-direction: row;
+    gap: 12px;
+  }
+
+  .caller-key {
+    color: #174e91;
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .caller-key:dark {
+    color: #8dbdff;
+  }
+
+  .crew-key {
+    color: #8d351c;
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .crew-key:dark {
+    color: #ffab8f;
   }
 
   .grid-row {
@@ -24,22 +62,32 @@
   .quadrant {
     flex-direction: column;
     gap: 12px;
-    width: 256px;
+    width: 248px;
   }
 
   .slot {
     flex-direction: column;
-    gap: 4px;
-    padding: 12px;
+    gap: 6px;
+    min-height: 110px;
+    padding-top: 12px;
+    padding-right: 12px;
+    padding-bottom: 12px;
+    padding-left: 12px;
     border-width: 3px;
     border-radius: 10px;
-    background-color: #20242b;
+    background-color: #26272b;
+    border-color: #c7cdd6;
+  }
+
+  .slot:dark {
+    background-color: #26272b;
     border-color: #4a4f58;
   }
 
   .slot-label {
-    color: #1c1d20;
-    font-size: 16px;
+    color: #fafaf7;
+    width: 218px;
+    font-size: 22px;
     font-weight: 700;
   }
 
@@ -48,8 +96,10 @@
   }
 
   .slot-status {
-    color: #3a3b40;
-    font-size: 13px;
+    color: #dddfe3;
+    width: 218px;
+    font-size: 18px;
+    line-height: 1.25;
   }
 
   .slot-status:dark {
@@ -58,47 +108,52 @@
 </style>
 <Panel class="panel-root">
   <div class="panel-content">
+    <span class="heading">Voice &amp; comms</span>
+    <div class="legend">
+      <span class="caller-key">Blue: callers</span>
+      <span class="crew-key">Amber: firefighters</span>
+    </div>
     <div class="grid-row">
       <div class="quadrant" id="quad-ul">
         <div class="slot" id="slot-0" style="display: flex">
-          <span class="slot-label" id="slot-0-label">Caller 1</span>
-          <span class="slot-status" id="slot-0-status">idle</span>
+          <span class="slot-label" id="slot-0-label">Awaiting caller</span>
+          <span class="slot-status" id="slot-0-status">No report yet</span>
         </div>
         <div class="slot" id="slot-1" style="display: flex">
-          <span class="slot-label" id="slot-1-label">Caller 2</span>
-          <span class="slot-status" id="slot-1-status">idle</span>
+          <span class="slot-label" id="slot-1-label">Awaiting caller</span>
+          <span class="slot-status" id="slot-1-status">No report yet</span>
         </div>
       </div>
       <div class="quadrant" id="quad-ur">
         <div class="slot" id="slot-2" style="display: flex">
-          <span class="slot-label" id="slot-2-label">Caller 3</span>
-          <span class="slot-status" id="slot-2-status">idle</span>
+          <span class="slot-label" id="slot-2-label">Awaiting caller</span>
+          <span class="slot-status" id="slot-2-status">No report yet</span>
         </div>
         <div class="slot" id="slot-3" style="display: flex">
-          <span class="slot-label" id="slot-3-label">Caller 4</span>
-          <span class="slot-status" id="slot-3-status">idle</span>
+          <span class="slot-label" id="slot-3-label">Awaiting caller</span>
+          <span class="slot-status" id="slot-3-status">No report yet</span>
         </div>
       </div>
     </div>
     <div class="grid-row">
       <div class="quadrant" id="quad-bl">
         <div class="slot" id="slot-4" style="display: none">
-          <span class="slot-label" id="slot-4-label">Caller 5</span>
-          <span class="slot-status" id="slot-4-status">idle</span>
+          <span class="slot-label" id="slot-4-label">Awaiting caller</span>
+          <span class="slot-status" id="slot-4-status">No report yet</span>
         </div>
         <div class="slot" id="slot-5" style="display: none">
-          <span class="slot-label" id="slot-5-label">Caller 6</span>
-          <span class="slot-status" id="slot-5-status">idle</span>
+          <span class="slot-label" id="slot-5-label">Awaiting caller</span>
+          <span class="slot-status" id="slot-5-status">No report yet</span>
         </div>
       </div>
       <div class="quadrant" id="quad-br">
         <div class="slot" id="slot-6" style="display: none">
-          <span class="slot-label" id="slot-6-label">Caller 7</span>
-          <span class="slot-status" id="slot-6-status">idle</span>
+          <span class="slot-label" id="slot-6-label">Awaiting caller</span>
+          <span class="slot-status" id="slot-6-status">No report yet</span>
         </div>
         <div class="slot" id="slot-7" style="display: none">
-          <span class="slot-label" id="slot-7-label">Caller 8</span>
-          <span class="slot-status" id="slot-7-status">idle</span>
+          <span class="slot-label" id="slot-7-label">Awaiting caller</span>
+          <span class="slot-status" id="slot-7-status">No report yet</span>
         </div>
       </div>
     </div>

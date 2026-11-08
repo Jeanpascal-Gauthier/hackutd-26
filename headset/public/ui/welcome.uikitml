@@ -1,80 +1,77 @@
 <!--
-  Panel, Button, ButtonIcon, and ButtonLabel come from the bundled Horizon kit.
-  RectangleGoggles and LogIn are bundled Lucide icon components. The :dark
+  Room setup panel, mounted on the right wall facet beside "Resources & people".
+  Follows the same card pattern as the other wall panels: heading, status line,
+  full-width actions. Panel, Button, ButtonIcon and ButtonLabel come from the
+  bundled Horizon kit; RectangleGoggles and LogIn are Lucide icons. The :dark
   styles apply because iwsdk.config.json prefers the dark color scheme.
 -->
 <style>
   .panel-root {
     flex-direction: column;
-    width: 420px;
+    width: 360px;
   }
 
   .panel-content {
     flex-direction: column;
-    gap: 7px;
-    padding: 22px;
-  }
-
-  .eyebrow {
-    color: #6b5a00;
-    font-size: 14px;
-    font-weight: 700;
-    letter-spacing: 1.4px;
-  }
-
-  .eyebrow:dark {
-    color: #f5d90a;
+    gap: 12px;
+    padding-top: 24px;
+    padding-right: 24px;
+    padding-bottom: 24px;
+    padding-left: 24px;
   }
 
   .heading {
     color: #1c1d20;
-    font-size: 30px;
+    font-size: 28px;
     font-weight: 700;
-    line-height: 36px;
   }
 
   .heading:dark {
     color: #fafaf7;
   }
 
-  .body {
-    color: #3a3b40;
-    font-size: 20px;
-    line-height: 27px;
+  .status {
+    color: #49515e;
+    font-size: 18px;
+    line-height: 1.25;
   }
 
-  .body:dark {
-    color: #dddfe3;
+  .status:dark {
+    color: #c3c6cc;
   }
 
-  .button {
-    justify-content: flex-start;
-    margin-left: 22px;
-    margin-right: 22px;
-    margin-bottom: 22px;
+  .action {
+    width: 312px;
+    min-height: 48px;
+    justify-content: center;
   }
 
-  .button-label {
-    transform-translate-y: 1px;
+  .action-label {
+    font-size: 22px;
+    font-weight: 700;
   }
 </style>
 <Panel class="panel-root">
   <div class="panel-content">
-    <div class="eyebrow">IMMERSIVE WEB SDK</div>
-    <div class="heading">Hello, Immersive Web!</div>
-    <div class="body">Try each station around you,</div>
-    <div class="body">then make this scene your own.</div>
+    <span class="heading">Room setup</span>
+    <span id="setup-status" class="status">Face the front desk, then center the room.</span>
+    <Button id="xr-button" class="action">
+      <ButtonIcon>
+        <RectangleGoggles></RectangleGoggles>
+      </ButtonIcon>
+      <ButtonLabel class="action-label">Enter VR</ButtonLabel>
+    </Button>
+    <Button id="center-room-button" class="action">
+      <ButtonLabel class="action-label">Center room here</ButtonLabel>
+    </Button>
+    <Button id="bring-building-button" class="action">
+      <ButtonLabel class="action-label">Bring building closer</ButtonLabel>
+    </Button>
+    <Button id="exit-button" class="action" style="display: none">
+      <ButtonIcon>
+        <LogIn></LogIn>
+      </ButtonIcon>
+      <ButtonLabel class="action-label">Exit to browser</ButtonLabel>
+    </Button>
   </div>
-  <Button id="xr-button" class="button">
-    <ButtonIcon>
-      <RectangleGoggles></RectangleGoggles>
-    </ButtonIcon>
-    <ButtonLabel class="button-label">Enter XR</ButtonLabel>
-  </Button>
-  <Button id="exit-button" class="button" style="display: none">
-    <ButtonIcon>
-      <LogIn></LogIn>
-    </ButtonIcon>
-    <ButtonLabel class="button-label">Exit to Browser</ButtonLabel>
-  </Button>
 </Panel>

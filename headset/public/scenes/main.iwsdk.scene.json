@@ -21,7 +21,7 @@
         0.38,
         1
       ],
-      "intensity": 0.25
+      "intensity": 0.4
     }
   },
   "environment": {
@@ -87,21 +87,27 @@
     },
     {
       "id": "welcome-panel",
-      "name": "Welcome Panel",
+      "name": "Room Setup Panel",
       "content": {
         "type": "asset",
         "asset": "welcome-panel"
       },
       "transform": {
         "position": [
-          0,
-          2.3,
-          -1.78
+          1.653,
+          1.5,
+          -0.377
         ],
-        "scale": 0.27
+        "rotationDeg": [
+          0,
+          -60,
+          0
+        ],
+        "scale": 0.2
       },
       "components": {
-        "RayInteractable": {}
+        "RayInteractable": {},
+        "PokeInteractable": {}
       }
     },
     {
@@ -129,9 +135,9 @@
       },
       "transform": {
         "position": [
-          1.4,
+          1.203,
           1.45,
-          -0.85
+          -1.156
         ],
         "rotationDeg": [
           0,
@@ -139,6 +145,10 @@
           0
         ],
         "scale": 0.2
+      },
+      "components": {
+        "RayInteractable": {},
+        "PokeInteractable": {}
       }
     },
     {
@@ -146,13 +156,13 @@
       "name": "Key Light",
       "transform": {
         "position": [
-          -2.3541,
-          11.2763,
-          1.762
+          -0.7,
+          2.55,
+          0.2
         ],
         "rotationDeg": [
-          -73.3982,
-          -11.3134,
+          -62,
+          -18,
           0
         ]
       },
@@ -160,16 +170,16 @@
         "DirectionalLight": {
           "color": [
             1,
-            0.945,
-            0.87,
+            0.97,
+            0.92,
             1
           ],
-          "intensity": 2,
+          "intensity": 1.7,
           "castShadow": true,
           "shadowMapSize": "1024",
-          "shadowCameraSize": 6,
-          "shadowCameraNear": 2,
-          "shadowCameraFar": 24,
+          "shadowCameraSize": 5,
+          "shadowCameraNear": 0.05,
+          "shadowCameraFar": 6,
           "shadowRadius": 5,
           "shadowBias": -0.0004,
           "shadowNormalBias": 0.02
@@ -182,18 +192,18 @@
       "components": {
         "HemisphereLight": {
           "skyColor": [
-            0.96,
+            1,
+            0.98,
             0.94,
-            0.9,
             1
           ],
           "groundColor": [
+            0.63,
+            0.6,
             0.55,
-            0.52,
-            0.48,
             1
           ],
-          "intensity": 1
+          "intensity": 1.2
         }
       }
     }

@@ -24,7 +24,9 @@ npm run dev
 
 The headset dev server uses port 8081 and proxies HTTP and WebSocket traffic to
 the incident server on port 8080. Keep both running. For a remote incident server,
-append `?server=https://your-server-host` to the headset app URL. A production
+append `?server=https://your-server-host` to the headset app URL. You can also
+start the dev session with `FIREWATCH_SERVER_URL=http://host:port npm run dev`
+to point its proxy at a different server. A production
 host must provide the same proxy paths or use that HTTPS server override.
 
 For Quest over USB, authorize the device and forward the app port:
@@ -38,11 +40,33 @@ Open `https://localhost:8081/` in Quest Browser and enter VR. Reuse the existing
 app tab for later reloads so there is only one headset tab. The experience uses
 an opaque virtual room rather than physical-room passthrough.
 
+## Room setup
+
+Enter VR, face the direction you want the front wall, then press **Center room here**
+on the setup panel. It centers the virtual room at your current position and brings
+the building within reach. **Bring building closer** resets its size and places it
+in front of you without moving the room. These controls do not change the Quest
+safety boundary.
+
+## Building controls
+
+- Hands: pinch the building with one hand to pick it up. Move or turn your hand
+  to carry and rotate it; release the pinch to leave it in place.
+- Pinch it with both hands, then spread your hands to enlarge it or bring them
+  together to shrink it. Zoom is limited to 0.5×–3× the original model size.
+- Controllers: hold the grip/squeeze button near the building. Use both
+  controllers together to scale it.
+
+The building rotates and scales around its centre, and live fire/smoke and route
+updates continue while it is held. These controls manipulate the whole building;
+individual floor/room selection from the plan is a separate interaction.
+
 ## Validate
 
 ```sh
 npm run typecheck
 npm run build
+node --test tests/*.test.mjs
 ```
 
 Run these inside `headset/`; the root workspace typecheck does not include it.
@@ -53,11 +77,17 @@ Reports, room hazards, evacuation routes, and people-at-risk totals come from
 the real incident server. Room heights are a display assumption of 3.5 metres;
 room footprints come from `/building`.
 
-A new recommendation automatically sends dispatch and acceptance events to the
-shared server. There is no manual commander approval control yet. Engine 3's
-progress from dispatched to en route to on scene is simulated locally; it is
-not real crew tracking. This app therefore changes the shared incident when
-running against it. Use a demo server when trying the prototype independently.
+Recommendations wait for an operator to press **Accept recommendation**.
+**Dispatch crew** sends a real dispatch event for the inferred origin room.
+The connection indicator shows when state may be stale; action buttons are
+disabled while disconnected. Commands are not queued for a later reconnect.
+Engine 3's progression is simulated locally from the confirmed dispatch timestamp,
+not real crew tracking. Incident reset clears that simulated unit.
+
+If the server is unavailable at startup, the building fetch retries until it
+returns. WebSocket connections retry after disconnect and receive the latest
+shared incident state on reconnect. The transport tests include an isolated
+real-server check on port 18081 and do not reset the shared demo on port 8080.
 
 `iwsdk.config.json` selects the scene and VR features. `src/assets.ts` registers
 models and panels. Scene composition lives in
