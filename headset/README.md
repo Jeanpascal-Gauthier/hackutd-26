@@ -1,45 +1,65 @@
-# IWSDK App
+# Firewatch headset
 
-This project uses `iwsdk.config.json` for declarative scene, asset, component,
-XR, and emulator configuration. Application systems remain explicit in
-`src/index.ts`.
+VR command room with a desk wrapping around the three front walls, a tabletop
+building derived from the server's room footprints, live fire/smoke and accepted
+evacuation-route overlays, caller reports, and resource statistics.
+
+## Run locally
+
+Install the monorepo dependencies from the repository root, then start the server:
 
 ```sh
 npm install
+npm run dev -w server
+```
+
+In a second terminal, install and start the headset app separately (it is not a
+root npm workspace):
+
+```sh
+cd headset
+npm ci
 npm run dev
 ```
 
-Use the Runtime and Editor controls in the managed browser to switch between
-the running experience and its authored scene.
+The headset dev server uses port 8081 and proxies HTTP and WebSocket traffic to
+the incident server on port 8080. Keep both running. For a remote incident server,
+append `?server=https://your-server-host` to the headset app URL. A production
+host must provide the same proxy paths or use that HTTPS server override.
 
-## Starter content
+For Quest over USB, authorize the device and forward the app port:
 
-The robot and welcome panel are small examples of authored scene content plus
-runtime systems. The robot turns toward the player's head and plays a sound
-when pressed. To remove the robot, delete its scene node, its `RobotSystem`
-registration from `src/index.ts` or `src/index.js`, and its `Robot` registration
-from `src/components.ts` or `src/components.js`; you can then delete the unused
-robot component and system files. To remove the welcome panel, delete its scene
-node and its `PanelSystem` registration from the application entry point.
+```sh
+adb devices
+adb -s YOUR_DEVICE_SERIAL reverse tcp:8081 tcp:8081
+```
 
-The robot stands on the second of three numbered stations. The first holds dark
-pieces you can grab and move, and the third holds a ring you can spin in place.
-The studio props (the plinths and the dark pieces, plus the floor and stage in VR
-and Desktop 3D) are built in code in `src/scene-assets/studio.scene-asset.ts` or
-`.js`. The VR and Desktop 3D background furniture is built the same way in
-`src/scene-assets/decor.scene-asset.ts` or `.js`, so the starter downloads no
-extra models. To remove any of them, delete their scene nodes and their entries
-in `src/assets.ts` or `src/assets.js`, then delete the files you no longer use.
-The station labels are `public/ui/label-*.uikitml`.
+Open `https://localhost:8081/` in Quest Browser and enter VR. Reuse the existing
+app tab for later reloads so there is only one headset tab. The experience uses
+an opaque virtual room rather than physical-room passthrough.
 
-The rest of the look is built-in components in the scene, which you can edit in
-the editor without code. The soft light on every object is the scene root's
-`IBLGradient` (select the Level Root to edit it), and the soft shadows under
-each object are `ContactShadow` nodes. In VR and Desktop 3D, the sky is the
-scene root's `DomeGradient` (its colors, tilt and dither are also on the Level
-Root), and the floor fades into it through the `DomeFade` on the floor node. AR
-projects have no sky or floor, so passthrough stays visible, and a
-`ShadowCatcher` node grounds the stations.
+## Validate
 
-- Minimal scene walkthrough: https://iwsdk.dev/guides/01b-minimal-scene.html
-- XR-enabled projects — IWER emulator controls: https://iwsdk.dev/guides/02-testing-experience.html#iwer-controls
+```sh
+npm run typecheck
+npm run build
+```
+
+Run these inside `headset/`; the root workspace typecheck does not include it.
+
+## Current prototype behavior
+
+Reports, room hazards, evacuation routes, and people-at-risk totals come from
+the real incident server. Room heights are a display assumption of 3.5 metres;
+room footprints come from `/building`.
+
+A new recommendation automatically sends dispatch and acceptance events to the
+shared server. There is no manual commander approval control yet. Engine 3's
+progress from dispatched to en route to on scene is simulated locally; it is
+not real crew tracking. This app therefore changes the shared incident when
+running against it. Use a demo server when trying the prototype independently.
+
+`iwsdk.config.json` selects the scene and VR features. `src/assets.ts` registers
+models and panels. Scene composition lives in
+`public/scenes/main.iwsdk.scene.json`; application systems are registered in
+`src/index.ts`.
