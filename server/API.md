@@ -329,6 +329,19 @@ The webhook tool an ElevenLabs voice agent calls during a call. It is off unless
 - **Response:** `{ ok, reply, roomId }`. `reply` is ready to speak: "floors 6–12" becomes "floors 6 to 12", parentheticals are dropped, at most 3 sentences. When the location is unclear, `reply` is the follow-up question; if processing fails it is still a safe line ("Help is on the way. Which floor are you on…"). `roomId` is the located room or `null`.
 - **Effects:** identical to `/ingest`: the report (marked `channel: "voice"`, with its `reply`) appears on every screen, the agent trail and the incident log update ("Call from +1555…").
 
+### `POST /voice/incident`
+The webhook tool `report_incident`: any emergency, placed on the map as `state.mapIncidents[]` (shared/types.ts `MapIncident`). Same auth as `/voice/report`.
+
+- **Body:** `{ type: "fire"|"crash"|"other", address, description, what?, in_building?, severity?, lanes_blocked?, caller? }`. `description` is required. An unrecognized `type` becomes `other`; unrecognized `severity` or `lanes_blocked` become `unknown`.
+- **Answer:** always 200 once authorized: `{ ok, reply, incidentId, status }`. `reply` is what the voice agent says. It waits at most 4 s for the geocoder, so `status` may still be `locating`.
+- **One emergency, one incident:** a report joins an existing incident of the same kind from the same caller in the last 30 minutes, at the same stated address, or within 150 m once geocoded. A sole caller giving a different address moves the pin.
+- **Forecasts** run in the background (`forecastStatus`). `fire` has wind-driven fire and smoke areas and nearby building exposures. `crash` has congestion segments by minute. `other` has none. Forecasts are modeled: `assumptions` must be shown with them.
+- **Data sources:** Geoapify (geocoding, and routes and places when Overpass is down), Overpass (roads and building outlines, first choice), Open-Meteo (wind, no key).
+- A fire with `in_building: true` also starts the building lookup, exactly like `/voice/address`.
+
+### `POST /map-incidents`
+The same body and behavior as `/voice/incident`, without the voice token, for the console and for testing. Answers `{ ok, incident, reply }`, or 400 with `errors` when `description` is missing.
+
 ### `POST /voice/address`
 The webhook tool `report_address`: the caller said the building's address. Same auth as `/voice/report` (503 without `VOICE_TOKEN`, 401 with a wrong token).
 - **Body:** `{ "address": "<the address as heard>", "caller": "<caller's number>" }` (`caller` optional).
