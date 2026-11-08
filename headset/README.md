@@ -102,7 +102,10 @@ building's name and coordinates. After the teammate WebSocket supplies a nonempt
 the briefing screen, and opens the city. North/East/South/West change the viewing
 side without moving the observer; Briefing returns to the room and pauses automatic
 entry until Preview city is pressed. A manual preview is also available while
-waiting for the agent. Manual preview stays open through connection retries. Longer recommendations are paged without dropping
+waiting for the agent. **Exit to browser** is available on the FireEye panel throughout
+VR, including the city view. It ends the immersive session and returns to the browser
+briefing with automatic city entry paused; use **Preview city** to resume.
+Manual preview stays open through connection retries. Longer recommendations are paged without dropping
 text. The cyan beacon marks the selected coordinate.
 
 Set `GOOGLE_MAPS_API_KEY` in the repository root `.env` and enable Google's Map Tiles
@@ -130,6 +133,18 @@ briefing, recommendation delivery, countdown, screen movement, map reveal,
 attribution, texture budget and application errors. This browser check does not
 establish physical Quest frame rate.
 
+To check **Exit to browser**, paused re-entry, and the existing **Briefing** control
+with an emulated headset and a local map fixture (no Maps key required):
+
+```sh
+npx @iwsdk/cli browser run tests/fire-eye-exit.mjs --timeout 110000
+```
+
 The city overview uses a 250 m elevated setback; side views use 200 m. Map textures
 retain trilinear mipmaps and up to 4x anisotropic filtering. Immersive tile selection
 uses both eyes together, and the aerial camera uses a 0.5–3000 m clipping range.
+
+In city view, distant terrain fades into a matching haze and sky gradient instead
+of ending at a hard map edge. The incident target stays clear; returning to the
+briefing removes the city atmosphere. Exit to browser also keeps entry paused
+when the active building or recommendations update.
