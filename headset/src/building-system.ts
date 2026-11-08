@@ -21,7 +21,7 @@ import type { Building, IncidentState } from './incident-types.js';
 
 export class BuildingSystem extends createSystem({}) {
   private roomMaterials = new Map<string, MeshStandardMaterial>();
-  private baseColor = new Color('#bfe8f2');
+  private baseColor = new Color('#ece8de');
   private smokeColor = new Color('#555555');
   private fireColor = new Color('#ff5a1f');
   private routeColor = new Color('#3ddc5a');
@@ -99,9 +99,10 @@ export class BuildingSystem extends createSystem({}) {
       if (material == null) {
         continue;
       }
-      material.opacity = 0.16 + Math.max(roomState.fire, roomState.smoke) * 0.6;
+      material.opacity = 0.06 + Math.max(roomState.fire, roomState.smoke) * 0.7;
       const clear = roomState.fire < 0.15 && roomState.smoke < 0.15;
       if (routeRooms?.has(roomState.roomId) && clear) {
+        material.color.copy(this.routeColor);
         material.emissive.copy(this.routeColor);
         material.emissiveIntensity = 0.9;
         continue;
@@ -109,6 +110,7 @@ export class BuildingSystem extends createSystem({}) {
       this.mixColor.copy(this.baseColor);
       this.mixColor.lerp(this.smokeColor, roomState.smoke);
       this.mixColor.lerp(this.fireColor, roomState.fire);
+      material.color.copy(this.mixColor);
       material.emissive.copy(this.mixColor);
       material.emissiveIntensity = Math.max(
         roomState.fire,
