@@ -73,3 +73,39 @@ test("no sender id: the conversation id is the caller", async () => {
   await createHandler(ing.send, () => {})(space, msg("m1", "fire on 3", { sender: undefined }));
   assert.equal(ing.calls[0]!.caller, "any;-;+15559990000");
 });
+
+test("one caller's texts run one at a time, in order; other callers are not held up", async () => {
+  const order: string[] = [];
+  let releaseFirst!: () => void;
+  const firstDone = new Promise<void>((r) => (releaseFirst = r));
+  const send = async (i: IngestInput): Promise<IngestResult> => {
+    order.push(`start ${i.caller} ${i.text}`);
+    if (i.text === "800 W Campbell Rd") await firstDone; // the first lookup is still being started
+    order.push(`end ${i.caller} ${i.text}`);
+    return { ok: true, reply: `ok ${i.text}` };
+  };
+  const handle = createHandler(send, () => {});
+  const a = fakeSpace();
+  const b = fakeSpace("any;-;+15559990000");
+  const first = handle(a.space, msg("m1", "800 W Campbell Rd"));
+  const second = handle(a.space, msg("m2", "800 West Campbell Road"));
+  const other = handle(b.space, msg("m3", "smoke on 7", { sender: { id: "+15559990000" } }));
+  await other;
+  assert.deepEqual(order, ["start +15551230000 800 W Campbell Rd", "start +15559990000 smoke on 7", "end +15559990000 smoke on 7"],
+    "the second text from the same caller waits; another caller doesn't");
+  releaseFirst();
+  assert.deepEqual(await Promise.all([first, second]), ["ok 800 W Campbell Rd", "ok 800 West Campbell Road"]);
+  assert.deepEqual(order.slice(3), ["end +15551230000 800 W Campbell Rd", "start +15551230000 800 West Campbell Road", "end +15551230000 800 West Campbell Road"]);
+  assert.deepEqual(a.sent, ["ok 800 W Campbell Rd", "ok 800 West Campbell Road"], "replies go out in order");
+});
+
+test("a failed text does not block that caller's next one", async () => {
+  let n = 0;
+  const handle = createHandler(async () => {
+    if (n++ === 0) throw new Error("ingest crashed");
+    return { ok: true, reply: "second ok" };
+  }, () => {});
+  const { space } = fakeSpace();
+  await assert.rejects(handle(space, msg("m1", "first")));
+  assert.equal(await handle(space, msg("m2", "second")), "second ok");
+});
