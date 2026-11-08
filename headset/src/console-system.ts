@@ -10,6 +10,17 @@ import { IncidentSocket, type ConnectionStatus } from './incident-client.js';
 import type { IncidentState, Report } from './incident-types.js';
 
 const MAX_SLOTS = 8;
+
+/** The panel font only ships ASCII glyphs; map common typographic characters so server text never renders as boxes. */
+function panelText(text: string): string {
+  return text
+    .replace(/[\u2013\u2014\u2212]/g, '-')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/\u2026/g, '...')
+    .replace(/\u00A0/g, ' ')
+    .replace(/[^\x20-\x7E]/g, '');
+}
 const CALLER_BORDER = '#3a7bd5';
 const CALLER_BG = '#1a2430';
 const FIREFIGHTER_BORDER = '#c2502f';
@@ -162,10 +173,11 @@ export class ConsoleSystem extends createSystem({}) {
     let slot = 0;
 
     for (const report of callers) {
+      const text = panelText(report.text);
       this.setSlot(slot, {
         isFirefighter: false,
-        label: report.roomId ?? report.caller,
-        status: report.text.length > 40 ? `${report.text.slice(0, 40)}...` : report.text,
+        label: panelText(report.roomId ?? report.caller),
+        status: text.length > 40 ? `${text.slice(0, 40)}...` : text,
       });
       slot++;
     }
@@ -211,7 +223,7 @@ export class ConsoleSystem extends createSystem({}) {
       color: connected ? '#64d9aa' : '#ffca7a',
     });
     panel?.getElementById('recommendation-text')?.setProperties({
-      text: pending?.actions.join(' / ') ?? this.latestState?.accepted?.recommendation.actions.join(' / ') ?? 'Waiting for an incident recommendation.',
+      text: panelText(pending?.actions.join(' / ') ?? this.latestState?.accepted?.recommendation.actions.join(' / ') ?? 'Waiting for an incident recommendation.'),
     });
     panel?.getElementById('recommendation-status')?.setProperties({
       text: this.actionPending ? 'Sending to server...' : pending ? 'Awaiting your approval' : this.latestState?.accepted ? 'Recommendation accepted' : 'No pending recommendation',
