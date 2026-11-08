@@ -133,15 +133,21 @@ function lanesFrom(value: unknown, description: string): LanesBlocked {
   return everyLane.test(words) && !/\bnot\s+(all|both|every|completely|fully|totally)\b/i.test(words) ? "all" : "unknown";
 }
 
+const FLOOD_WORDS = /\b(flood(?:ed|ing|s)?|water main|burst (?:water )?(?:pipe|main)|storm drain|sewer overflow)\b/i;
+
 /** Reads a report of any emergency. A voice agent's tool values are loose, so unknown enums fall back. */
 export function parseMapIncident(body: unknown, channel: MapIncidentInput["channel"]): MapIncidentInput | string[] {
   const b = isObj(body) ? body : {};
   const description = optionalText(b.description, MAX_TEXT);
   if (!description) return ["`description` must be a non-empty string"];
+  const what = optionalText(b.what, 60);
+  const stated = oneOf(b.type, ["fire", "crash", "flood", "other"], "other");
+  // A voice agent that only knows fire, crash and other still reports a burst main as "other".
+  const kind = stated === "other" && FLOOD_WORDS.test(`${what ?? ""} ${description}`) ? "flood" : stated;
   const inBuilding = b.in_building === true || (typeof b.in_building === "string" && /^(true|yes)$/i.test(b.in_building.trim()));
   return {
-    kind: oneOf(b.type, ["fire", "crash", "other"], "other"),
-    what: optionalText(b.what, 60),
+    kind,
+    what,
     address: optionalText(b.address, 500),
     description,
     severity: oneOf(b.severity, ["minor", "serious", "critical", "unknown"], "unknown"),

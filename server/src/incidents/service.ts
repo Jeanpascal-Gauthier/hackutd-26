@@ -2,11 +2,12 @@
 // for a few seconds at most, and forecasts run in the background and appear in the state when ready.
 // One emergency reported twice (a follow-up, a correction, a second caller) stays one incident.
 import { randomUUID } from "node:crypto";
-import type { IncidentPhase, IncidentSeverity, LanesBlocked, MapIncident, MapIncidentKind, Recommendation, Report } from "@firewatch/shared/types";
+import type { AffectedRoad, IncidentPhase, IncidentSeverity, LanesBlocked, MapIncident, MapIncidentKind, Recommendation, Report } from "@firewatch/shared/types";
 import { MAP_REPORT_PREFIX, isMapReport, mapRecommendations, type IncidentStore } from "../state/store.ts";
 import { VOICE_INCIDENT_NEW, VOICE_INCIDENT_NOT_FOUND, VOICE_INCIDENT_UPDATE, VOICE_INCIDENT_WHERE } from "../transport/voice.ts";
 import { forecastCrash, type RoadWay } from "./crashModel.ts";
 import { forecastFire, type NearbyBuilding } from "./fireModel.ts";
+import { forecastFlood } from "./floodModel.ts";
 import { geoDistance } from "./geo.ts";
 import type { GeocodeMatch, MapProviders } from "./providers.ts";
 
@@ -23,12 +24,22 @@ export interface MapIncidentInput {
   channel: Report["channel"];
 }
 
+/** What the service tells the portfolio impact tracker (impact/tracker.ts). */
+export interface ImpactHooks {
+  /** An incident was placed, forecast, resolved, merged or cleared: re-assess. */
+  refresh(): void;
+  clear(): void;
+  execute(propertyId: string, actionId: string): { ok: boolean; error?: string };
+}
+
 export interface MapIncidentOptions {
   /** How long a report waits for the geocoder before answering without a read-back. */
   geocodeWaitMs?: number;
   /** How often a located, unresolved fire or crash re-runs its forecast. 0 disables. Default 5 minutes. */
   forecastRefreshMs?: number;
   now?: () => number;
+  /** Re-assesses the building portfolio whenever the incidents change. Absent: no portfolio impact. */
+  impact?: ImpactHooks;
 }
 
 type LocateResult = { outcome: "found"; match: GeocodeMatch } | { outcome: "not_found" | "error" | "pending" };
@@ -47,7 +58,7 @@ const SEVERITY_ORDER: IncidentSeverity[] = ["unknown", "minor", "serious", "crit
 const SAME_PLACE_METERS = 150;
 const FOLLOW_UP_MS = 30 * 60 * 1000;
 const DEFAULT_REFRESH_MS = 5 * 60 * 1000;
-const DEFAULT_LABEL: Record<MapIncidentKind, string> = { fire: "Fire", crash: "Car crash", other: "Emergency" };
+const DEFAULT_LABEL: Record<MapIncidentKind, string> = { fire: "Fire", crash: "Car crash", flood: "Flood", other: "Emergency" };
 
 const normalize = (text: string) => text.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -72,6 +83,13 @@ function spoken(formatted: string): string {
   return (place.length ? place : parts).slice(0, 3).join(", ");
 }
 
+/** Red road sections of a crash: the blocked and heavy stretches, red from the minute the queue reaches them. */
+function crashRoads(crash: NonNullable<MapIncident["crash"]>): AffectedRoad[] {
+  return crash.segments
+    .filter((segment) => segment.level === "blocked" || segment.level === "heavy")
+    .map((segment) => ({ path: segment.path, road: segment.road, reason: "crash" as const, fromMinute: segment.queueMinute }));
+}
+
 export class MapIncidents {
   private seq = 0;
   private forecastRun = new Map<string, number>();
@@ -83,6 +101,7 @@ export class MapIncidents {
   private geocodeWaitMs: number;
   private forecastRefreshMs: number;
   private now: () => number;
+  private impact?: ImpactHooks;
 
   constructor(
     private store: IncidentStore,
@@ -93,6 +112,7 @@ export class MapIncidents {
     this.geocodeWaitMs = options.geocodeWaitMs ?? 4000;
     this.forecastRefreshMs = options.forecastRefreshMs ?? DEFAULT_REFRESH_MS;
     this.now = options.now ?? Date.now;
+    this.impact = options.impact;
   }
 
   private get list(): MapIncident[] {
@@ -110,6 +130,7 @@ export class MapIncidents {
   private remove(id: string): void {
     this.store.patch({ mapIncidents: this.list.filter((incident) => incident.id !== id) });
     this.forget(id);
+    this.impact?.refresh();
   }
 
   private forget(id: string): void {
@@ -143,6 +164,12 @@ export class MapIncidents {
       reports: reports.filter((report) => !isMapReport(report)),
       ...(recommendation && mapRecommendations.has(recommendation) && { recommendation: undefined }),
     });
+    this.impact?.clear();
+  }
+
+  /** The operator ran one planned action on one building: it is marked done and the dollars at risk drop. */
+  executeAction(propertyId: string, actionId: string): ActionOutcome {
+    return this.impact?.execute(propertyId, actionId) ?? { ok: false, error: "portfolio impact is not available" };
   }
 
   async report(input: MapIncidentInput): Promise<{ incident: MapIncident; reply: string }> {
@@ -182,9 +209,10 @@ export class MapIncidents {
       this.cancelForecast(incidentId);
       this.releaseRecommendation(incident);
       change.recommendation = undefined;
-      if (incident.forecastStatus === "running") change.forecastStatus = incident.fire || incident.crash ? "ready" : "none";
+      if (incident.forecastStatus === "running") change.forecastStatus = incident.fire || incident.crash || incident.flood ? "ready" : "none";
     }
     this.update(incidentId, change);
+    this.impact?.refresh();
     this.store.log("dispatch", `${incident.label}${this.at(incident)} is now ${phase.replace("_", " ")}`, incidentId);
     // Reopened: the old forecast may be long stale, so refresh it and resume the schedule.
     if (incident.phase === "resolved" && this.forecastRefreshMs > 0) this.runForecast(incidentId, true);
@@ -245,7 +273,7 @@ export class MapIncidents {
 
   private recommendationFor(incident: MapIncident): Recommendation | undefined {
     if (!incident.formatted) return undefined;
-    const forecast = incident.fire?.summary ?? incident.crash?.summary;
+    const forecast = incident.fire?.summary ?? incident.crash?.summary ?? incident.flood?.summary;
     const crew = incident.kind === "fire" ? "fire crews" : "responders";
     const recommendation: Recommendation = {
       actions: [
@@ -345,9 +373,10 @@ export class MapIncidents {
       // The old place's forecast and Next actions no longer apply, and a late result for it must not land.
       this.cancelForecast(existing.id);
       this.releaseRecommendation(existing);
-      this.update(existing.id, { query: input.address, status: "locating", location: undefined, formatted: undefined, error: undefined, fire: undefined, crash: undefined, forecastStatus: "none", forecastAt: undefined, recommendation: undefined });
+      this.update(existing.id, { query: input.address, status: "locating", location: undefined, formatted: undefined, error: undefined, fire: undefined, crash: undefined, flood: undefined, affectedRoads: undefined, impact: undefined, affectedProperties: undefined, forecastStatus: "none", forecastAt: undefined, recommendation: undefined });
       this.roadCache.delete(existing.id);
       this.buildingCache.delete(existing.id);
+      this.impact?.refresh();
       const located = await this.locate(existing.id, input.address!);
       return this.answer(existing.id, input, located);
     }
@@ -405,6 +434,7 @@ export class MapIncidents {
     this.store.log("report", `${incident.label} located: ${match.formatted}`, id);
     if (incident.kind === "other") this.recommend(id);
     this.runForecast(id);
+    this.impact?.refresh();
   }
 
   /** Folds a duplicate into the incident it matches: everything said and done on it moves across. */
@@ -433,6 +463,7 @@ export class MapIncidents {
     switch (kind) {
       case "fire": return (job) => this.fire(job);
       case "crash": return (job) => this.crash(job);
+      case "flood": return (job) => this.flood(job);
       case "other": return undefined;
       default: {
         const unhandled: never = kind;
@@ -478,10 +509,11 @@ export class MapIncidents {
     this.refreshTimers.set(id, timer);
   }
 
-  private forecastReady(id: string, forecast: Pick<MapIncident, "fire" | "crash">, refresh: boolean): void {
+  private forecastReady(id: string, forecast: Pick<MapIncident, "fire" | "crash" | "flood" | "affectedRoads">, refresh: boolean): void {
     this.update(id, { ...forecast, forecastStatus: "ready", forecastAt: this.now(), error: undefined });
     if (refresh) this.refreshRecommendation(id);
     else this.recommend(id);
+    this.impact?.refresh();
   }
 
   private async fire({ id, incident, current, refresh }: ForecastJob): Promise<void> {
@@ -501,6 +533,17 @@ export class MapIncidents {
     const roads = this.roadCache.get(id) ?? (await this.providers.roads(location));
     if (!current()) return;
     this.roadCache.set(id, roads);
-    this.forecastReady(id, { crash: forecastCrash(location, roads, incident.lanesBlocked ?? "unknown") }, refresh);
+    const crash = forecastCrash(location, roads, incident.lanesBlocked ?? "unknown");
+    this.forecastReady(id, { crash, affectedRoads: crashRoads(crash) }, refresh);
+  }
+
+  private async flood({ id, incident, current, refresh }: ForecastJob): Promise<void> {
+    const location = incident.location!;
+    const roads = this.roadCache.get(id) ?? (await this.providers.roads(location).catch(() => [] as RoadWay[]));
+    if (!current()) return;
+    this.roadCache.set(id, roads);
+    const source = incident.label === DEFAULT_LABEL.flood ? undefined : incident.label.toLowerCase();
+    const { flood, roads: affectedRoads } = forecastFlood(location, roads, incident.severity, source);
+    this.forecastReady(id, { flood, affectedRoads }, refresh);
   }
 }

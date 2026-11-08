@@ -15,6 +15,9 @@ import { onActiveBuilding, type OccupancyEstimator } from "./agent/bridge.ts";
 import { createBuildingService, type BuildingService } from "./buildings/service.ts";
 import { MapIncidents } from "./incidents/service.ts";
 import { defaultMapProviders, type MapProviders } from "./incidents/providers.ts";
+import { agentImpactEngine, type ImpactEngine } from "./impact/engine.ts";
+import { ImpactTracker } from "./impact/tracker.ts";
+import { PORTFOLIO } from "./portfolio/portfolio.ts";
 
 export interface AppOptions {
   /** Scripted demo calls on the demo building; building lookups are ignored. */
@@ -28,6 +31,10 @@ export interface AppOptions {
   estimateOccupancy?: OccupancyEstimator;
   /** Geocoding, roads, nearby buildings and wind for the map. Default: the real providers. */
   mapProviders?: MapProviders;
+  /** Who works out which portfolio buildings the incidents reach. Default: the impact agent in agent/. */
+  impactEngine?: ImpactEngine;
+  /** Also ask Nemotron for the impact (slower, with the agent's tool trail). Default: when NVIDIA_API_KEY is set. */
+  impactLlm?: boolean;
   /** WebSocket: at most one broadcast per this many ms. 0 sends on every change. Default 100. */
   broadcastMs?: number;
   /** Called by every reset (forgets the agent's per-caller memory). */
@@ -67,7 +74,8 @@ export function createApp(options: AppOptions = {}) {
     onHeld: (report) => lookups.onHeld(report),
   });
   const mock = options.mock ? new MockIncident(store, live, ingest, options.tickMs ?? 2000) : undefined;
-  const mapIncidents = new MapIncidents(store, options.mapProviders ?? defaultMapProviders(buildings), lookups);
+  const impact = new ImpactTracker(store, options.impactEngine ?? agentImpactEngine(), PORTFOLIO, { llm: options.impactLlm });
+  const mapIncidents = new MapIncidents(store, options.mapProviders ?? defaultMapProviders(buildings), lookups, { impact });
   const resetAgent = () => options.resetAgent?.();
 
   const httpServer = createHttpServer({
@@ -109,7 +117,7 @@ export function createApp(options: AppOptions = {}) {
     mapIncidents,
   }, { broadcastMs: options.broadcastMs });
 
-  return { store, active, live, lookups, ingest, mock, httpServer, setReportProcessor, mapIncidents };
+  return { store, active, live, lookups, ingest, mock, httpServer, setReportProcessor, mapIncidents, impact };
 }
 
 export type App = ReturnType<typeof createApp>;

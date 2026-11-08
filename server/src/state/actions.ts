@@ -49,6 +49,10 @@ export function parseClientEvent(raw: unknown, roomIds: ReadonlySet<string> = de
         ? { type: "addIncidentNote", incidentId: e.incidentId, text }
         : `addIncidentNote needs an \`incidentId\` and non-empty \`text\` of at most ${MAX_NOTE} characters`;
     }
+    case "executeAction":
+      return isText(e.propertyId, MAX_INCIDENT_ID) && isText(e.actionId, MAX_INCIDENT_ID)
+        ? { type: "executeAction", propertyId: e.propertyId, actionId: e.actionId }
+        : "executeAction needs a `propertyId` and an `actionId`";
     case "lookupAddress":
       return isText(e.address, 500) ? { type: "lookupAddress", address: e.address } : "lookupAddress needs a non-empty `address`";
     case "confirmBuilding":
@@ -76,6 +80,8 @@ export interface ActionHooks {
     dispatch(incidentId: string, unit?: string): { ok: boolean; error?: string };
     setPhase(incidentId: string, phase: IncidentPhase): { ok: boolean; error?: string };
     addNote(incidentId: string, text: string): { ok: boolean; error?: string };
+    /** Runs one planned action on one portfolio building. */
+    executeAction?(propertyId: string, actionId: string): { ok: boolean; error?: string };
   };
 }
 
@@ -110,6 +116,9 @@ export function applyClientEvent(event: ClientEvent, store: IncidentStore, hooks
       break;
     case "addIncidentNote":
       incidentResult(`note on ${event.incidentId}`, hooks.mapIncidents?.addNote(event.incidentId, event.text));
+      break;
+    case "executeAction":
+      incidentResult(`execute ${event.actionId} on ${event.propertyId}`, hooks.mapIncidents?.executeAction?.(event.propertyId, event.actionId));
       break;
     case "lookupAddress":
       lookupResult(`lookup address "${event.address}"`, hooks.lookups?.lookupAddress(event.address));

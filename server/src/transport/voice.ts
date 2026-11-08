@@ -49,9 +49,10 @@ export const VOICE_INCIDENT_WHERE = "Where is it? Give me the address, or the ne
 export const VOICE_INCIDENT_NOT_FOUND = "I could not find that location. What is the nearest cross street or landmark?";
 export const VOICE_INCIDENT_FALLBACK = "Help is on the way. Move somewhere safe if you can.";
 export const VOICE_INCIDENT_UPDATE = "Thank you, I have passed that on. Stay on the line if it is safe.";
-export const VOICE_INCIDENT_NEW: Record<"fire" | "buildingFire" | "crash" | "other", string> = {
+export const VOICE_INCIDENT_NEW: Record<"fire" | "buildingFire" | "crash" | "flood" | "other", string> = {
   fire: "Help is on the way. Move away from the fire and smoke. Is anyone hurt or trapped?",
   buildingFire: "Help is on the way. Leave the building by the nearest stairwell. Do not use the elevator. Is anyone hurt or trapped?",
   crash: "Help is on the way. Stay clear of traffic. Is anyone hurt or trapped?",
+  flood: "Help is on the way. Stay out of the water, and do not drive through it. Is anyone hurt or trapped?",
   other: "Help is on the way. Move somewhere safe if you can. Is anyone hurt or in danger?",
 };
