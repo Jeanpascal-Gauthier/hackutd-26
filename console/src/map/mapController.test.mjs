@@ -17,6 +17,7 @@ class Overlay {
   setPaths(value) { this.paths = value; }
   setPosition(value) { this.position = value; }
   setTitle(value) { this.title = value; }
+  setLabel(value) { this.label = value; }
   setIcon(value) { this.icon = value; }
   setZIndex(value) { this.zIndex = value; }
   setOpacity(value) { this.opacity = value; }
@@ -78,14 +79,15 @@ function harness() {
     setOptions() {}, fitBounds() { this.fits++; }, setCenter() {}, setZoom() {},
   };
   const selections = [];
-  const controller = new MapController(map, element, (id) => selections.push(id));
-  return { controller, map, selections, handlers };
+  const buildingSelections = [];
+  const controller = new MapController(map, element, (id) => selections.push(id), (id) => buildingSelections.push(id));
+  return { controller, map, selections, buildingSelections, handlers };
 }
 function update(controller, incidents, selectedId = incidents[0]?.id ?? null, extra = {}) {
   controller.update({ incidents, selectedId, showTraffic: false, ...extra });
 }
 
-test("forecast payloads never draw overlays or change the incident camera", () => {
+test("incident payload refreshes without an explicit forecast scene preserve the pin-only view", () => {
   const { controller, map } = harness();
   const original = incident();
   update(controller, [original]);
@@ -143,5 +145,37 @@ test("pins select incidents, traffic toggles, and cleanup removes objects and su
   assert.ok(marker.listenersCleared);
   assert.ok(observers.every((observer) => observer.disconnected));
   assert.equal(handlers.size, 0);
+});
+
+test("forecast overlays render, select buildings, reuse unchanged geometry, and clean up", () => {
+  const { controller, map, buildingSelections } = harness();
+  const shape = { id: "building", kind: "polygon", path: area, color: "#ff0000", opacity: .5, weight: 2, title: "Office", buildingId: "b1", zIndex: 8 };
+  const scene = { scenarioId: "demo", extent: area, shapes: [shape, { ...shape, id: "road", kind: "line", buildingId: undefined, dashed: true }] };
+  update(controller, [incident()], "one", { scene });
+  const polygon = objects.find((item) => item instanceof Polygon);
+  assert.equal(polygon.map, map);
+  assert.equal(polygon.options.clickable, true);
+  polygon.click();
+  assert.deepEqual(buildingSelections, ["b1"]);
+  const count = objects.length;
+  update(controller, [incident()], "one", { scene: structuredClone(scene) });
+  assert.equal(objects.length, count);
+  const changed = { ...scene, shapes: [{ ...shape, color: "#00ff00" }] };
+  update(controller, [incident()], "one", { scene: changed });
+  assert.equal(polygon.map, null);
+  assert.equal(map.fits, 1);
+  controller.destroy();
+  assert.ok(objects.every((item) => item.map === null));
+});
+
+test("merged incident pins show their true call count", () => {
+  const { controller } = harness();
+  const value = incident();
+  value.reports = [{ caller: "a" }, { caller: "b" }, { caller: "c" }];
+  update(controller, [value]);
+  const marker = objects.find((item) => item instanceof Marker);
+  assert.equal(marker.label.text, "3 calls");
+  assert.match(marker.title, /3 calls merged/);
+  controller.destroy();
 });
 

@@ -1,5 +1,29 @@
 # FireSight demo runbook
 
+## CBRE map and action demo (no server required)
+
+Run `npm run dev -w console` and open <http://localhost:5173/?fixture=map>.
+For a fully offline schematic map, use <http://localhost:5173/?fixture=map&map=offline>.
+Fixtures only run in the Vite development server.
+
+1. Start with **6 buildings · 1,240 people · ~$380K at risk in the next 30 min**.
+2. Scrub the forecast from Now to +30 min, or press **Play forecast**. Fire, smoke, flood water,
+   crash queues and flooded roads advance together. Dashed links show related incidents; the fire
+   pin has **3 calls** merged into one incident. The gas leak has a **140 m blast radius**.
+3. Click **Main Street Lofts** on the map or in the prioritized list. Inspect its failure chain.
+4. Press **Execute** on **Isolate gas supply & shut down HVAC**. It becomes **Done**, the chain
+   step becomes **Interrupted**, and the timestamped execution appears in history. The building's
+   risk score drops **100 → 40** and total exposure drops **$380K → $323K**.
+5. Execute the evacuation action to reduce exposed people **1,240 → 1,060**. The impact card
+   stays visible while working in the building drill-down.
+6. **Reset scenario** clears local execution history and restores the starting forecast. Actions
+   otherwise survive refresh in the same tab through session storage.
+
+All scenario data and action reductions are illustrative, defined in `console/src/devFixture.ts`.
+Execute records a local simulated action; it does not send commands to building equipment or dispatch
+services. Google Maps and the schematic use the same forecast geometry. Google Maps automatically
+falls back to the schematic while loading or when unavailable.
+
 ## Once, before demo day
 1. Root `.env` has `NVIDIA_API_KEY=...` (the agent needs it). For phone calls also `VOICE_TOKEN` and `GEOAPIFY_API_KEY` (see [Phone calls](#phone-calls-elevenlabs)).
 2. `npm install` (repo root).
