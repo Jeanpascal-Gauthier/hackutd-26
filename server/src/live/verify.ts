@@ -11,7 +11,7 @@ const { doors, inspections } = DEMO;
 const PORT = verifyPort(18081);
 const base = `http://localhost:${PORT}`;
 const VOICE_TOKEN = "verify-voice-token";
-const server = await startServer(PORT, { MOCK: "0", VOICE_TOKEN });
+const server = await startServer(PORT, { MOCK: "0", VOICE_TOKEN, WS_BROADCAST_MS: "0" });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const post = async (path: string, body?: unknown) =>
   (await fetch(base + path, { method: "POST", headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) })).json() as Promise<Record<string, any>>;

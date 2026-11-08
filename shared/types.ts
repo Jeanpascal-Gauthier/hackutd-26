@@ -68,6 +68,8 @@ export interface Report {
   reply?: string;
   /** How the report arrived. Absent on older reports. */
   channel?: "voice" | "sms" | "form" | "console";
+  /** The map incident this report belongs to. Absent on building-pipeline reports. */
+  incidentId?: string;
 }
 
 export interface RoomState {
@@ -134,6 +136,8 @@ export interface LogEntry {
   time: number; // epoch ms
   kind: "report" | "origin" | "recommendation" | "accepted" | "dispatch" | "building";
   text: string;
+  /** The map incident this entry is about. Absent for building-pipeline entries. */
+  incidentId?: string;
 }
 
 /** Shape of shared/building.json, and of GET /building's `building` for any active building. */
@@ -204,6 +208,8 @@ export interface GeoPoint {
 export type MapIncidentKind = "fire" | "crash" | "other";
 export type IncidentSeverity = "minor" | "serious" | "critical" | "unknown";
 export type LanesBlocked = "all" | "some" | "unknown";
+/** Where the response to an incident stands. Separate from `status`, which tracks geocoding. */
+export type IncidentPhase = "open" | "dispatched" | "on_scene" | "resolved";
 
 /** One emergency on the map. Fires and crashes get a forecast; `other` is a pin only. */
 export interface MapIncident {
@@ -226,12 +232,22 @@ export interface MapIncident {
   inBuilding?: boolean;
   /** Crashes: how much of the road is blocked. */
   lanesBlocked?: LanesBlocked;
-  /** Every caller's words, oldest first. */
-  reports: { caller: string; text: string; time: number; channel?: Report["channel"] }[];
+  /** Every caller's words, oldest first. `reply` is what the caller was told back. */
+  reports: { caller: string; text: string; time: number; channel?: Report["channel"]; reply?: string }[];
   time: number; // epoch ms of the first report
   updated: number; // epoch ms of the last change
+  phase: IncidentPhase;
+  /** This incident's pending recommendation. Moves to `accepted` when the operator accepts it. */
+  recommendation?: Recommendation;
+  accepted?: { recommendation: Recommendation; time: number };
+  /** Units the operator sent, oldest first. `unit` is free text, e.g. "Engine 3". */
+  dispatches?: { unit?: string; time: number }[];
+  /** Operator notes, oldest first. Kept separate from the caller-only responder brief. */
+  notes?: { text: string; time: number }[];
   /** `none` for `other` incidents and until there is a location. */
   forecastStatus: "none" | "running" | "ready" | "failed";
+  /** Epoch ms the current forecast was built. Forecast minutes count from here. */
+  forecastAt?: number;
   fire?: FireForecast;
   crash?: CrashForecast;
 }
@@ -268,6 +284,8 @@ export interface FireExposure {
   /** Null when the plume does not reach it within 30 minutes. */
   smokeEtaMinutes: number | null;
   risk: "high" | "moderate" | "low";
+  /** What the place is, when it matters to responders: "hospital", "school", "nursing home", ... */
+  use?: string | null;
 }
 
 /** Modeled, not observed. Show `assumptions` with it. Minutes count from the forecast's start. */
@@ -278,6 +296,10 @@ export interface CrashForecast {
   segments: CongestionSegment[];
   /** Ascending by minute. */
   steps: { minute: number; queueMeters: number; roads: string[] }[];
+  /** Modeled: when the road is assumed to reopen, and when the queue is gone (null: beyond the model's range). */
+  clearance?: { reopenMinute: number; clearedMinute: number | null };
+  /** Named nearby roads outside the queue that traffic could divert to, best first. */
+  alternateRoads?: string[];
   summary: string;
   assumptions: string[];
 }

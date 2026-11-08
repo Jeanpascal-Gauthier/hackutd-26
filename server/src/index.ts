@@ -12,6 +12,7 @@ const AUTOPLAY = process.env.AUTOPLAY !== "0";
 const AGENT = process.env.AGENT === "1"; // opt in: Nemotron agent (needs NVIDIA_API_KEY in .env)
 const VOICE_TOKEN = process.env.VOICE_TOKEN?.trim() || undefined; // enables POST /voice/report and /voice/address
 const AGENT_TIMEOUT_MS = Number(process.env.AGENT_TIMEOUT_MS ?? 12000); // voice: under the ElevenLabs tool timeout; Nemotron takes ~5 s, 8.5 s worst seen
+const BROADCAST_MS = process.env.WS_BROADCAST_MS ? Number(process.env.WS_BROADCAST_MS) : undefined; // default 100; 0 broadcasts every change
 
 // Occupancy estimates for looked-up buildings: the agent's estimateOccupancy() is pure code (no
 // API key), so it loads whatever AGENT says. Mock mode never leaves the demo building.
@@ -19,7 +20,7 @@ const estimateOccupancy = MOCK ? undefined : await loadOccupancyEstimator();
 
 // Clears the agent's memory of each caller's earlier texts, so one demo run doesn't leak into the next.
 let resetAgent = () => {};
-const app = createApp({ mock: MOCK, tickMs: TICK_MS, voiceToken: VOICE_TOKEN, estimateOccupancy, resetAgent: () => resetAgent() });
+const app = createApp({ mock: MOCK, tickMs: TICK_MS, voiceToken: VOICE_TOKEN, estimateOccupancy, broadcastMs: BROADCAST_MS, resetAgent: () => resetAgent() });
 export const store = app.store;
 export const setReportProcessor = app.setReportProcessor;
 

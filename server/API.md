@@ -316,11 +316,15 @@ The same records, filtered. Query parameters are all optional and combine: `floo
 
 ## For the headset and console (WebSocket)
 
-- **Server → client:** `{ "type": "state", "state": IncidentState }`. Sent on connect and after every change.
+- **Server → client:** `{ "type": "state", "state": IncidentState }`. Sent at once on connect, then after changes, coalesced: at most one message per 100 ms (`WS_BROADCAST_MS`, 0 sends every change), always ending on the final state.
 - **Client → server:**
   - `{ "type": "setSimMinute", "minute": 0..30 }`: scrub the forecast for everyone.
-  - `{ "type": "acceptRecommendation" }`
+  - `{ "type": "acceptRecommendation", "incidentId"?: "inc-1" }`: with no id, accepts `state.recommendation` (and marks the owning map incident accepted, if any). With an id, accepts that map incident's recommendation, and the global one too if it is the same object.
   - `{ "type": "dispatch", "roomId": "7-break" }`: appends to `state.dispatches` (a room of the active building).
+  - `{ "type": "dispatchIncident", "incidentId": "inc-1", "unit"?: "Engine 3" }`: appends to the incident's `dispatches`; `open` becomes `dispatched`. No room needed. Ignored on a resolved incident.
+  - `{ "type": "setIncidentPhase", "incidentId": "inc-1", "phase": "open"|"dispatched"|"on_scene"|"resolved" }`
+  - `{ "type": "addIncidentNote", "incidentId": "inc-1", "text": "…" }`: at most 500 characters; an incident keeps its last 50.
+  - Events naming an unknown incident are ignored with a server log line.
   - `{ "type": "lookupAddress", "address": "…" }`: start an address lookup (same as `POST /incident/address`).
   - `{ "type": "confirmBuilding", "buildingId": "osm:way:123" }`: confirm a candidate (same as `POST /incident/building`).
   - `{ "type": "useDemoBuilding" }`: back to the demo building, incident cleared.
@@ -333,9 +337,9 @@ The same records, filtered. Query parameters are all optional and combine: `floo
 - `recommendation`: pending actions for the commander. On `acceptRecommendation` it moves to `accepted: {recommendation, time}`, so keep the route lit while `accepted` is set.
 - `dispatches[]`: `{roomId, time}`.
 - `trail[]`: agent tool calls `{tool, input, output, ms}`.
-- `reports[]`: each `{id, caller, text, roomId?, confidence?, time, reply?, channel?}`. `reply` is what FireSight told that caller (follow-up question or advice), so a console can show "caller said / FireSight replied" transcripts. `channel` is `voice` for phone calls.
+- `reports[]`: each `{id, caller, text, roomId?, confidence?, time, reply?, channel?, incidentId?}`. `reply` is what FireSight told that caller (follow-up question or advice), so a console can show "caller said / FireSight replied" transcripts. `channel` is `voice` for phone calls. `incidentId` is the map incident the report belongs to.
 - `building`: `{id, name, version, layoutEstimated}` of the active building; `buildingLookup`: the address lookup (see [Building from an address](#building-from-an-address-live-mode)).
-- `log[]`: a ready-made incident log, `{time, kind, text}`, where `kind` is report, origin, recommendation, accepted, dispatch or building (replies to callers are logged as `report` entries starting "Replied to"). Last 200 entries.
+- `log[]`: a ready-made incident log, `{time, kind, text, incidentId?}` (`incidentId` when the entry is about a map incident), where `kind` is report, origin, recommendation, accepted, dispatch or building (replies to callers are logged as `report` entries starting "Replied to"). Last 200 entries.
 
 ## Phone calls (Photon → ElevenLabs → FireSight)
 
@@ -362,13 +366,18 @@ The webhook tool `report_incident`: any emergency, placed on the map as `state.m
 
 - **Body:** `{ type: "fire"|"crash"|"other", address, description, what?, in_building?, severity?, lanes_blocked?, caller? }`. `description` is required. An unrecognized `type` becomes `other`; unrecognized `severity` or `lanes_blocked` become `unknown`.
 - **Answer:** always 200 once authorized: `{ ok, reply, incidentId, status }`. `reply` is what the voice agent says. It waits at most 4 s for the geocoder, so `status` may still be `locating`.
-- **One emergency, one incident:** a report joins an existing incident of the same kind from the same caller in the last 30 minutes, at the same stated address, or within 150 m once geocoded. A sole caller giving a different address moves the pin.
-- **Forecasts** run in the background (`forecastStatus`). `fire` has wind-driven fire and smoke areas and nearby building exposures. `crash` has congestion segments by minute. `other` has none. Forecasts are modeled: `assumptions` must be shown with them.
+- **One emergency, one incident:** a report joins an existing incident of the same kind from the same caller in the last 30 minutes, at the same stated address, or within 150 m once geocoded. A sole caller giving a different address moves the pin. A resolved incident is never joined: a new report there opens a new incident. For `other`, a report that names a `what` joins only the same (normalized) label; one with no `what` can still attach.
+- **Phases:** `phase` starts `open` and moves by `dispatchIncident` and `setIncidentPhase`. Resolved incidents stay in `mapIncidents`, and their pending recommendation is cleared. Over 50 incidents, the oldest resolved go first.
+- **Recommendations:** each incident has its own `recommendation`, which moves to `accepted` when the operator accepts it. The newest also fills the global `state.recommendation` (the same object), unless a building's plan is showing.
+- **Forecasts** run in the background (`forecastStatus`). `fire` has wind-driven fire and smoke areas and nearby building exposures. `crash` has congestion segments by minute. `other` has none. Forecasts are modeled: `assumptions` must be shown with them. `forecastAt` is when the current one was built.
+- **Refresh:** located, unresolved fires and crashes re-run their forecast every 5 minutes. The previous forecast and `forecastStatus` stay until the new one is ready, a failed refresh changes nothing, and a pending recommendation is updated silently (an accepted one is left alone).
+- `reports[].reply` on the incident and on `state.reports[]` keeps what the caller was told. The responder brief uses only `query` (the stated location) and `reports[].text` (caller words); it excludes replies, forecasts, inferred fields, recommendations, dispatch records, and operator notes.
+- **Voice follow-ups:** use the current ElevenLabs system prompt in [DEMO.md](../DEMO.md#phone-calls-elevenlabs). Report what happened and where immediately, then ask one short question at a time about missing details such as people hurt or trapped, floor/room, hazards, or access. Submit each caller answer through `report_incident`; preserve uncertainty and corrections, and never fill missing answers with guesses.
 - **Data sources:** Geoapify (geocoding, and routes and places when Overpass is down), Overpass (roads and building outlines, first choice), Open-Meteo (wind, no key).
-- A fire with `in_building: true` also starts the building lookup, exactly like `/voice/address`.
+- A fire with `in_building: true` also starts the building lookup, exactly like `/voice/address`. A follow-up can identify an existing fire as inside a building. When separately geocoded calls merge, the surviving incident keeps the highest reported severity, any building-fire flag, and explicit lane-blockage updates; building lookups use that incident's address so the console can associate its tools correctly.
 
 ### `POST /map-incidents`
-The same body and behavior as `/voice/incident`, without the voice token, for the console and for testing. Answers `{ ok, incident, reply }`, or 400 with `errors` when `description` is missing.
+The same body and behavior as `/voice/incident` (`type`, `what`, `address`, `description`, `severity`, `lanes_blocked`, `in_building`, `caller`), without the voice token, for the console and for testing. Reports are `channel: "console"`. One operator types many reports, so only the same place ties a console report to an earlier incident, never the caller. Answers `{ ok, incident, reply }`, or 400 with `errors` when `description` is missing.
 
 ### `POST /voice/address`
 The webhook tool `report_address`: the caller said the building's address. Same auth as `/voice/report` (503 without `VOICE_TOKEN`, 401 with a wrong token).

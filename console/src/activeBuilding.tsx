@@ -117,10 +117,10 @@ export function useActiveBuildingSource(state: IncidentState | null, override?: 
   return { active, sync };
 }
 
-/** People recorded in one room; `estimated` when any of its counts is an estimate. */
+/** People recorded in one room, excluding inferred occupancy. */
 export function roomPeople(state: IncidentState | null, roomId: string) {
-  const items = state?.occupants.filter((item) => item.room === roomId) ?? [];
-  return { count: items.reduce((sum, item) => sum + item.count, 0), estimated: items.some((item) => item.estimated), known: items.length > 0 };
+  const items = state?.occupants.filter((item) => item.room === roomId && !item.estimated) ?? [];
+  return { count: items.reduce((sum, item) => sum + item.count, 0), known: items.length > 0 };
 }
 
 /** Floors whose occupant counts include estimates. */
@@ -132,18 +132,4 @@ export function estimatedFloors(state: IncidentState | null, active: ActiveBuild
     if (floor !== undefined) out.add(floor);
   }
   return out;
-}
-
-export interface OccupancyEstimate { total?: number; byFloor?: Record<string, number>; basis: string[] }
-
-/** Output of the latest `estimate_occupancy` trail step, if any. */
-export function latestOccupancyEstimate(state: IncidentState | null): OccupancyEstimate | null {
-  const step = [...(state?.trail ?? [])].reverse().find((item) => item.tool === "estimate_occupancy");
-  const output = step?.output as Partial<OccupancyEstimate> | null | undefined;
-  if (!output || typeof output !== "object") return null;
-  return {
-    total: typeof output.total === "number" ? output.total : undefined,
-    byFloor: output.byFloor && typeof output.byFloor === "object" ? output.byFloor : undefined,
-    basis: Array.isArray(output.basis) ? output.basis.filter((line): line is string => typeof line === "string") : [],
-  };
 }

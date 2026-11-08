@@ -28,6 +28,8 @@ export interface AppOptions {
   estimateOccupancy?: OccupancyEstimator;
   /** Geocoding, roads, nearby buildings and wind for the map. Default: the real providers. */
   mapProviders?: MapProviders;
+  /** WebSocket: at most one broadcast per this many ms. 0 sends on every change. Default 100. */
+  broadcastMs?: number;
   /** Called by every reset (forgets the agent's per-caller memory). */
   resetAgent?(): void;
 }
@@ -104,7 +106,8 @@ export function createApp(options: AppOptions = {}) {
     setSimMinute: (minute) => live.goTo(minute),
     roomIds: () => active.roomIds(),
     lookups,
-  });
+    mapIncidents,
+  }, { broadcastMs: options.broadcastMs });
 
   return { store, active, live, lookups, ingest, mock, httpServer, setReportProcessor, mapIncidents };
 }
