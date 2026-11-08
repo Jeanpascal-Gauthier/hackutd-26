@@ -1,16 +1,24 @@
 // The Nemotron agent: one caller message in -> tool calls (logged as a trail) -> room, confidence,
-// and the text to send back to the caller.
+// recommendation, and a follow-up question for the caller when the location is unclear.
 //
 // processReport() has the same shape as the server's ReportProcessor
-// (server/src/state/processor.ts), so the server plugs it in with setReportProcessor().
-// The agent never imports the server: whoever calls it passes the data in through AgentContext.
+// (server/src/state/processor.ts); the server loads it with AGENT=1 (server/src/agent/bridge.ts).
+// The agent never imports the server: tools reach it through AgentContext.server (HTTP by default).
+import { randomUUID } from "node:crypto";
 import type OpenAI from "openai";
 import type { Building, Recommendation, TrailStep } from "@firewatch/shared/types";
 import sharedBuilding from "@firewatch/shared/building.json" with { type: "json" };
 import { createNvidiaClient, NVIDIA_FAST, NVIDIA_MODEL } from "./nvidia.ts";
-import { CONFIDENT, locateRoom, locateRoomTool, type LocateResult } from "./tools/locateRoom.ts";
+import { httpServerApi } from "./server.ts";
+import { CONFIDENT, locateRoomTool, type LocateResult } from "./tools/locateRoom.ts";
+import { mergeReportsTool } from "./tools/mergeReports.ts";
+import { runSpreadTool } from "./tools/runSpread.ts";
+import { findClearExitsTool } from "./tools/findClearExits.ts";
+import { writeRecommendationTool } from "./tools/writeRecommendation.ts";
+import type { AgentContext, AgentTool, RunState, ToolEnv } from "./tools/types.ts";
 
-type ChatTool = OpenAI.Chat.Completions.ChatCompletionTool;
+export type { AgentContext } from "./tools/types.ts";
+
 type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
 export interface AgentInput {
@@ -29,37 +37,20 @@ export interface AgentResult {
   reply?: string;
 }
 
-/** Everything the tools need, passed in by the caller. Grows as tools are added. */
-export interface AgentContext {
-  building: Building;
-}
-
-export const defaultContext: AgentContext = { building: sharedBuilding as Building };
-
-/** What the caller actually said this conversation; tools check the model's arguments against it. */
-interface Heard {
-  text: string;
-}
-
-interface AgentTool {
-  schema: ChatTool;
-  run(args: Record<string, unknown>, ctx: AgentContext, heard: Heard): unknown;
-}
-
-const TOOLS: Record<string, AgentTool> = {
-  locate_room: { schema: locateRoomTool, run: (args, ctx, heard) => locateRoom(args, ctx.building, heard.text) },
+export const defaultContext: AgentContext = {
+  building: sharedBuilding as Building,
+  server: httpServerApi(),
 };
 
-/**
- * The follow-up question for the caller, or undefined once the room is known.
- * Fixed wording, not model output: a message to someone in a fire must not invent advice.
- * With no reply, the server texts the recommendation's callerReply instead, which carries the
- * evacuation route from the exit analysis (server/src/state/ingest.ts).
- */
-function replyFor(located: LocateResult | undefined): string | undefined {
-  if (located && located.confidence >= CONFIDENT && located.roomId) return undefined;
-  return located?.followUp ?? "Which floor are you on, and which room is the smoke or fire in?";
-}
+/** Every tool the model may call, in pipeline order. */
+const TOOL_LIST: AgentTool[] = [
+  locateRoomTool,
+  mergeReportsTool,
+  runSpreadTool,
+  findClearExitsTool,
+  writeRecommendationTool,
+];
+const TOOLS = new Map(TOOL_LIST.map((t) => [t.schema.function.name, t]));
 
 const SYSTEM_PROMPT = `You are the dispatch assistant for FireSight, which handles fire reports for one 12-floor office building.
 Each message is a text from someone in the building reporting fire or smoke.
@@ -69,10 +60,19 @@ Each message is a text from someone in the building reporting fire or smoke.
    - place: a short phrase of 1-4 words naming only the room or area where the fire or smoke is, e.g. "break room", "hallway", "east side". If the caller says the smoke is in one place and they are near another, use where the smoke is. If they only said where they are, use that. If there is no place, leave the field out.
    - If earlier messages from the same caller are listed, combine them: a reply like "east side" answers an earlier question.
    - Never invent a floor or room the caller did not mention. If they gave no location at all, call locate_room with no arguments.
-2. When you have the tool results you need, answer with one short line summarising what you found. The system texts the caller itself.`;
+2. If locate_room's confidence is below ${CONFIDENT}, stop here: the system texts the caller its followUp question.
+3. Otherwise call these, one at a time, in this order:
+   a. merge_reports: combines every report so far into the likely fire origin.
+   b. run_spread with no arguments: forecasts fire and smoke for 30 minutes from that origin.
+   c. find_clear_exits: the clear stairwell for each floor at risk, and who needs help.
+   d. write_recommendation, based only on the find_clear_exits result:
+      - actions (1-3, for the incident commander): which floors to evacuate by which stairwell; send the first engine crew to the fire floor by a clear stairwell; help for people flagged "mobility". Name every floor listed in noClearStair.
+      - callerReply (for people in the building): leave by the clear stairwell, do not use any stairwell that fills with smoke, do not use the elevator.
+      - If it returns problems, fix exactly those and call it again.
+4. Then answer with one short line summarising what you found. The system texts the caller itself.`;
 
-/** Turns per report: locate (plus later tools), then the reply. A guard against loops. */
-const MAX_TURNS = 6;
+/** Model turns per report: one per tool in the pipeline, retries, and the final answer. */
+const MAX_TURNS = 10;
 /** Earlier messages kept per caller, so answers to follow-up questions make sense. */
 const HISTORY = 5;
 
@@ -102,29 +102,53 @@ function parseArgs(raw: string): Record<string, unknown> | undefined {
   }
 }
 
+/**
+ * The follow-up question for the caller, or undefined once the room is known.
+ * Fixed wording, not model output: a message to someone in a fire must not invent advice.
+ * With no reply, the server texts the recommendation's callerReply instead, which carries the
+ * evacuation route from the exit analysis (server/src/state/ingest.ts).
+ */
+function replyFor(located: LocateResult | undefined): string | undefined {
+  if (located && located.confidence >= CONFIDENT && located.roomId) return undefined;
+  return located?.followUp ?? "Which floor are you on, and which room is the smoke or fire in?";
+}
+
+async function runTool(name: string, rawArgs: string, env: ToolEnv): Promise<{ input: unknown; output: unknown }> {
+  const tool = TOOLS.get(name);
+  const args = parseArgs(rawArgs);
+  if (!tool) return { input: rawArgs, output: { error: `unknown tool ${name}` } };
+  if (!args) return { input: rawArgs, output: { error: `arguments are not a JSON object: ${rawArgs}` } };
+  try {
+    return { input: args, output: await tool.run(args, env) };
+  } catch (err) {
+    return { input: args, output: { error: err instanceof Error ? err.message : String(err) } };
+  }
+}
+
 export async function processReport(input: AgentInput, ctx: AgentContext = defaultContext): Promise<AgentResult> {
   client ??= createNvidiaClient();
   const earlier = conversations.get(input.caller) ?? [];
   conversations.set(input.caller, [...earlier, input.text].slice(-HISTORY));
 
+  const env: ToolEnv = {
+    ctx,
+    heard: [...earlier, input.text, input.callerFloor ? `floor ${input.callerFloor}` : ""].join("\n"),
+    run: { report: { id: randomUUID(), text: input.text, caller: input.caller, time: Date.now() } } satisfies RunState,
+  };
   const messages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
     { role: "user", content: userMessage(input, earlier) },
   ];
-  const heard: Heard = {
-    text: [...earlier, input.text, input.callerFloor ? `floor ${input.callerFloor}` : ""].join("\n"),
-  };
   const trail: TrailStep[] = [];
-  let located: LocateResult | undefined;
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     const res = await client.chat.completions.create({
       model: NVIDIA_MODEL,
       messages,
-      tools: Object.values(TOOLS).map((t) => t.schema),
+      tools: TOOL_LIST.map((t) => t.schema),
       tool_choice: "auto",
       temperature: 0.2,
-      max_tokens: 512,
+      max_tokens: 1024,
       ...NVIDIA_FAST,
     });
     const msg = res.choices[0]?.message;
@@ -136,30 +160,17 @@ export async function processReport(input: AgentInput, ctx: AgentContext = defau
     messages.push({ role: "assistant", content: msg.content ?? null, tool_calls: calls });
     for (const call of calls) {
       const started = Date.now();
-      const tool = TOOLS[call.function.name];
-      const args = parseArgs(call.function.arguments);
-      let output: unknown;
-      if (!tool) output = { error: `unknown tool ${call.function.name}` };
-      else if (!args) output = { error: `arguments are not a JSON object: ${call.function.arguments}` };
-      else {
-        try {
-          output = tool.run(args, ctx, heard);
-        } catch (err) {
-          output = { error: err instanceof Error ? err.message : String(err) };
-        }
-      }
-      trail.push({ tool: call.function.name, input: args ?? call.function.arguments, output, ms: Date.now() - started });
-      if (call.function.name === "locate_room" && output && !(output as { error?: unknown }).error) {
-        located = output as LocateResult;
-      }
+      const { input: args, output } = await runTool(call.function.name, call.function.arguments, env);
+      trail.push({ tool: call.function.name, input: args, output, ms: Date.now() - started });
       messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(output) });
     }
   }
 
-  // The tool's result is authoritative for the room, and the reply is fixed wording built from it.
+  const { located, recommendation } = env.run;
   return {
     roomId: located?.roomId,
     confidence: located?.confidence ?? 0,
+    recommendation,
     trail,
     reply: replyFor(located),
   };

@@ -3,6 +3,7 @@
 //   npm run try -w agent                          # the fixtures, plus a follow-up answer, with checks
 //   npm run try -w agent -- "smoke on floor 3"    # one message of your own
 //
+// The full tool chain needs the server running (npm run dev); without it, only locate_room works.
 // Exits 1 if a fixture check fails.
 import calls from "../fixtures/calls.json" with { type: "json" };
 import { processReport, type AgentInput, type AgentResult } from "../core/agent.ts";
@@ -50,6 +51,10 @@ for (const { input, expect } of cases) {
   }
   console.log(`   room:   ${r.roomId ?? "-"}  confidence ${r.confidence ?? 0}`);
   console.log(`   reply:  ${r.reply === undefined ? "(none: the server texts its recommendation instead)" : JSON.stringify(r.reply)}`);
+  if (r.recommendation) {
+    for (const a of r.recommendation.actions) console.log(`   action: ${a}`);
+    console.log(`   to callers: ${JSON.stringify(r.recommendation.callerReply)}`);
+  }
   console.log(`   total:  ${Date.now() - started} ms`);
   if (expect) {
     const ok = expect.ok(r);
