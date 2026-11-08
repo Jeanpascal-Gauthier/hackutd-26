@@ -42,3 +42,16 @@ export function speakable(text: string | undefined): string {
 export const VOICE_ADDRESS_REPLY = "Thank you, I have the address. Which floor is the fire or smoke on, and which room?";
 /** POST /voice/address with no usable address. */
 export const VOICE_ADDRESS_PROMPT = "What is the address of the building?";
+
+/** POST /voice/incident: what the voice agent says back. */
+export const VOICE_INCIDENT_WHAT = "What is happening?";
+export const VOICE_INCIDENT_WHERE = "Where is it? Give me the address, or the nearest cross street or landmark.";
+export const VOICE_INCIDENT_NOT_FOUND = "I could not find that location. What is the nearest cross street or landmark?";
+export const VOICE_INCIDENT_FALLBACK = "Help is on the way. Move somewhere safe if you can.";
+export const VOICE_INCIDENT_UPDATE = "Thank you, I have passed that on. Stay on the line if it is safe.";
+export const VOICE_INCIDENT_NEW: Record<"fire" | "buildingFire" | "crash" | "other", string> = {
+  fire: "Help is on the way. Move away from the fire and smoke. Is anyone hurt or trapped?",
+  buildingFire: "Help is on the way. Leave the building by the nearest stairwell. Do not use the elevator. Is anyone hurt or trapped?",
+  crash: "Help is on the way. Stay clear of traffic. Is anyone hurt or trapped?",
+  other: "Help is on the way. Move somewhere safe if you can. Is anyone hurt or in danger?",
+};
