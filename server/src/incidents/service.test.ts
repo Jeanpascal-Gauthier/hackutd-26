@@ -136,15 +136,36 @@ test("the same caller adds to their incident; a changed lane count re-forecasts 
   } finally { await s.close(); }
 }));
 
-test("a caller's correction moves the pin", quietly(async () => {
+test("a new address from the same phone is a new incident; the first pin stays", quietly(async () => {
   const s = await serve();
   try {
     await s.call("/voice/incident", crash);
     await s.settled();
-    await s.call("/voice/incident", { ...crash, address: "9 Far Rd", description: "sorry, it is on Far Road" });
+    await s.call("/voice/incident", { ...crash, address: "9 Far Rd", description: "another crash on Far Road" });
     const list = await s.settled();
-    assert.equal(list.length, 1);
-    assert.deepEqual(list[0]!.location, FAR);
+    assert.equal(list.length, 2);
+    assert.deepEqual(list[0]!.location, A);
+    assert.deepEqual(list[1]!.location, FAR);
+  } finally { await s.close(); }
+}));
+
+test("a caller's new address leaves a shared pin alone; nearby rewording still folds in", quietly(async () => {
+  const s = await serve();
+  try {
+    await s.call("/voice/incident", crash);
+    await s.settled();
+    await s.call("/voice/incident", { ...crash, caller: "+19", description: "I see it too" });
+    await s.settled();
+    await s.call("/voice/incident", { ...crash, address: "9 Far Rd", description: "another crash on Far Road" });
+    let list = await s.settled();
+    assert.equal(list.length, 2);
+    assert.deepEqual(list[0]!.location, A, "the shared pin stays");
+    assert.equal(list[0]!.reports.length, 2);
+    assert.deepEqual(list[1]!.location, FAR);
+
+    await s.call("/voice/incident", { ...crash, caller: "+19", address: "1 Main Street at the light", description: "still blocked" });
+    list = await s.settled();
+    assert.equal(list.length, 2, "the same place in other words is the same crash");
   } finally { await s.close(); }
 }));
 
@@ -511,21 +532,6 @@ test("other incidents join only with the same label; a report that gives no labe
   assert.equal(s.list().length, 3, "a sinkhole within 150 m does not");
 }));
 
-test("a correction clears the old place's forecast and recommendation; a late forecast for it is dropped", quietly(async () => {
-  let release!: () => void;
-  const hold = new Promise<void>((r) => (release = r));
-  const s = direct({ roads: async () => { await hold; return ROADS; } });
-  await s.service.report(report());
-  assert.equal(s.incident().forecastStatus, "running");
-  await s.service.report(report({ address: "nowhere special" }));
-  release();
-  await new Promise((r) => setTimeout(r, 5));
-  assert.equal(s.incident().status, "needs_location");
-  assert.equal(s.incident().crash, undefined, "the old forecast did not land");
-  assert.equal(s.incident().forecastStatus, "none");
-  assert.equal(s.store.get().recommendation, undefined);
-}));
-
 test("forecastAt is set when a forecast is written, and refresh picks up a wind change without a flicker", quietly(async () => {
   let wind = { speedMps: 4, fromDegrees: 180 };
   let clock = 1000;
@@ -757,13 +763,13 @@ test("links: a fire and a crash 300 m apart stay separate and point at each othe
   s.service.setPhase("inc-2", "on_scene");
   assert.deepEqual(s.incident("inc-1").related, ["inc-2", "inc-3"], "reopening links it again");
 
-  // The crash's only caller corrects the place: it moves out of reach and the links follow.
-  await s.service.report(report({ kind: "crash", address: "1200 east", caller: "+2", description: "sorry, it is further east" }));
+  // The same phone reports a crash out of reach: a new incident, and the existing links stay.
+  await s.service.report(report({ kind: "crash", address: "1200 east", caller: "+2", description: "another crash further east" }));
   await settledAll(s);
-  assert.equal(s.incident("inc-2").related, undefined);
-  assert.deepEqual(s.incident("inc-1").related, ["inc-3"]);
-  assert.deepEqual(s.incident("inc-3").related, ["inc-1"]);
-  assert.equal(s.incident("inc-2").zoneId, zoneId(SPOTS["1200 east"]!));
+  assert.equal(s.list().length, 4);
+  assert.deepEqual(s.incident("inc-2").related, ["inc-1", "inc-3"]);
+  assert.equal(s.incident("inc-4").related, undefined);
+  assert.equal(s.incident("inc-4").zoneId, zoneId(SPOTS["1200 east"]!));
 }));
 
 test("floods: a water main report is an `other` incident labelled Flood with a water forecast and red roads", quietly(async () => {

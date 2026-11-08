@@ -301,7 +301,9 @@ export class MapIncidents {
     return [...this.list].reverse().find((incident) => {
       if (this.injected.has(incident.id) || !canJoin(incident, input.kind, input.what, flood)) return false;
       const recent = incident.reports.filter((report) => report.time >= since);
-      const sameCaller = byCaller && caller !== ANONYMOUS && recent.some((report) => report.caller === caller);
+      // A new address on an already pinned incident is a separate emergency, even from the same phone.
+      const elsewhere = query !== undefined && incident.status === "located" && incident.query !== undefined && normalize(incident.query) !== query;
+      const sameCaller = byCaller && caller !== ANONYMOUS && !elsewhere && recent.some((report) => report.caller === caller);
       const samePlace = query !== undefined && recent.length > 0 && incident.query !== undefined && normalize(incident.query) === query;
       // Without caller id, an unplaced incident is still the likeliest one this answer belongs to.
       const unplaced = byCaller && caller === ANONYMOUS && incident.status === "needs_location" && recent.length > 0;
@@ -409,8 +411,6 @@ export class MapIncidents {
   }
 
   private async follow(existing: MapIncident, input: MapIncidentInput, call: Call): Promise<{ incident: MapIncident; reply: string }> {
-    const callers = new Set(existing.reports.map((report) => report.caller));
-    callers.add(callerName(input));
     const moved = input.address !== undefined && (existing.query === undefined || normalize(input.address) !== normalize(existing.query));
     const lanesBlocked = existing.kind === "crash" && input.lanesBlocked !== "unknown" ? input.lanesBlocked : existing.lanesBlocked;
     const lanesChanged = lanesBlocked !== existing.lanesBlocked;
@@ -424,8 +424,8 @@ export class MapIncidents {
     });
     this.addCallerReport(existing.id, call.reportId, existing.label, input.address ?? existing.formatted ?? existing.query, input);
 
-    // A caller correcting their own location moves the pin; another caller's address does not.
-    if (moved && (callers.size === 1 || existing.status !== "located")) {
+    // Only an incident with no pin yet gets here with a new address: followUpOf splits off the rest.
+    if (moved) {
       // The old place's forecast and Next actions no longer apply, and a late result for it must not land.
       this.cancelForecast(existing.id);
       this.releaseRecommendation(existing);
