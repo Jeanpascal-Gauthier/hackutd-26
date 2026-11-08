@@ -1,4 +1,4 @@
-import { BoxGeometry, Group, LinearFilter, LinearMipmapLinearFilter, Mesh, MeshBasicMaterial, PerspectiveCamera, Raycaster, Texture, Vector3, type Camera, type WebGLRenderer } from '@iwsdk/core';
+import { BoxGeometry, BufferGeometry, DoubleSide, Float32BufferAttribute, Group, LinearFilter, LinearMipmapLinearFilter, Mesh, MeshBasicMaterial, PerspectiveCamera, Raycaster, Texture, Vector3, type Camera, type WebGLRenderer } from '@iwsdk/core';
 import { Scheduler, TilesRenderer } from '3d-tiles-renderer';
 import { GoogleCloudAuthPlugin } from '3d-tiles-renderer/core/plugins';
 import { ReorientationPlugin, TileCompressionPlugin } from '3d-tiles-renderer/plugins';
@@ -12,6 +12,9 @@ const SIDE_VIEW_DISTANCE = 200;
 // Road strips must read from 250 m up; drawn over the city so terrain never hides them.
 const ROAD_WIDTH = 10;
 const ROAD_MATERIAL = new MeshBasicMaterial({ color: 0xff2020, transparent: true, opacity: 0.9, depthTest: false });
+const WATER_MATERIAL = new MeshBasicMaterial({ color: 0x2f86ff, transparent: true, opacity: 0.5, depthTest: false, side: DoubleSide });
+/** Water floats just above the sampled ground so it reads as a surface, under the road strips. */
+const WATER_HEIGHT = 1.5;
 
 /** Owns one streamed tileset. The observer stays still; changing sides rotates the city. */
 export class FireEyeMap {
@@ -20,6 +23,11 @@ export class FireEyeMap {
   readonly tiles = new TilesRenderer();
   private readonly overlay = new Group();
   private overlayPaths: { lat: number; lon: number }[][] = [];
+  private water: Mesh | null = null;
+  private waterInput: { center: { lat: number; lon: number }; steps: { minute: number; water: { lat: number; lon: number }[] }[] } | null = null;
+  private waterRings: { minute: number; points: Vector3[] }[] = [];
+  private waterCenter = new Vector3();
+  private waterMinute = 30;
   ready = false;
   failed = false;
   surfaceY = 0;
@@ -156,6 +164,7 @@ export class FireEyeMap {
     this.tiles.group.position.y -= altitude;
     this.ready = true;
     this.buildOverlay();
+    this.buildWater();
     return true;
   }
 
@@ -221,6 +230,71 @@ export class FireEyeMap {
     }
   }
 
+  /** Flood water: one ring per forecast minute around `center`. Null clears it. */
+  setWater(center: { lat: number; lon: number } | null, steps: { minute: number; water: { lat: number; lon: number }[] }[] = []): void {
+    this.waterInput = center && steps.length ? { center, steps } : null;
+    this.buildWater();
+  }
+
+  /** Show the water as it is at `minute`, blending between the neighbouring forecast rings. */
+  setWaterMinute(minute: number): void {
+    this.waterMinute = minute;
+    const water = this.water;
+    const rings = this.waterRings;
+    if (!water || !rings.length) return;
+    const count = rings[0].points.length;
+    const position = water.geometry.getAttribute('position') as Float32BufferAttribute;
+    let from: Vector3[] | null = null, to = rings[0].points, t = 1;
+    if (minute <= rings[0].minute) {
+      // Before the first ring the water grows out of the reported spot.
+      t = Math.max(0, minute / rings[0].minute);
+    } else {
+      const next = rings.findIndex(ring => ring.minute > minute);
+      if (next === -1) to = rings[rings.length - 1].points;
+      else {
+        const prev = rings[next - 1];
+        from = prev.points; to = rings[next].points;
+        t = (minute - prev.minute) / (rings[next].minute - prev.minute);
+        // Rings with different point counts cannot blend; hold the earlier one.
+        if (from.length !== to.length) { to = from; from = null; t = 1; }
+      }
+    }
+    position.setXYZ(0, this.waterCenter.x, WATER_HEIGHT, this.waterCenter.z);
+    for (let i = 0; i < count; i++) {
+      const a = from ? from[i] : this.waterCenter;
+      const b = to[i] ?? to[to.length - 1];
+      position.setXYZ(i + 1, a.x + (b.x - a.x) * t, WATER_HEIGHT, a.z + (b.z - a.z) * t);
+    }
+    position.needsUpdate = true;
+    water.geometry.computeBoundingSphere();
+  }
+
+  private buildWater(): void {
+    if (this.water) { this.water.geometry.dispose(); this.water.removeFromParent(); this.water = null; }
+    this.waterRings = [];
+    const input = this.waterInput;
+    if (!this.ready || !input) return;
+    this.tiles.group.updateMatrix();
+    this.toLocal(input.center, this.waterCenter);
+    this.waterRings = input.steps
+      .filter(step => step.water.length >= 3)
+      .map(step => ({ minute: step.minute, points: step.water.map(point => this.toLocal(point, new Vector3())) }));
+    if (!this.waterRings.length) return;
+    // Fan from the reported spot: the model's rings are radial around it, so the fan never folds.
+    const count = this.waterRings[0].points.length;
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new Float32BufferAttribute(new Float32Array((count + 1) * 3), 3));
+    const index: number[] = [];
+    for (let i = 0; i < count; i++) index.push(0, 1 + i, 1 + ((i + 1) % count));
+    geometry.setIndex(index);
+    this.water = new Mesh(geometry, WATER_MATERIAL);
+    this.water.name = 'Flood water';
+    this.water.renderOrder = 9;
+    this.water.frustumCulled = false;
+    this.pivot.add(this.water);
+    this.setWaterMinute(this.waterMinute);
+  }
+
   /** Geographic point at the sampled ground height, in the pivot's frame. */
   private toLocal(point: { lat: number; lon: number }, target: Vector3): Vector3 {
     this.tiles.ellipsoid.getCartographicToPosition(point.lat * DEG, point.lon * DEG, this.surfaceY, target);
@@ -235,8 +309,10 @@ export class FireEyeMap {
 
   dispose(): void {
     this.overlayPaths = [];
+    this.waterInput = null;
     this.ready = false;
     this.buildOverlay();
+    this.buildWater();
     this.tiles.dispose();
   }
 }

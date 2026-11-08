@@ -1,6 +1,6 @@
 import { Box3, Group, Quaternion, Raycaster, UIKitMLAsset, Vector3, VisibilityState, createSystem, type Entity, type Object3D } from '@iwsdk/core';
 import { fetchBuilding, IncidentSocket } from './incident-client.js';
-import type { IncidentState, MapIncident } from './incident-types.js';
+import type { IncidentState, MapIncident, MapIncidentPlus } from './incident-types.js';
 import { FireEyeMap } from './fire-eye-map.js';
 import { FireEyeAtmosphere } from './fire-eye-atmosphere.js';
 import { FireEyeStatus, type FireEyePhase, type FireEyeState } from './fire-eye-state.js';
@@ -15,6 +15,10 @@ const AIM_RADIUS_METRES = 50;
 const INCIDENT_RADIUS_METRES = 100;
 /** Incident rows shown per list page; Previous/Next pages through the rest. */
 const LIST_ROWS = 5;
+const FLOOD_HORIZON_MINUTES = 30;
+/** Play runs the 30-minute forecast in 10 seconds. */
+const FLOOD_PLAY_MINUTES_PER_SECOND = 3;
+const FLOOD_STEP_MINUTES = 5;
 
 /** Keep the original command desk available at ?view=firewatch. */
 export const fireEyeRequested = (): boolean => new URLSearchParams(location.search).get('view') !== 'firewatch';
@@ -63,7 +67,7 @@ export class FireEyeSystem extends createSystem({}) {
   private connected = false;
   private manualPreview = false;
   private token = '';
-  private incidents: MapIncident[] = [];
+  private incidents: MapIncidentPlus[] = [];
   private selectedId: string | null = null;
   private incidentPage = 0;
   private menuOpen = false;
@@ -71,6 +75,10 @@ export class FireEyeSystem extends createSystem({}) {
   private flyWhenReady = false;
   private overlayKey = '';
   private overlayMap: FireEyeMap | null = null;
+  private waterKey = '';
+  private floodMinute = FLOOD_HORIZON_MINUTES;
+  private floodPlaying = false;
+  private floodShown = '';
 
   init(): void {
     this.panel = this.world.getSceneObject<UIKitMLAsset>('fire-eye-panel') ?? null;
@@ -107,6 +115,14 @@ export class FireEyeSystem extends createSystem({}) {
     for (const id of ['fireeye-streetview', 'fireeye-streetview-cancel', 'fireeye-streetview-exit']) this.bind(id, () => this.toggleStreet());
     for (let i = 0; i < LIST_ROWS; i++) this.bind(`fireeye-incident-${i}`, () => this.pickIncident(this.incidentPage * LIST_ROWS + i));
     this.bind('fireeye-incident-toggle', () => { this.menuOpen = !this.menuOpen; this.renderIncidents(); });
+    this.bind('fireeye-flood-back', () => this.setFloodMinute(this.floodMinute - FLOOD_STEP_MINUTES));
+    this.bind('fireeye-flood-forward', () => this.setFloodMinute(this.floodMinute + FLOOD_STEP_MINUTES));
+    this.bind('fireeye-flood-play', () => {
+      if (!this.floodPlaying && this.floodMinute >= FLOOD_HORIZON_MINUTES) this.floodMinute = 0;
+      this.floodPlaying = !this.floodPlaying;
+      this.syncOverlay();
+      this.renderFlood();
+    });
     this.bind('fireeye-incident-prev', () => this.pageIncidents(-1));
     this.bind('fireeye-incident-next', () => this.pageIncidents(1));
     this.bind('fireeye-enter', () => { void this.world.launchXR(); });
@@ -181,8 +197,10 @@ export class FireEyeSystem extends createSystem({}) {
   }
 
   private onState(state: IncidentState): void {
-    this.incidents = (state.mapIncidents ?? [])
-      .filter(incident => incident.location && validLocation(incident.location.lat, incident.location.lon));
+    this.incidents = ((state.mapIncidents ?? []) as MapIncidentPlus[])
+      .filter(incident => incident.location && validLocation(incident.location.lat, incident.location.lon))
+      // Newest call first, so a fresh report is always on the first page.
+      .sort((a, b) => b.time - a.time);
     this.renderIncidents();
     const selected = this.selectedIncident();
     const key = state.building ? `${state.building.id}:${state.building.version}` : 'demo';
@@ -192,11 +210,12 @@ export class FireEyeSystem extends createSystem({}) {
     }
     this.buildingKey = key;
     this.syncOverlay();
+    this.renderFlood();
     const recommendation = selected ? selected.recommendation ?? selected.accepted?.recommendation : state.recommendation;
     this.setActions(recommendation?.actions?.filter(action => typeof action === 'string' && action.trim()) ?? []);
   }
 
-  private selectedIncident(): MapIncident | undefined {
+  private selectedIncident(): MapIncidentPlus | undefined {
     return this.selectedId ? this.incidents.find(incident => incident.id === this.selectedId) : undefined;
   }
 
@@ -206,6 +225,8 @@ export class FireEyeSystem extends createSystem({}) {
     if (!incident?.location) return;
     this.selectedId = incident.id;
     this.menuOpen = false;
+    this.floodMinute = FLOOD_HORIZON_MINUTES; this.floodPlaying = false;
+    this.renderFlood();
     this.renderIncidents();
     const recommendation = incident.recommendation ?? incident.accepted?.recommendation;
     this.setActions(recommendation?.actions?.filter(action => typeof action === 'string' && action.trim()) ?? []);
@@ -241,14 +262,53 @@ export class FireEyeSystem extends createSystem({}) {
     }
   }
 
-  /** Crashes draw their blocked and queued road segments in red on the city. */
+  /** Red roads (crash queues, or roads under water by the shown minute) and the flood water itself. */
   private syncOverlay(): void {
-    if (!this.map) return;
-    const paths = this.selectedIncident()?.crash?.segments.map(segment => segment.path) ?? [];
-    const key = JSON.stringify(paths);
-    if (key === this.overlayKey && this.overlayMap === this.map) return;
-    this.overlayKey = key; this.overlayMap = this.map;
-    this.map.setRoadOverlay(paths);
+    const map = this.map;
+    if (!map) return;
+    if (this.overlayMap !== map) { this.overlayMap = map; this.overlayKey = ''; this.waterKey = ''; }
+    const incident = this.selectedIncident();
+    const flood = incident?.flood;
+    const minute = Math.floor(this.floodMinute);
+    const paths = flood
+      ? (incident?.affectedRoads ?? []).filter(road => road.reason === 'flood' && road.fromMinute <= minute).map(road => road.path)
+      : incident?.crash?.segments.map(segment => segment.path) ?? [];
+    const key = `${incident?.id ?? ''}:${incident?.updated ?? 0}:${paths.length}`;
+    if (key !== this.overlayKey) { this.overlayKey = key; map.setRoadOverlay(paths); }
+    const waterKey = flood && incident?.location ? `${incident.id}:${incident.updated}` : '';
+    if (waterKey !== this.waterKey) {
+      this.waterKey = waterKey;
+      map.setWater(flood && incident?.location ? incident.location : null, flood?.steps ?? []);
+    }
+    if (flood) map.setWaterMinute(this.floodMinute);
+  }
+
+  private setFloodMinute(minute: number): void {
+    this.floodMinute = Math.min(FLOOD_HORIZON_MINUTES, Math.max(0, minute));
+    this.floodPlaying = false;
+    this.syncOverlay();
+    this.renderFlood();
+  }
+
+  private updateFlood(dt: number): void {
+    if (!this.floodPlaying) return;
+    this.floodMinute = Math.min(FLOOD_HORIZON_MINUTES, this.floodMinute + dt * FLOOD_PLAY_MINUTES_PER_SECOND);
+    if (this.floodMinute >= FLOOD_HORIZON_MINUTES) this.floodPlaying = false;
+    this.syncOverlay();
+    this.renderFlood();
+  }
+
+  private renderFlood(): void {
+    const flood = this.selectedIncident()?.flood;
+    const minute = Math.floor(this.floodMinute);
+    const shown = flood ? `${this.selectedId}:${minute}:${this.floodPlaying}:${flood.summary ?? ''}` : '';
+    if (shown === this.floodShown) return;
+    this.floodShown = shown;
+    this.set('fireeye-flood', { display: flood ? 'flex' : 'none' });
+    if (!flood) return;
+    this.set('fireeye-flood-minute', { text: `Flood forecast / ${minute === 0 ? 'now' : `minute ${minute}`} of ${FLOOD_HORIZON_MINUTES}` });
+    this.set('fireeye-flood-summary', { text: clean(flood.summary ?? '') });
+    this.set('fireeye-flood-play-label', { text: this.floodPlaying ? 'Pause' : minute >= FLOOD_HORIZON_MINUTES ? 'Replay 30 min' : 'Play' });
   }
 
   private setActions(actions: string[]): void {
@@ -421,6 +481,7 @@ export class FireEyeSystem extends createSystem({}) {
         this.renderStreetButtons();
       }
     }
+    this.updateFlood(dt);
     this.updateStreet(dt);
     this.elapsed += dt;
     if (this.elapsed >= 1) {
