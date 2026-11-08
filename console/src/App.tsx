@@ -10,7 +10,8 @@ import { IncidentDecisions, IncidentLog } from "./IncidentActivity";
 import { PriorityActions } from "./IncidentPriority";
 import { IncidentQueue, IncidentStrip } from "./IncidentQueue";
 import { buildingDecisions, buildCallQueue, buildQueue, type IncidentSelection } from "./incidents";
-import { MapPanel } from "./MapPanel";
+import { MapPanel, type LiveControls } from "./MapPanel";
+import { liveScenario } from "./map/liveScenario";
 import { MoonIcon, ReplayIcon, SceneIcon, SunIcon } from "./Icons";
 import { useIncident } from "./useIncident";
 import { useTheme } from "./theme";
@@ -63,6 +64,30 @@ export function App() {
     if (fixture) { console.info("[fixture] not sent:", path, body); return {}; }
     return request(path, body);
   }
+
+  // The server's portfolio impact, when it has one. Execute and Undo run on the server, so every client sees them.
+  const liveImpact = useMemo(() => fixture ? null : liveScenario(state), [fixture, state]);
+  const [pendingActions, setPendingActions] = useState<ReadonlySet<string>>(new Set());
+  const [actionError, setActionError] = useState<string | null>(null);
+  async function runAction(kind: "execute" | "undo", actionId: string) {
+    if (!connected) { setActionError("Connection lost. Wait for reconnection, then try again."); return; }
+    setActionError(null);
+    setPendingActions((current) => new Set(current).add(actionId));
+    try {
+      await submitRequest(`/portfolio/actions/${encodeURIComponent(actionId)}/${kind}`);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : `Could not ${kind} the action.`);
+    } finally {
+      setPendingActions((current) => { const next = new Set(current); next.delete(actionId); return next; });
+    }
+  }
+  const liveControls: LiveControls | undefined = liveImpact ? {
+    ...liveImpact,
+    onExecute: (_buildingId, actionId) => void runAction("execute", actionId),
+    onUndo: (_buildingId, actionId) => void runAction("undo", actionId),
+    pending: pendingActions,
+    error: actionError,
+  } : undefined;
 
   async function demoAction(action: "reset" | "replay") {
     setDemoBusy(true);
@@ -120,7 +145,7 @@ export function App() {
           </aside>
 
           <div className="workspace-column">
-            <MapPanel key={fixture?.mapScenario?.id ?? "live"} incidents={incidents} selected={selected} scenario={fixture?.mapScenario} onSelect={(id) => setSelection({ kind: "map", id })} />
+            <MapPanel key={fixture?.mapScenario?.id ?? "live"} incidents={incidents} selected={selected} scenario={fixture?.mapScenario ?? liveImpact?.scenario} live={liveControls} onSelect={(id) => setSelection({ kind: "map", id })} />
             {selected && <IncidentTools key={selected.id} incident={selected} />}
             {buildingSelected && <div className="notice info" role="status">This report uses the legacy building-fire intake. Its caller reports and decisions remain available.</div>}
           </div>
