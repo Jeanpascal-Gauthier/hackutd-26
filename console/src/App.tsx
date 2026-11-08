@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 import type { LogEntry, MapIncident } from "@firewatch/shared/types";
 import { BuildingProvider, useActiveBuildingSource } from "./activeBuilding";
 import { AgentTrail } from "./AgentTrail";
@@ -12,7 +12,8 @@ import { IncidentQueue, IncidentStrip } from "./IncidentQueue";
 import { buildingDecisions, buildCallQueue, buildQueue, type IncidentSelection } from "./incidents";
 import { MapPanel } from "./MapPanel";
 import { MoonIcon, ReplayIcon, SceneIcon, SunIcon } from "./Icons";
-import { useIncident } from "./useIncident";
+import { HTTP_URL, useIncident } from "./useIncident";
+import type { PortfolioBuilding } from "./map/portfolioModel";
 import { useTheme } from "./theme";
 import { Timestamp, useFreshIds } from "./ui";
 import "./styles.css";
@@ -32,6 +33,18 @@ export function App() {
   const [demoBusy, setDemoBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: "success" | "error" | "info"; text: string } | null>(null);
   const [selection, setSelection] = useState<IncidentSelection | null>(null);
+  const [portfolioBuildings, setPortfolioBuildings] = useState<PortfolioBuilding[]>([]);
+  useEffect(() => {
+    if (fixture || !liveConnected) return;
+    const controller = new AbortController();
+    void fetch(`${HTTP_URL}/portfolio`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]) })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Portfolio unavailable");
+        const result = await response.json();
+        if (!controller.signal.aborted && result.ok && Array.isArray(result.buildings)) setPortfolioBuildings(result.buildings);
+      }).catch(() => { /* Published summary and actions still work without the optional building cost details. */ });
+    return () => controller.abort();
+  }, [fixture, liveConnected]);
 
   const incidents = useMemo(() => state?.mapIncidents ?? [], [state?.mapIncidents]);
   const queue = useMemo(() => buildQueue(state, active), [state, active]);
@@ -120,7 +133,7 @@ export function App() {
           </aside>
 
           <div className="workspace-column">
-            <MapPanel key={fixture?.mapScenario?.id ?? "live"} incidents={incidents} selected={selected} scenario={fixture?.mapScenario} onSelect={(id) => setSelection({ kind: "map", id })} />
+            <MapPanel key={fixture?.mapScenario?.id ?? "live"} incidents={incidents} selected={selected} scenario={fixture?.mapScenario} portfolio={fixture ? undefined : liveState?.portfolioImpact} portfolioBuildings={portfolioBuildings} activity={state?.log} connected={connected} onExecuteAction={async (actionId) => { await request(`/portfolio/actions/${encodeURIComponent(actionId)}/execute`); }} onSelect={(id) => setSelection({ kind: "map", id })} />
             {selected && <IncidentTools key={selected.id} incident={selected} />}
             {buildingSelected && <div className="notice info" role="status">This report uses the legacy building-fire intake. Its caller reports and decisions remain available.</div>}
           </div>

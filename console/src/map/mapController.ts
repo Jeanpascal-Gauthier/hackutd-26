@@ -215,7 +215,9 @@ export class MapController {
     if (selectedId && !selected) return; // Nothing to show until this incident has a location.
 
     const scenario = this.input?.scene?.scenarioId;
-    const key = scenario ? `scenario|${scenario}` : selected
+    const extent = this.input?.scene?.extent ?? [];
+    const extentKey = extent.length ? [Math.min(...extent.map((point) => point.lat)), Math.max(...extent.map((point) => point.lat)), Math.min(...extent.map((point) => point.lon)), Math.max(...extent.map((point) => point.lon))].map((value) => value.toFixed(6)).join() : "";
+    const key = scenario ? `scenario|${scenario}|${extentKey}` : selected
       ? `selected|${selected.location.lat},${selected.location.lon}|${selected.id}`
       : `all|${located.map((incident) => `${incident.id}:${incident.location.lat},${incident.location.lon}`).sort().join()}`;
     if (key === this.fitKey) return;

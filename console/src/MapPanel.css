@@ -78,8 +78,13 @@
 .map-mitigation-list strong { display: block; font-size: 12px; line-height: 1.5; }
 .map-mitigation-list small { display: block; font-size: 10px; color: var(--text-muted); margin-top: 4px; }
 .map-mitigation-list button { padding: 7px 14px; min-height: 36px !important; font-size: 12px !important; background: var(--accent); color: var(--accent-text); }
-.map-mitigation-list .completed button { background: var(--safe-surface); color: var(--safe); border-color: var(--safe-border); opacity: 1; }
+.map-mitigation-list .completed button:disabled { background: var(--safe-surface); color: var(--safe); border-color: var(--safe-border); opacity: 1; }
 .map-mitigation-list .completed strong { color: var(--safe); }
+.map-action-message { margin: 10px 0; font-size: 12px; line-height: 1.5; color: var(--safe); }
+.map-action-message.error { color: var(--fire); }
+.map-risk-reasons { margin-bottom: 16px; font-size: 11px; color: var(--text-muted); line-height: 1.6; }
+.map-risk-reasons summary { cursor: pointer; }
+.map-risk-reasons ul { padding-left: 18px; margin-top: 8px; }
 .map-drilldown-prompt { font-size: 12px; color: var(--text-muted); line-height: 1.6; padding: 18px 0; }
 .map-execution-log { margin-top: 16px; padding: 16px 0; border-top: 1px solid var(--line); }
 .map-execution-log > p { font-size: 11px; color: var(--text-muted); margin-top: 10px; }

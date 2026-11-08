@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ClientEvent, ServerEvent } from "@firewatch/shared/events";
-import type { IncidentState } from "@firewatch/shared/types";
+import type { IncidentStatePlus } from "../../server/src/incidents/stepZero";
 
 const endpoint = new URL(import.meta.env.VITE_SERVER_URL ?? `${location.protocol}//${location.hostname}:8080`);
 export const HTTP_URL = endpoint.origin;
@@ -8,7 +8,7 @@ endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
 const WS_URL = endpoint.origin;
 
 export function useIncident() {
-  const [state, setState] = useState<IncidentState | null>(null);
+  const [state, setState] = useState<IncidentStatePlus | null>(null);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [connected, setConnected] = useState(false);
   const [mode, setMode] = useState<"mock" | "live" | "unknown">("unknown");

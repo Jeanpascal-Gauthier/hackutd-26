@@ -1,4 +1,5 @@
 import type { GeoPoint, MapIncident } from "@firewatch/shared/types";
+import type { MapIncidentPlus } from "../../../server/src/incidents/stepZero";
 
 export interface MitigationAction {
   id: string;
@@ -6,6 +7,9 @@ export interface MitigationAction {
   owner: string;
   lossReduction: number;
   peopleProtected: number;
+  deadlineMinute?: number;
+  reason?: string;
+  status?: "pending" | "done";
 }
 
 export interface RiskBuilding {
@@ -16,12 +20,16 @@ export interface RiskBuilding {
   people: number;
   loss: number;
   firstImpactMinute: number;
-  chain: { minute: number; title: string; detail: string; preventedBy?: string }[];
+  chain: { minute: number; title: string; detail: string; preventedBy?: string; interrupted?: boolean }[];
   actions: MitigationAction[];
+  reasons?: string[];
+  server?: { risk: RiskLevel; remainingLoss: number | null };
 }
 
 export interface ForecastScenario {
   id: string;
+  source?: "server";
+  label?: string;
   buildings: RiskBuilding[];
   floods: { id: string; incidentId: string; steps: { minute: number; water: GeoPoint[] }[] }[];
   roads: { id: string; incidentId: string; road: string; reason: string; minute: number; path: GeoPoint[] }[];
@@ -41,6 +49,7 @@ export const RISK_COLORS: Record<RiskLevel, string> = { high: "#ef6464", moderat
 export const money = (value: number) => value >= 1000 ? `$${Math.round(value / 1000).toLocaleString("en-US")}K` : `$${Math.round(value).toLocaleString("en-US")}`;
 
 export function buildingImpact(building: RiskBuilding, executions: Execution[]) {
+  if (building.server) return { loss: building.server.remainingLoss ?? building.loss, people: building.people };
   const completed = new Set(executions.filter((event) => event.buildingId === building.id).map((event) => event.actionId));
   const actions = building.actions.filter((action) => completed.has(action.id));
   return {
@@ -79,6 +88,12 @@ export function readExecutions(scenario: ForecastScenario, raw: string | null): 
 }
 
 export function buildingRisk(building: RiskBuilding, executions: Execution[], minute: number): RiskLevel {
+  if (building.server) {
+    const base = building.server.risk;
+    if (building.server.remainingLoss === null || building.server.remainingLoss >= building.loss) return base;
+    const fraction = building.server.remainingLoss / Math.max(1, building.loss);
+    return fraction <= 0.3 ? "low" : fraction <= 0.65 && base === "high" ? "moderate" : base;
+  }
   const fraction = buildingImpact(building, executions).loss / Math.max(1, building.loss);
   if (fraction <= 0.3) return "low";
   return minute >= building.firstImpactMinute && fraction > 0.65 ? "high" : "moderate";
@@ -125,10 +140,27 @@ export interface ForecastScene {
 
 export function buildForecastScene(incidents: MapIncident[], minute: number, scenario?: ForecastScenario, executions: Execution[] = [], selectedBuildingId?: string | null): ForecastScene {
   const shapes: SceneShape[] = [];
-  const active = incidents.filter((incident) => incident.phase !== "resolved" && incident.status === "located" && incident.location);
+  const active = incidents.filter((incident) => incident.phase !== "resolved" && incident.status === "located" && incident.location) as MapIncidentPlus[];
   const activeIds = new Set(active.map((incident) => incident.id));
   const add = (shape: SceneShape) => { if (shape.path.length >= (shape.kind === "line" ? 2 : 3)) shapes.push(shape); };
+  const links = new Set<string>();
   for (const incident of active) {
+    if (incident.flood && incident.location) add({ id: `${incident.id}-flood`, kind: "polygon", path: interpolateRing(incident.flood.steps.map((step) => ({ minute: step.minute, ring: step.water })), minute, incident.location), color: "#409df0", opacity: 0.38, weight: 2, title: `Flood forecast · +${minute} min`, zIndex: 2 });
+    for (const [index, road] of (incident.affectedRoads ?? []).entries()) if (road.fromMinute <= minute) {
+      add({ id: `${incident.id}-road-${index}`, kind: "line", path: road.path, color: "#ef545c", opacity: 1, weight: 7, title: `${road.road ?? "Road"} · ${road.reason === "flood" ? "Flooded" : road.reason === "closure" ? "Closed" : "Crash queue"}`, zIndex: 6 });
+    }
+    if (incident.impact) {
+      const ring = radiusRing(incident.impact.center, incident.impact.radiusMeters);
+      add({ id: `${incident.id}-impact-fill`, kind: "polygon", path: ring, color: "#e8b04e", opacity: 0.06, weight: 0, title: `${incident.label} · ${incident.impact.radiusMeters} m impact radius`, zIndex: 1 });
+      add({ id: `${incident.id}-impact`, kind: "line", path: [...ring, ring[0]!], color: "#e8b04e", opacity: 0.9, weight: 2, dashed: true, title: `${incident.label} · ${incident.impact.radiusMeters} m impact radius · ${incident.impact.reasons.join("; ")}`, zIndex: 4 });
+    }
+    for (const related of incident.related ?? []) {
+      const target = active.find((item) => item.id === related);
+      const key = [incident.id, related].sort().join("|");
+      if (!target?.location || links.has(key)) continue;
+      links.add(key);
+      add({ id: `linked-${key}`, kind: "line", path: [incident.location!, target.location], color: "#93d6ce", opacity: 0.9, weight: 2, dashed: true, title: `${incident.label} ↔ ${target.label} · linked incidents`, zIndex: 7 });
+    }
     if (incident.fire && incident.location) {
       for (const layer of ["smoke", "fire"] as const) {
         add({ id: `${incident.id}-${layer}`, kind: "polygon", path: interpolateRing(incident.fire.steps.map((step) => ({ minute: step.minute, ring: step[layer] })), minute, incident.location), color: layer === "fire" ? "#f57841" : "#a9a5b6", opacity: layer === "fire" ? 0.23 : 0.17, weight: 1, title: `${layer === "fire" ? "Fire" : "Smoke"} forecast · +${minute} min`, zIndex: layer === "fire" ? 3 : 1 });
@@ -138,7 +170,7 @@ export function buildForecastScene(incidents: MapIncident[], minute: number, sce
         add({ id: `${incident.id}-${exposure.id}`, kind: "polygon", path: exposure.outline.length ? exposure.outline : radiusRing(exposure.location, 12), color: RISK_COLORS[reached ? exposure.risk : "low"], opacity: 0.6, weight: 2, title: `${exposure.name ?? "Nearby building"} · ${reached ? exposure.risk : "low"} risk`, zIndex: 8 });
       }
     }
-    for (const [index, segment] of (incident.crash?.segments ?? []).entries()) {
+    for (const [index, segment] of (incident.affectedRoads?.length ? [] : incident.crash?.segments ?? []).entries()) {
       if (segment.queueMinute <= minute) add({ id: `${incident.id}-queue-${index}`, kind: "line", path: segment.path, color: segment.level === "blocked" ? "#d93648" : "#ef6464", opacity: 0.95, weight: segment.level === "blocked" ? 8 : 6, title: `${segment.road ?? "Road"} · ${segment.level === "blocked" ? "Closed" : "Crash queue"}`, zIndex: 5 });
     }
   }
@@ -172,6 +204,9 @@ export function buildForecastScene(incidents: MapIncident[], minute: number, sce
     ...scenario.roads.flatMap((road) => road.path),
     ...scenario.blasts.flatMap((blast) => radiusRing(blast.center, blast.radiusMeters)),
     ...active.flatMap((incident) => incident.crash?.segments.flatMap((segment) => segment.path) ?? []),
+    ...active.flatMap((incident) => incident.affectedRoads?.flatMap((road) => road.path) ?? []),
+    ...active.flatMap((incident) => incident.flood?.steps.at(-1)?.water ?? []),
+    ...active.flatMap((incident) => incident.impact ? radiusRing(incident.impact.center, incident.impact.radiusMeters) : []),
   ] : [];
   return { shapes, extent, scenarioId: scenario?.id };
 }
