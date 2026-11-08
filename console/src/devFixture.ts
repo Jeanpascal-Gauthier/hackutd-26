@@ -1,8 +1,9 @@
-// DEV ONLY. Local fixtures for checking generated-building rendering without the new server endpoints.
+// DEV ONLY. Local fixtures for checking the console without a server.
 // Load with http://localhost:5173/?fixture=lookup (5-floor L-shaped building + a lookup waiting for
-// confirmation) or ?fixture=tower (40 floors x 10 rooms). App only calls this when import.meta.env.DEV,
-// and client events are not sent to the server while a fixture is shown.
-import type { Building, BuildingCandidateSummary, IncidentState, Link, Occupant, Room, RoomKind } from "@firewatch/shared/types";
+// confirmation), ?fixture=tower (40 floors x 10 rooms), or ?fixture=map (a fire, a crash and another
+// incident). App only calls this when import.meta.env.DEV, and client events are not sent to the
+// server while a fixture is shown.
+import type { Building, BuildingCandidateSummary, CongestionSegment, FireExposure, GeoPoint, IncidentState, Link, MapIncident, Occupant, Report, Room, RoomKind } from "@firewatch/shared/types";
 
 type Spec = [suffix: string, label: string, kind: RoomKind, x: number, z: number, w: number, d: number];
 
@@ -103,17 +104,98 @@ function fixture(kind: "lookup" | "tower") {
   return { building, state };
 }
 
-/** The fixture named by `?fixture=`, or null. `&view=map` opens surroundings, `&theme=dark` the dark theme. */
-export function devFixture(): { building: Building; state: IncidentState; view: "map" | "3d" } | null {
+const circle = (center: GeoPoint, meters: number, stretch = 1): GeoPoint[] => Array.from({ length: 16 }, (_, i) => {
+  const angle = (i / 16) * Math.PI * 2;
+  return { lat: center.lat + (meters * stretch * Math.cos(angle)) / 111_320, lon: center.lon + (meters * Math.sin(angle)) / 93_500 };
+});
+
+/** One fire with exposures (owning the building), one crash with queue segments, one other incident. */
+function mapFixture() {
+  const base = fixture("lookup");
+  const now = Date.now();
+  const firePlace: GeoPoint = { lat: 32.7801, lon: -96.8003 };
+  const crashPlace: GeoPoint = { lat: 32.7876, lon: -96.7873 };
+  const query = "1200 Main St, Dallas";
+  const exposure = (id: string, name: string | null, use: string | null, north: number, east: number, fireEtaMinutes: number, smokeEtaMinutes: number | null, risk: FireExposure["risk"], origin = false): FireExposure => {
+    const location = { lat: firePlace.lat + north / 111_320, lon: firePlace.lon + east / 93_500 };
+    return { id, name, use, location, outline: circle(location, 18).slice(0, 8), distanceMeters: Math.round(Math.hypot(north, east)), origin, fireEtaMinutes, smokeEtaMinutes, risk };
+  };
+  const exposures: FireExposure[] = [
+    exposure("x-origin", "Main Street Lofts", null, 0, 0, 0, 0, "high", true),
+    exposure("x-1", "Elm Tower", null, 40, -50, 6, 3, "high"),
+    exposure("x-2", null, null, -70, 60, 14, 7, "moderate"),
+    exposure("x-3", "Parkview Medical Center", "hospital", 380, 260, 88, 6, "low"),
+    exposure("x-4", "Travis Elementary", "school", -520, 410, 140, 14, "low"),
+    exposure("x-5", "Oak Lawn Care Home", "nursing home", 900, -700, 281, null, "low"),
+  ];
+  const fire: MapIncident = {
+    id: "fixture-fire", kind: "fire", label: "Fire", severity: "critical", status: "located", query, location: firePlace,
+    formatted: "1200 Main Street, Dallas, TX 75202", inBuilding: true, phase: "dispatched",
+    reports: [
+      { caller: "+1 214 555 0142", text: "Smoke in the third floor hallway near 3C.", time: now - 420_000, channel: "voice", reply: "Help is on the way. Leave by the nearest stairs if you can." },
+      { caller: "Maya R.", text: "Flames visible from a window on the Main Street side.", time: now - 180_000, channel: "sms" },
+    ],
+    time: now - 420_000, updated: now - 60_000,
+    recommendation: { actions: ["Send a second engine to the Main Street entrance.", "Ask callers on floor 3 to stay low and use Stair A."], callerReply: "Crews are on the way. Use Stair A, and do not use the elevator." },
+    dispatches: [{ unit: "Engine 3", time: now - 300_000 }],
+    notes: [{ text: "Gate on Elm Street is locked after 6 pm.", time: now - 120_000 }],
+    forecastStatus: "ready", forecastAt: now - 200_000,
+    fire: {
+      wind: { speedMps: 5.2, fromDegrees: 200 },
+      steps: [5, 10, 15, 20, 30].map((minute) => ({ minute, fire: circle(firePlace, 18 * minute), smoke: circle(firePlace, 60 * minute, 1.6) })),
+      exposures,
+      summary: "Fire may reach 2 nearby buildings within 30 minutes. Smoke is modeled toward the north-northeast.",
+      assumptions: ["Spread rate is a typical urban value, not measured at this site.", "Wind is from the nearest weather station.", "Nearby buildings come from OpenStreetMap and may be incomplete."],
+    },
+  };
+  const segment = (north: number, east: number, length: number, road: string, queueMinute: number, level: CongestionSegment["level"]): CongestionSegment => ({
+    path: [{ lat: crashPlace.lat + north / 111_320, lon: crashPlace.lon + east / 93_500 }, { lat: crashPlace.lat + (north + length) / 111_320, lon: crashPlace.lon + east / 93_500 }], road, queueMinute, level,
+  });
+  const crash: MapIncident = {
+    id: "fixture-crash", kind: "crash", label: "Car crash", severity: "serious", status: "located", query: "Ross Ave and N Central Expy", location: crashPlace,
+    formatted: "Ross Avenue at North Central Expressway, Dallas, TX", lanesBlocked: "some", phase: "open",
+    reports: [{ caller: "Dan W.", text: "Two cars collided, one lane open, nobody trapped.", time: now - 240_000, channel: "voice", reply: "Thank you, I have passed that on. Stay on the line if it is safe." }],
+    time: now - 240_000, updated: now - 200_000,
+    recommendation: { actions: ["Send one police unit for traffic control.", "Advise crews to approach by Live Oak Street."] },
+    forecastStatus: "ready", forecastAt: now - 180_000,
+    crash: {
+      road: "Ross Avenue",
+      segments: [segment(0, 0, 200, "Ross Avenue", 0, "blocked"), segment(200, 0, 300, "Ross Avenue", 5, "heavy"), segment(500, 0, 400, "Ross Avenue", 10, "heavy"), segment(900, 0, 500, "Pearl Street", 20, "moderate")],
+      steps: [{ minute: 5, queueMeters: 500, roads: ["Ross Avenue"] }, { minute: 10, queueMeters: 900, roads: ["Ross Avenue"] }, { minute: 15, queueMeters: 1150, roads: ["Ross Avenue"] }, { minute: 20, queueMeters: 1400, roads: ["Ross Avenue", "Pearl Street"] }, { minute: 30, queueMeters: 1900, roads: ["Ross Avenue", "Pearl Street"] }],
+      clearance: { reopenMinute: 20, clearedMinute: 46 },
+      alternateRoads: ["Live Oak Street", "Bryan Street"],
+      summary: "Ross Avenue is partly blocked. Queues total about 0.9 km by 10 minutes and 1.9 km by 30 minutes. If the road reopens around minute 20, the queue could clear by about minute 46.",
+      assumptions: ["Illustrative queue model, not live traffic.", "Clearance assumes the road reopens at minute 20, a planning assumption.", "Queue lengths shown up to 30 minutes do not shrink after the assumed reopening at minute 20."],
+    },
+  };
+  const other: MapIncident = {
+    id: "fixture-other", kind: "other", label: "Gas leak", severity: "minor", status: "needs_location", query: "Somewhere by the old mill", phase: "open",
+    reports: [{ caller: "Priya S.", text: "Strong smell of gas near the old mill.", time: now - 90_000, channel: "form" }],
+    time: now - 90_000, updated: now - 90_000, forecastStatus: "none",
+  };
+  const mapIncidents = [fire, crash, other];
+  const reports: Report[] = mapIncidents.flatMap((incident) => incident.reports.map((report, index) => ({ id: `${incident.id}-${index}`, incidentId: incident.id, ...report })));
+  base.state.reports = reports;
+  base.state.mapIncidents = mapIncidents;
+  base.state.buildingLookup = { query, caller: "+1 214 555 0142", status: "active", match: { formatted: fire.formatted!, lat: firePlace.lat, lon: firePlace.lon }, candidates: [], time: now - 400_000 };
+  base.state.log = [
+    ...(base.state.log ?? []),
+    ...mapIncidents.map((incident) => ({ time: incident.time, kind: "report" as const, text: `${incident.label} reported`, incidentId: incident.id })),
+  ].sort((a, b) => a.time - b.time);
+  return base;
+}
+
+/** The fixture named by `?fixture=`, or null. `&view=plan` opens the floor plan, `&theme=dark` the dark theme. */
+export function devFixture(): { building: Building; state: IncidentState; view: "plan" | "3d" } | null {
   const params = new URLSearchParams(location.search);
   const name = params.get("fixture");
-  if (name !== "lookup" && name !== "tower") return null;
+  if (name !== "lookup" && name !== "tower" && name !== "map") return null;
   if (params.get("theme") === "dark" || params.get("theme") === "light") document.documentElement.dataset.theme = params.get("theme")!;
-  const result = fixture(name);
+  const result = name === "map" ? mapFixture() : fixture(name);
   // &lookup=searching|loading|failed shows the other lookup states.
   const status = params.get("lookup");
   if (result.state.buildingLookup && (status === "searching" || status === "loading" || status === "failed")) {
     result.state.buildingLookup = { ...result.state.buildingLookup, status, candidates: status === "failed" ? [] : result.state.buildingLookup.candidates, error: status === "failed" ? "No building outline is mapped at this address." : undefined };
   }
-  return { ...result, view: ["map", "plan"].includes(params.get("view") ?? "") ? "map" : "3d" };
+  return { ...result, view: params.get("view") === "plan" ? "plan" : "3d" };
 }

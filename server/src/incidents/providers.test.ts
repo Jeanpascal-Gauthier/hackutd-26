@@ -55,3 +55,84 @@ test("roads: no Overpass and no Geoapify key is an error, so the forecast report
   const fetch = (async () => { throw new Error("down"); }) as typeof globalThis.fetch;
   await assert.rejects(defaultMapProviders(service as never, { geoapifyApiKey: " ", fetch }).roads(P));
 });
+
+const outline = [{ lat: P.lat, lon: P.lon }, { lat: P.lat, lon: P.lon + 0.0001 }, { lat: P.lat + 0.0001, lon: P.lon + 0.0001 }, { lat: P.lat, lon: P.lon }];
+const house = { type: "way", id: 1, tags: { building: "yes", name: "House" }, geometry: outline };
+
+/** Answers the two Overpass lookups separately; a thrown error stands in for that lookup failing. */
+function overpassFetch(nearby: () => unknown, sites: () => unknown, geoapify?: (url: string) => unknown) {
+  return (async (input: URL | RequestInfo, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes("geoapify")) {
+      if (!geoapify) throw new Error("no geoapify");
+      return json(geoapify(url));
+    }
+    const query = new URLSearchParams(String(init?.body)).get("data") ?? "";
+    return json(query.includes("amenity") ? sites() : nearby());
+  }) as typeof globalThis.fetch;
+}
+
+test("buildings: the wider lookup adds sensitive sites by centre point, with plain labels", async () => {
+  const sites = { elements: [
+    { type: "way", id: 2, center: { lat: 32.99, lon: -96.75 }, tags: { amenity: "hospital", name: "General" } },
+    { type: "node", id: 3, lat: 32.97, lon: -96.75, tags: { amenity: "social_facility", social_facility: "nursing_home" } },
+    { type: "node", id: 4, lat: 32.97, lon: -96.76, tags: { amenity: "cafe" } },
+  ] };
+  const found = await defaultMapProviders(service as never, { fetch: overpassFetch(() => ({ elements: [house] }), () => sites) }).buildings(P);
+  assert.equal(found.sensitiveSitesUnavailable, undefined);
+  assert.deepEqual(found.map((b) => [b.id, b.use]), [["osm:way:1", undefined], ["osm:way:2", "hospital"], ["osm:node:3", "nursing home"]]);
+  assert.deepEqual(found[1]!.location, { lat: 32.99, lon: -96.75 });
+  assert.deepEqual(found[1]!.outline, []);
+});
+
+test("buildings: a site that is also a nearby building marks it, and a site mapped twice appears once", async () => {
+  const sites = { elements: [
+    { type: "way", id: 1, center: P, tags: { amenity: "school", name: "House" } },
+    { type: "way", id: 5, center: { lat: 32.99, lon: -96.75 }, tags: { amenity: "hospital", name: "General" } },
+    { type: "node", id: 6, lat: 32.9901, lon: -96.75, tags: { amenity: "hospital", name: "General" } },
+  ] };
+  const found = await defaultMapProviders(service as never, { fetch: overpassFetch(() => ({ elements: [house] }), () => sites) }).buildings(P);
+  assert.deepEqual(found.map((b) => b.id), ["osm:way:1", "osm:way:5"]);
+  assert.equal(found[0]!.use, "school");
+  assert.equal(found[0]!.outline.length, 3, "keeps the footprint");
+});
+
+test("buildings: a building's own tags give its use even without the wider lookup", async () => {
+  const tagged = { ...house, tags: { building: "hospital" } };
+  const found = await defaultMapProviders(service as never, { fetch: overpassFetch(() => ({ elements: [tagged] }), () => ({ elements: [] })) }).buildings(P);
+  assert.equal(found[0]!.use, "hospital");
+});
+
+test("buildings: when the sensitive-site lookup fails, nearby buildings still come back and say so", async () => {
+  const fetch = overpassFetch(() => ({ elements: [house] }), () => { throw new Error("site lookup down"); });
+  const found = await defaultMapProviders(service as never, { geoapifyApiKey: " ", fetch }).buildings(P);
+  assert.deepEqual(found.map((b) => b.id), ["osm:way:1"]);
+  assert.equal(found.sensitiveSitesUnavailable, true);
+});
+
+test("buildings: a partial Overpass answer for sites counts as a failed lookup", async () => {
+  const found = await defaultMapProviders(service as never, { geoapifyApiKey: " ", fetch: overpassFetch(() => ({ elements: [house] }), () => ({ elements: [], remark: "runtime error" })) }).buildings(P);
+  assert.equal(found.sensitiveSitesUnavailable, true);
+  assert.equal(found.length, 1);
+});
+
+test("buildings: Geoapify stands in for the sensitive-site lookup when Overpass fails it", async () => {
+  let asked = "";
+  const fetch = overpassFetch(() => ({ elements: [house] }), () => { throw new Error("down"); }, (url) => {
+    asked = url;
+    return { features: [
+      { properties: { name: "Elm", lat: 32.97, lon: -96.75, place_id: "s", categories: ["education", "education.school"] } },
+      { properties: { name: "Doc", lat: 32.97, lon: -96.75, place_id: "c", categories: ["healthcare.clinic_or_praxis.general"] } },
+      { properties: { name: "Mystery", lat: 32.97, lon: -96.75, place_id: "m", categories: ["commercial"] } },
+    ] };
+  });
+  const found = await defaultMapProviders(service as never, { geoapifyApiKey: "k", fetch }).buildings(P);
+  assert.deepEqual(found.map((b) => [b.name, b.use]), [["House", undefined], ["Elm", "school"], ["Doc", "clinic"]]);
+  assert.equal(found.sensitiveSitesUnavailable, undefined);
+  assert.match(asked, /circle%3A-96\.75%2C32\.98%2C3000/);
+});
+
+test("buildings: an ordinary-lookup failure still fails, so the forecast says buildings could not be loaded", async () => {
+  const fetch = overpassFetch(() => { throw new Error("down"); }, () => ({ elements: [] }));
+  await assert.rejects(defaultMapProviders(service as never, { geoapifyApiKey: " ", fetch }).buildings(P));
+});

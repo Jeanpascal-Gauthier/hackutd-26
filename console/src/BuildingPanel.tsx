@@ -5,9 +5,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { ClientEvent } from "@firewatch/shared/events";
 import type { BuildingCandidateSummary, BuildingLookup, IncidentState } from "@firewatch/shared/types";
-import { latestOccupancyEstimate, useBuilding, type BuildingSync } from "./activeBuilding";
+import { useBuilding, type BuildingSync } from "./activeBuilding";
 import { PinIcon, SendIcon } from "./Icons";
-import { PeopleCount } from "./ui";
 import "./BuildingPanel.css";
 
 const OSM = "© OpenStreetMap contributors";
@@ -37,8 +36,6 @@ export function BuildingPanel({ state, connected, mode, sync, onSend }: {
   const mock = mode === "mock";
   const canSend = connected && !mock;
   const needs = lookup?.status === "needs_confirmation";
-  const estimate = latestOccupancyEstimate(state);
-  const estimatedPeople = state?.occupants.some((item) => item.estimated) ?? false;
   const attribution = profile.source === "osm" && !(profile.attribution ?? "").includes("OpenStreetMap")
     ? [profile.attribution, OSM].filter(Boolean).join(" · ") : profile.attribution;
   const shape = profile.outline && profile.outline.length >= 3 ? profile.outline : active.rooms.flatMap((r): [number, number][] => [[r.x, r.z], [r.x + r.w, r.z + r.d]]);
@@ -83,12 +80,6 @@ export function BuildingPanel({ state, connected, mode, sync, onSend }: {
           <summary>{profile.assumptions.length} layout assumption{profile.assumptions.length === 1 ? "" : "s"}</summary>
           <ul>{profile.assumptions.map((line, index) => <li key={index}>{line}</li>)}</ul>
         </details>}
-
-        {(estimate || estimatedPeople) && <div className="occupancy-estimate">
-          <span className="eyebrow">OCCUPANCY</span>
-          <p>{estimate?.total !== undefined ? <><PeopleCount count={estimate.total} estimated /> in the building</> : "Occupant counts are estimates"}</p>
-          {estimate && estimate.basis.length > 0 && <ul>{estimate.basis.map((line, index) => <li key={index}>{line}</li>)}</ul>}
-        </div>}
 
         {attribution && <p className="building-attribution">{attribution}</p>}
 
@@ -139,7 +130,7 @@ function ConfirmBuilding({ lookup, hovered, chosen, disabled, onHover, onPick }:
   const { candidates } = lookup;
   return (
     <div className="lookup-confirm">
-      <h3>Confirm the burning building</h3>
+      <h3>Confirm the incident building</h3>
       <Caller lookup={lookup} />
       {lookup.match && <p className="lookup-match"><PinIcon size={15} />{lookup.match.formatted}</p>}
       {candidates.length ? <>

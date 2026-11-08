@@ -1,0 +1,61 @@
+/* Google Maps layer. Flat like the rest of the console: 1px lines, no shadows, gradients or blur. */
+
+:root {
+  --congestion-blocked: color-mix(in oklab, var(--fire) 70%, #000000);
+  --congestion-heavy: var(--fire);
+  --congestion-moderate: var(--warn);
+}
+
+.fw-map, .fw-street { position: relative; width: 100%; height: 100%; overflow: hidden; background: var(--map-bg); }
+.fw-map { min-height: 320px; }
+.fw-street { min-height: 220px; }
+
+/* !important: Google writes its own grey background inline, and it shows while tiles load.
+   z-index contains Google's internal stacking, so console chrome can sit above the canvas. */
+.fw-map-canvas, .fw-street-canvas { position: absolute; inset: 0; z-index: 0; background-color: var(--map-bg) !important; }
+.is-hidden.fw-map-canvas, .is-hidden.fw-street-canvas { visibility: hidden; }
+
+.fw-map-message { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; padding: 16px; background: var(--map-bg); }
+
+/* Zoom control: Google's white card, restyled to the console surface. */
+.fw-map-canvas .gm-bundled-control .gmnoprint > div {
+  background-color: var(--surface) !important;
+  border: 1px solid var(--line);
+  border-radius: 6px !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+.fw-map-canvas .gm-bundled-control .gmnoprint > div > div { background-color: var(--line) !important; }
+.fw-map-canvas .gm-bundled-control button { background-color: var(--surface) !important; }
+:root:not([data-theme="light"]) .fw-map-canvas .gm-bundled-control img { filter: invert(1) brightness(1.4); }
+
+.fw-street-label {
+  position: absolute;
+  z-index: 1;
+  left: 8px;
+  top: 8px;
+  max-width: calc(100% - 16px);
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.fw-street-label small { display: block; font-size: 11px; font-weight: 400; color: var(--text-secondary); }
+
+/* Legend additions. The base .map-legend and .swatch rules live in the console stylesheet. */
+.swatch.fw-risk-high { background: color-mix(in oklab, var(--fire) 30%, var(--surface)); border: 1px solid var(--fire); }
+.swatch.fw-risk-moderate { background: color-mix(in oklab, var(--warn) 30%, var(--surface)); border: 1px solid var(--warn); }
+.swatch.fw-risk-low { background: color-mix(in oklab, var(--text-muted) 25%, var(--surface)); border: 1px solid var(--text-muted); }
+.swatch.fw-sensitive { width: 10px; height: 10px; margin: 1px; border-radius: 2px; background: var(--surface); border: 1.5px solid var(--warn); rotate: 45deg; }
+.swatch.fw-congestion { width: 16px; height: 4px; border-radius: 2px; }
+.swatch.fw-blocked { background: var(--congestion-blocked); }
+.swatch.fw-heavy { background: var(--congestion-heavy); }
+.swatch.fw-moderate { background: var(--congestion-moderate); }
+.map-legend > .fw-legend-note { color: var(--text-muted); margin-left: auto; }

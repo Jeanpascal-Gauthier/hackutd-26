@@ -221,7 +221,7 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
     const smoke = Math.min(1, Math.max(0, current?.smoke ?? 0));
     const selected = selectedRoom === room.id;
     const stroke = selected ? "var(--accent)" : "transparent";
-    const { count, estimated } = roomPeople(state, room.id);
+    const { count, known } = roomPeople(state, room.id);
     const x = px(room.x);
     const y = py(room.z);
     const w = room.w * scale;
@@ -237,7 +237,7 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
 
     // Text layout: stack label + readings if they fit, else one joined line, else label only, else nothing.
     const readings = [fire > 0.01 && `Fire ${Math.round(fire * 100)}%`, smoke > 0.01 && `Smoke ${Math.round(smoke * 100)}%`].filter(Boolean) as string[];
-    if (count > 0) readings.push(`${estimated ? "≈ " : ""}${count} people`);
+    if (count > 0) readings.push(`${count} people`);
     const innerW = w - inset * 2 - 4;
     const innerH = d - inset * 2 - 4;
     const fits = (text: string, size: number, em = CHAR_EM) => text.length * em * size <= innerW;
@@ -262,7 +262,7 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
     const along = w >= d ? "x" : "z";
     const flight = along === "x" ? w : d;
     const treads = Array.from({ length: Math.max(0, Math.floor((flight - 2 * wallInset) / (TREAD * scale))) }, (_, i) => wallInset + (i + 0.5) * TREAD * scale);
-    return { room, current, fire, smoke, selected, stroke, count, estimated, x, y, w, d, onRoute, isOrigin, isStair, isLift, status, wallInset, placed, along, treads };
+    return { room, current, fire, smoke, selected, stroke, count, known, x, y, w, d, onRoute, isOrigin, isStair, isLift, status, wallInset, placed, along, treads };
   });
   const heat = heatSources(rooms, state);
   const heatBounds: HeatRect = [minX - MARGIN.left / scale, minZ - MARGIN.top / scale, maxX + MARGIN.right / scale, maxZ + MARGIN.bottom / scale];
@@ -300,9 +300,9 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
         </g>)}
       </g>
 
-      {layout.map(({ room, current, fire, smoke, selected, stroke, count, estimated, x, y, w, d, onRoute, isOrigin, isStair, isLift, status, wallInset, along, treads }) =>
-        <g key={room.id} role="button" tabIndex={0} data-room-id={room.id} data-origin={isOrigin || undefined} data-route={onRoute && routeActive || undefined} aria-pressed={selected} aria-label={`${room.name}, ${status}, ${estimated ? `about ${count} estimated` : `${count} recorded`} occupants${isOrigin ? ", suspected fire origin" : ""}${onRoute ? routeActive ? ", accepted route segment" : ", forecast route segment" : ""}`} className={`map-room ${selected ? "is-selected" : ""}`} onClick={() => onSelect(room.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(room.id); } }}>
-          <title>{room.name} · {room.id}{current ? ` · fire ${Math.round(fire * 100)}% · smoke ${Math.round(smoke * 100)}%` : " · No incident data"}{count ? ` · ${estimated ? `≈ ${count} people (estimated)` : `${count} people`}` : ""}{onRoute ? " · evacuation route" : ""}</title>
+      {layout.map(({ room, current, fire, smoke, selected, stroke, count, known, x, y, w, d, onRoute, isOrigin, isStair, isLift, status, wallInset, along, treads }) =>
+        <g key={room.id} role="button" tabIndex={0} data-room-id={room.id} data-origin={isOrigin || undefined} data-route={onRoute && routeActive || undefined} aria-pressed={selected} aria-label={`${room.name}, ${status}, ${known ? `${count} recorded occupants` : "people count unavailable"}${isOrigin ? ", suspected fire origin" : ""}${onRoute ? routeActive ? ", accepted route segment" : ", forecast route segment" : ""}`} className={`map-room ${selected ? "is-selected" : ""}`} onClick={() => onSelect(room.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(room.id); } }}>
+          <title>{room.name} · {room.id}{current ? ` · fire ${Math.round(fire * 100)}% · smoke ${Math.round(smoke * 100)}%` : " · No incident data"}{count ? ` · ${count} people` : ""}{onRoute ? " · evacuation route" : ""}</title>
           {/* Fill and stroke as styles so scrubbing the timeline cross-fades them; :hover / :focus-visible override the stroke. Walls are drawn over this separately. */}
           <rect className="room-shape" x={x + wallInset} y={y + wallInset} width={Math.max(1, w - wallInset * 2)} height={Math.max(1, d - wallInset * 2)} strokeWidth={selected ? 2.5 : 1} style={{ fill: roomFill(fire, smoke), stroke }} />
           {isStair && <g className="bp-fixture" aria-hidden="true">

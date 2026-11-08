@@ -1,7 +1,7 @@
 // LIVE mode controller (MOCK=0): reports -> merged fires -> 30-minute spread forecast
 // (precomputed, so scrubbing is instant) -> exits -> recommendation. Mirrors mock/controller.ts.
 import type { IncidentState, Recommendation } from "@firewatch/shared/types";
-import type { IncidentStore } from "../state/store.ts";
+import { isMapReport, mapRecommendations, type IncidentStore } from "../state/store.ts";
 import type { ProcessResult, ReportProcessor } from "../state/processor.ts";
 import type { SpreadSnapshot } from "../simulation/index.ts";
 import { ActiveBuilding, type BuildingData } from "./buildingData.ts";
@@ -34,11 +34,13 @@ export class LiveIncident {
     this.snapshots = [];
     this.fireKey = "";
     // The map spans every emergency, so a change of building doesn't clear it (MapIncidents.clear does).
-    const { mapIncidents } = this.store.get();
+    const { mapIncidents, reports, recommendation } = this.store.get();
+    const kept = keep.reports ?? [];
+    const mapReports = reports.filter((report) => isMapReport(report) && !kept.some((k) => k.id === report.id));
     this.store.reset({
       simMinute: 0,
       rooms: this.data.building.rooms.map((r) => ({ roomId: r.id, fire: 0, smoke: 0 })),
-      reports: keep.reports ?? [],
+      reports: [...kept, ...mapReports].sort((a, b) => a.time - b.time),
       occupants: this.data.occupants,
       trail: keep.trail ?? [],
       dispatches: [],
@@ -46,6 +48,7 @@ export class LiveIncident {
       building: this.active.summary(),
       ...(keep.buildingLookup && { buildingLookup: keep.buildingLookup }),
       ...(mapIncidents && { mapIncidents }),
+      ...(recommendation && mapRecommendations.has(recommendation) && { recommendation }),
     });
   }
 

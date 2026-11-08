@@ -3,13 +3,15 @@ import { Empty, PanelHeading, Timestamp } from "./ui";
 import { CheckIcon } from "./Icons";
 import { useBuilding } from "./activeBuilding";
 
-export function IncidentDecisions({ state, onSelectRoom }: {
-  state: IncidentState | null;
-  onSelectRoom: (roomId: string) => void;
+/** A dispatch to a room (building pipeline) or a free-text unit (map incident). */
+export interface DispatchRecord { time: number; roomId?: string; unit?: string }
+
+export function IncidentDecisions({ accepted, dispatches, onSelectRoom }: {
+  accepted?: IncidentState["accepted"];
+  dispatches: readonly DispatchRecord[];
+  onSelectRoom?: (roomId: string) => void;
 }) {
   const { roomName } = useBuilding();
-  const accepted = state?.accepted;
-  const dispatches = state?.dispatches ?? [];
   return (
     <section className="panel decisions-panel" aria-labelledby="decisions-heading">
       <PanelHeading label="SHARED DECISIONS" title="Accepted & dispatched" id="decisions-heading" />
@@ -39,7 +41,7 @@ export function IncidentDecisions({ state, onSelectRoom }: {
             <li key={`${dispatch.time}-${index}`}>
               <div>
                 <span className="eyebrow">DISPATCH RECORDED</span>
-                <button className="text-button" onClick={() => onSelectRoom(dispatch.roomId)}>{roomName(dispatch.roomId)}</button>
+                {dispatch.roomId ? onSelectRoom ? <button className="text-button" onClick={() => onSelectRoom(dispatch.roomId!)}>{roomName(dispatch.roomId)}</button> : <span>{roomName(dispatch.roomId)}</span> : <span>{dispatch.unit ?? "Unit not named"}</span>}
               </div>
               <Timestamp value={dispatch.time} />
             </li>
@@ -56,13 +58,14 @@ const kinds: Record<LogEntry["kind"], string> = {
 };
 
 export function IncidentLog({ entries = [], freshIds }: { entries?: readonly LogEntry[]; freshIds?: ReadonlySet<string> }) {
+  const visibleEntries = entries.filter((entry) => entry.kind !== "building" || !/^(Estimated \d+ people inside at |Occupancy estimate unavailable:)/.test(entry.text));
   return (
     <section className="panel" aria-labelledby="log-heading">
-      <PanelHeading label="SHARED HISTORY" title="Incident log" id="log-heading" count={entries.length} />
+      <PanelHeading label="SHARED HISTORY" title="Incident log" id="log-heading" count={visibleEntries.length} />
       <p className="log-caption">Server history, newest first. Includes activity from other clients.</p>
-      {entries.length ? (
+      {visibleEntries.length ? (
         <ol className="incident-log" aria-label="Shared incident log, newest first">
-          {[...entries].reverse().map((entry, index) => (
+          {[...visibleEntries].reverse().map((entry, index) => (
             <li key={`${entry.time}-${entry.kind}-${index}`} className={freshIds?.has(`${entry.time}-${entry.kind}-${entry.text}`) ? "is-new" : undefined}>
               <span className={`log-dot ${entry.kind}`} />
               <div><span className="log-kind">{kinds[entry.kind] ?? entry.kind}</span><p>{entry.text}</p><Timestamp value={entry.time} /></div>

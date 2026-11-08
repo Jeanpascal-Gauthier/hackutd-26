@@ -126,7 +126,7 @@ main { max-width: 1720px; padding: 24px 32px 0; margin: auto; }
 .app-header { height: 64px; border-bottom: 1px solid var(--line); padding: 0 32px; display: flex; align-items: center; justify-content: space-between; gap: 16px; background: var(--surface); }
 .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; font-size: 18px; line-height: 1.15; font-weight: 600; letter-spacing: -.3px; }
 .brand small { display: block; font: 500 12px var(--font-sans); letter-spacing: 0; color: var(--text-muted); margin-top: 2px; }
-.brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--fire-border); border-radius: 8px; background: var(--fire-surface); color: var(--fire); }
+.brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--accent-surface); color: var(--accent); }
 .brand-mark svg { stroke-width: 2; }
 .header-meta { display: flex; align-items: center; gap: 10px; }
 .mode-badge { font-size: 12px; font-weight: 500; border: 1px solid var(--line); color: var(--text-secondary); background: var(--surface-2); padding: 6px 10px; border-radius: 6px; white-space: nowrap; }
@@ -354,8 +354,6 @@ input[type=range]:disabled { opacity: .45; cursor: not-allowed; }
 .tool-trail .failed .tool-status { color: var(--fire); }
 .tool-trail li > div > .tool-tag { margin-right: auto; padding: 1px 7px; border: 1px solid var(--line-strong); border-radius: 999px; font-size: 11px; font-weight: 600; color: var(--text-secondary); }
 .tool-trail .recorded:has(.tool-tag) .tool-status { color: var(--text-secondary); }
-/* Estimated people counts: "≈ 14 people", dotted underline with an "estimated" tooltip. */
-.estimated-count { text-decoration: underline dotted color-mix(in oklab, currentColor 55%, transparent); text-underline-offset: 3px; cursor: help; }
 .tool-trail details { font-size: 13px; color: var(--text-secondary); }
 .tool-trail summary { cursor: pointer; color: var(--accent); }
 .tool-trail details[open] summary { margin-bottom: 10px; }
