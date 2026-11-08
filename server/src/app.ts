@@ -13,6 +13,8 @@ import { BuildingLookups, type LookupDeps } from "./live/lookup.ts";
 import { MockIncident } from "./mock/controller.ts";
 import { onActiveBuilding, type OccupancyEstimator } from "./agent/bridge.ts";
 import { createBuildingService, type BuildingService } from "./buildings/service.ts";
+import { MapIncidents } from "./incidents/service.ts";
+import { defaultMapProviders, type MapProviders } from "./incidents/providers.ts";
 
 export interface AppOptions {
   /** Scripted demo calls on the demo building; building lookups are ignored. */
@@ -24,6 +26,8 @@ export interface AppOptions {
   synthesize?: LookupDeps["synthesize"];
   summarize?: LookupDeps["summarize"];
   estimateOccupancy?: OccupancyEstimator;
+  /** Geocoding, roads, nearby buildings and wind for the map. Default: the real providers. */
+  mapProviders?: MapProviders;
   /** Called by every reset (forgets the agent's per-caller memory). */
   resetAgent?(): void;
 }
@@ -61,6 +65,7 @@ export function createApp(options: AppOptions = {}) {
     onHeld: (report) => lookups.onHeld(report),
   });
   const mock = options.mock ? new MockIncident(store, live, ingest, options.tickMs ?? 2000) : undefined;
+  const mapIncidents = new MapIncidents(store, options.mapProviders ?? defaultMapProviders(buildings), lookups);
   const resetAgent = () => options.resetAgent?.();
 
   const httpServer = createHttpServer({
@@ -74,19 +79,23 @@ export function createApp(options: AppOptions = {}) {
     voiceToken: options.voiceToken,
     buildings,
     lookups,
-    // Between judges: back to the demo building, no lookup, no fire, no reports.
+    mapIncidents,
+    // Between judges: back to the demo building, no lookup, no fire, no reports, an empty map.
     resetLive: () => {
       resetAgent();
       if (mock) mock.reset();
       else lookups.resetToDemo();
+      mapIncidents.clear();
     },
     mock: mock && {
       reset: () => {
         resetAgent();
         mock.reset();
+        mapIncidents.clear();
       },
       replay: () => {
         resetAgent();
+        mapIncidents.clear();
         void mock.replay();
       },
     },
@@ -97,7 +106,7 @@ export function createApp(options: AppOptions = {}) {
     lookups,
   });
 
-  return { store, active, live, lookups, ingest, mock, httpServer, setReportProcessor };
+  return { store, active, live, lookups, ingest, mock, httpServer, setReportProcessor, mapIncidents };
 }
 
 export type App = ReturnType<typeof createApp>;

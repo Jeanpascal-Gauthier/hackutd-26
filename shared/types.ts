@@ -126,6 +126,8 @@ export interface IncidentState {
   building?: { id: string; name: string; version: number; layoutEstimated: boolean };
   /** An address lookup in progress, waiting for the operator to confirm a building, or just finished. */
   buildingLookup?: BuildingLookup;
+  /** Every reported emergency for the map view, oldest first. Survives a change of active building. */
+  mapIncidents?: MapIncident[];
 }
 
 export interface LogEntry {
@@ -192,4 +194,97 @@ export interface BuildingCandidateSummary {
   distanceMeters: number;
   /** Footprint in metres relative to the geocoded point (x = east, z = south), for a mini map. */
   outline: [number, number][];
+}
+
+export interface GeoPoint {
+  lat: number;
+  lon: number;
+}
+
+export type MapIncidentKind = "fire" | "crash" | "other";
+export type IncidentSeverity = "minor" | "serious" | "critical" | "unknown";
+export type LanesBlocked = "all" | "some" | "unknown";
+
+/** One emergency on the map. Fires and crashes get a forecast; `other` is a pin only. */
+export interface MapIncident {
+  id: string;
+  kind: MapIncidentKind;
+  /** Short display name: "Fire", "Car crash", "Gas leak", ... */
+  label: string;
+  severity: IncidentSeverity;
+  /**
+   * locating: geocoding `query`. located: `location` is set. needs_location: nothing usable was
+   * given or found, so the caller is asked again. failed: the geocoder was unavailable (`error`).
+   */
+  status: "locating" | "located" | "needs_location" | "failed";
+  /** The place as the caller said it. */
+  query?: string;
+  location?: GeoPoint;
+  formatted?: string;
+  error?: string;
+  /** Fires: true when the fire is inside a building, which also starts the building lookup. */
+  inBuilding?: boolean;
+  /** Crashes: how much of the road is blocked. */
+  lanesBlocked?: LanesBlocked;
+  /** Every caller's words, oldest first. */
+  reports: { caller: string; text: string; time: number; channel?: Report["channel"] }[];
+  time: number; // epoch ms of the first report
+  updated: number; // epoch ms of the last change
+  /** `none` for `other` incidents and until there is a location. */
+  forecastStatus: "none" | "running" | "ready" | "failed";
+  fire?: FireForecast;
+  crash?: CrashForecast;
+}
+
+export interface WindReading {
+  speedMps: number;
+  /** Compass degrees the wind blows from. */
+  fromDegrees: number;
+}
+
+/** Modeled, not observed. Show `assumptions` with it. Minutes count from the forecast's start. */
+export interface FireForecast {
+  /** Null when weather was unavailable: smoke is then an even circle, not a plume. */
+  wind: WindReading | null;
+  /** Ascending by minute. Polygons are closed rings without the first point repeated. */
+  steps: { minute: number; fire: GeoPoint[]; smoke: GeoPoint[] }[];
+  /** Nearby buildings, soonest fire arrival first. */
+  exposures: FireExposure[];
+  summary: string;
+  assumptions: string[];
+}
+
+export interface FireExposure {
+  id: string;
+  name: string | null;
+  /** The building's position, always present. */
+  location: GeoPoint;
+  /** Footprint ring. Empty when the data source only gave a point: draw a marker instead. */
+  outline: GeoPoint[];
+  distanceMeters: number;
+  /** True for the building the fire started in. */
+  origin: boolean;
+  fireEtaMinutes: number;
+  /** Null when the plume does not reach it within 30 minutes. */
+  smokeEtaMinutes: number | null;
+  risk: "high" | "moderate" | "low";
+}
+
+/** Modeled, not observed. Show `assumptions` with it. Minutes count from the forecast's start. */
+export interface CrashForecast {
+  /** Name of the road the crash is on. Null when unnamed or none is mapped nearby. */
+  road: string | null;
+  /** Short stretches of road. Draw those with `queueMinute` <= the forecast minute. */
+  segments: CongestionSegment[];
+  /** Ascending by minute. */
+  steps: { minute: number; queueMeters: number; roads: string[] }[];
+  summary: string;
+  assumptions: string[];
+}
+
+export interface CongestionSegment {
+  path: GeoPoint[];
+  road: string | null;
+  queueMinute: number;
+  level: "blocked" | "heavy" | "moderate";
 }

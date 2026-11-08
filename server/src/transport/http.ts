@@ -6,15 +6,18 @@
 //   POST /forecast    what-if forecast from an origin (or several), state unchanged (agent tools)
 //   POST /voice/report phone-call webhook (ElevenLabs tool), token-protected; replies in speakable text
 //   POST /voice/address phone-call webhook: the caller's address starts a building lookup
+//   POST /voice/incident phone-call webhook: any emergency, placed on the map (incidents/service.ts)
+//   POST /map-incidents  the same report from a screen or script, without the voice token
 //   POST /incident/address, /incident/building, /incident/building/demo  building lookup (live/lookup.ts)
 //   GET  /health      POST /live/reset      POST /mock/reset, /mock/replay (mock mode)
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { Building, IncidentState, Occupant, Recommendation, TrailStep } from "@firewatch/shared/types";
+import type { Building, IncidentState, LanesBlocked, Occupant, Recommendation, TrailStep } from "@firewatch/shared/types";
 import type { Forecast } from "../live/forecast.ts";
 import type { DoorRating, InspectionRecord } from "../live/buildingData.ts";
 import type { IngestInput, ProcessResult } from "../state/processor.ts";
 import type { Ingest } from "../state/ingest.ts";
-import { hasVoiceToken, speakable, VOICE_ADDRESS_PROMPT, VOICE_ADDRESS_REPLY } from "./voice.ts";
+import { hasVoiceToken, speakable, VOICE_ADDRESS_PROMPT, VOICE_ADDRESS_REPLY, VOICE_INCIDENT_FALLBACK, VOICE_INCIDENT_WHAT } from "./voice.ts";
+import type { MapIncidents, MapIncidentInput } from "../incidents/service.ts";
 import type { LookupResult } from "../live/lookup.ts";
 import { createBuildingRoutes } from "../buildings/routes.ts";
 import type { BuildingService } from "../buildings/service.ts";
@@ -46,6 +49,8 @@ export interface HttpDeps {
     confirmBuilding(buildingId: unknown): LookupResult;
     useDemoBuilding(): LookupResult;
   };
+  /** Emergencies on the map (POST /voice/incident, /map-incidents). */
+  mapIncidents?: Pick<MapIncidents, "report">;
 }
 
 export interface BuildingInfo {
@@ -108,6 +113,43 @@ export function validateIngest(body: unknown, roomIds: ReadonlySet<string> = new
   const preprocessed = validateAgentResult(body, roomIds, errors);
   if (errors.length) return errors;
   return { text: (text as string).trim(), caller: (caller as string).trim(), ...(preprocessed && { preprocessed }) };
+}
+
+const oneOf = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T => {
+  const text = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return allowed.find((item) => item === text) ?? fallback;
+};
+const optionalText = (value: unknown, max: number): string | undefined => {
+  const text = typeof value === "string" ? value.trim().slice(0, max) : "";
+  return text || undefined;
+};
+
+/** A voice agent often leaves `lanes_blocked` out even when the caller said it, so their words count too. */
+function lanesFrom(value: unknown, description: string): LanesBlocked {
+  const stated = oneOf(value, ["all", "some", "unknown"], "unknown");
+  if (stated !== "unknown") return stated;
+  const words = `${typeof value === "string" ? value : ""} ${description}`;
+  const everyLane = /\b(all|both|every)\b.{0,12}\blanes?\b|\b(completely|fully|totally)\s+(blocked|closed)\b/i;
+  return everyLane.test(words) && !/\bnot\s+(all|both|every|completely|fully|totally)\b/i.test(words) ? "all" : "unknown";
+}
+
+/** Reads a report of any emergency. A voice agent's tool values are loose, so unknown enums fall back. */
+export function parseMapIncident(body: unknown, channel: MapIncidentInput["channel"]): MapIncidentInput | string[] {
+  const b = isObj(body) ? body : {};
+  const description = optionalText(b.description, MAX_TEXT);
+  if (!description) return ["`description` must be a non-empty string"];
+  const inBuilding = b.in_building === true || (typeof b.in_building === "string" && /^(true|yes)$/i.test(b.in_building.trim()));
+  return {
+    kind: oneOf(b.type, ["fire", "crash", "other"], "other"),
+    what: optionalText(b.what, 60),
+    address: optionalText(b.address, 500),
+    description,
+    severity: oneOf(b.severity, ["minor", "serious", "critical", "unknown"], "unknown"),
+    lanesBlocked: lanesFrom(b.lanes_blocked, description),
+    inBuilding,
+    caller: optionalText(b.caller, MAX_CALLER),
+    channel,
+  };
 }
 
 function json(res: ServerResponse, status: number, body: unknown) {
@@ -173,7 +215,7 @@ async function readJson(req: IncomingMessage, res: ServerResponse): Promise<{ ok
   }
 }
 
-export function createHttpServer({ ingest, getState, getBuildingInfo, forecast, resetLive, mock, voiceToken, buildings, lookups }: HttpDeps) {
+export function createHttpServer({ ingest, getState, getBuildingInfo, forecast, resetLive, mock, voiceToken, buildings, lookups, mapIncidents }: HttpDeps) {
   // The active building can change (address lookup), so room ids are read per request.
   const activeRoomIds = () => new Set(getBuildingInfo().building.rooms.map((r) => r.id));
   const lookupReply = (res: ServerResponse, r: LookupResult | undefined) =>
@@ -256,6 +298,36 @@ export function createHttpServer({ ingest, getState, getBuildingInfo, forecast, 
       const started = lookups?.lookupAddress(address, caller);
       if (started && !started.ok && started.status === 400) return json(res, 200, { ok: false, reply: VOICE_ADDRESS_PROMPT });
       return json(res, 200, { ok: !!started?.ok, reply: VOICE_ADDRESS_REPLY });
+    }
+
+    if (method === "POST" && url === "/voice/incident") {
+      if (!voiceToken) return json(res, 503, { ok: false, error: "voice is off: start the server with VOICE_TOKEN set" });
+      if (!hasVoiceToken(req, voiceToken)) return json(res, 401, { ok: false, error: "missing or wrong x-firesight-token" });
+      const r = await readJson(req, res);
+      if (!r.ok) return;
+      const input = parseMapIncident(r.body, "voice");
+      if (Array.isArray(input)) return json(res, 200, { ok: false, reply: VOICE_INCIDENT_WHAT });
+      try {
+        const out = await mapIncidents!.report(input);
+        return json(res, 200, { ok: true, reply: out.reply, incidentId: out.incident.id, status: out.incident.status });
+      } catch (err) {
+        console.error("[voice] incident failed", err);
+        return json(res, 200, { ok: false, reply: VOICE_INCIDENT_FALLBACK });
+      }
+    }
+
+    if (method === "POST" && url === "/map-incidents") {
+      const r = await readJson(req, res);
+      if (!r.ok) return;
+      const input = parseMapIncident(r.body, "console");
+      if (Array.isArray(input)) return json(res, 400, { ok: false, errors: input });
+      try {
+        const out = await mapIncidents!.report(input);
+        return json(res, 200, { ok: true, incident: out.incident, reply: out.reply });
+      } catch (err) {
+        console.error("[map-incidents] failed", err);
+        return json(res, 502, { ok: false, error: "could not record the incident" });
+      }
     }
 
     if (method === "POST" && url === "/incident/address") {
