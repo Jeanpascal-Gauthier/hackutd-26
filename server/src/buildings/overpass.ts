@@ -81,10 +81,17 @@ async function queryOverpass(query: string, url: string, options: RequestOptions
   return elements(body);
 }
 
-export async function nearbyBuildings(location: Coordinates, url = DEFAULT_OVERPASS_URL, options: RequestOptions = {}): Promise<OsmElement[]> {
+export async function nearbyBuildings(location: Coordinates, url = DEFAULT_OVERPASS_URL, options: RequestOptions = {}, radius = SEARCH_RADIUS_METERS): Promise<OsmElement[]> {
   const { lat, lon } = validateLocation(location);
-  const around = `(around:${SEARCH_RADIUS_METERS},${lat},${lon})`;
+  const around = `(around:${radius},${lat},${lon})`;
   return queryOverpass(`[out:json][timeout:${QUERY_TIMEOUT_SECONDS}];(way["building"]${around};relation["building"]${around};);out meta geom;`, url, options);
+}
+
+/** Drivable roads near a point, with node ids so that shared nodes join them into a street graph. */
+export async function nearbyRoads(location: Coordinates, radius: number, url = DEFAULT_OVERPASS_URL, options: RequestOptions = {}): Promise<OsmElement[]> {
+  const { lat, lon } = validateLocation(location);
+  const classes = "motorway|trunk|primary|secondary|tertiary|unclassified|residential|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link";
+  return queryOverpass(`[out:json][timeout:15];way["highway"~"^(${classes})$"](around:${radius},${lat},${lon});out body geom;`, url, options);
 }
 
 /** Fetch indoor features plus child/member nodes required to preserve rooms and shared doors. */

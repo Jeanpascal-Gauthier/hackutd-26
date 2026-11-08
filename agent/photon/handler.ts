@@ -24,6 +24,12 @@ const SEEN_LIMIT = 500;
 
 export function createHandler(send: (input: IngestInput) => Promise<IngestResult>, log: (line: string) => void = console.log) {
   const seen = new Set<string>();
+  /**
+   * One caller's texts run one at a time, in arrival order. Two quick texts (say, the address
+   * sent twice) would otherwise both run the agent before either lookup shows in the server's
+   * state, and both could start the same address lookup. Different callers still run in parallel.
+   */
+  const queues = new Map<string, Promise<unknown>>();
 
   return async function handle(space: ChatSpace, message: ChatMessage): Promise<string | undefined> {
     if (message.direction !== "inbound") return undefined;
@@ -32,6 +38,15 @@ export function createHandler(send: (input: IngestInput) => Promise<IngestResult
     if (seen.size > SEEN_LIMIT) seen.delete(seen.values().next().value!);
 
     const caller = message.sender?.id ?? space.id;
+    const run = (queues.get(caller) ?? Promise.resolve()).catch(() => {}).then(() => answer(space, message, caller));
+    queues.set(caller, run);
+    void run.finally(() => {
+      if (queues.get(caller) === run) queues.delete(caller);
+    }).catch(() => {});
+    return run;
+  };
+
+  async function answer(space: ChatSpace, message: ChatMessage, caller: string): Promise<string> {
     const text = message.content.type === "text" ? (message.content.text ?? "").trim() : "";
     if (!text) {
       await space.send(NOT_TEXT_REPLY).catch((err) => log(`[photon] send failed: ${String(err)}`));
@@ -51,5 +66,5 @@ export function createHandler(send: (input: IngestInput) => Promise<IngestResult
     }
     await space.send(reply).catch((err) => log(`[photon] send to ${caller} failed: ${String(err)}`));
     return reply;
-  };
+  }
 }

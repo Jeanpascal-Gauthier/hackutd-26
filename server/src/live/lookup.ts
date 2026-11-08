@@ -23,6 +23,7 @@ import type { BuildingService, CacheInfo } from "../buildings/service.ts";
 import { BuildingApiError } from "../buildings/provider.ts";
 import { validateSearch } from "../buildings/geoapify.ts";
 import type { BuildingCandidate, BuildingRecord, Coordinates } from "../buildings/types.ts";
+import { coveredBy } from "./address.ts";
 import {
   summarizeCandidate as realSummarize,
   synthesizeBuilding as realSynthesize,
@@ -118,8 +119,9 @@ export class BuildingLookups {
     }
     if (this.deps.mock) return this.ignoredInMock(`Address lookup "${query}"`);
     const current = this.lookup;
-    // A re-processed report (or a repeated tool call) asking for the same address changes nothing.
-    if (current && current.status !== "failed" && [current.query, current.match?.formatted].some((q) => q && normalizeQuery(q) === normalizeQuery(query)))
+    // A re-processed report, a repeated tool call, or the same address said another way
+    // ("800 W Campbell Rd" vs "800 West Campbell Road, Richardson") changes nothing.
+    if (current && current.status !== "failed" && [current.query, current.match?.formatted].some((q) => q && (normalizeQuery(q) === normalizeQuery(query) || coveredBy(query, q))))
       return { ok: true, lookup: current, unchanged: true };
 
     const gen = ++this.gen;

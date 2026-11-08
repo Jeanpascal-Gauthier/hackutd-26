@@ -33,6 +33,8 @@ export class LiveIncident {
   reset(keep: ResetKeep = {}): void {
     this.snapshots = [];
     this.fireKey = "";
+    // The map spans every emergency, so a change of building doesn't clear it (MapIncidents.clear does).
+    const { mapIncidents } = this.store.get();
     this.store.reset({
       simMinute: 0,
       rooms: this.data.building.rooms.map((r) => ({ roomId: r.id, fire: 0, smoke: 0 })),
@@ -43,6 +45,7 @@ export class LiveIncident {
       log: keep.log ?? [],
       building: this.active.summary(),
       ...(keep.buildingLookup && { buildingLookup: keep.buildingLookup }),
+      ...(mapIncidents && { mapIncidents }),
     });
   }
 
