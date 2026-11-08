@@ -34,7 +34,7 @@ export function pinIcon(kind: MapIncidentKind, selected: boolean, resolved: bool
     + `<path d="${PIN_OUTLINE}" fill="${fill}" stroke="${outline}" stroke-width="${selected ? 2 / scale : 1.25}" stroke-linejoin="round"/>`
     + `<g transform="translate(6 6)" stroke="${glyph}" stroke-width="${ICON_STROKE / scale}" stroke-linecap="round" stroke-linejoin="round">${GLYPHS[kind]}</g>`
     + "</svg>";
-  return svgIcon(svg, PIN_WIDTH * scale, PIN_HEIGHT * scale, (PIN_WIDTH / 2) * scale, PIN_TIP_Y * scale);
+  return { ...svgIcon(svg, PIN_WIDTH * scale, PIN_HEIGHT * scale, (PIN_WIDTH / 2) * scale, PIN_TIP_Y * scale), labelOrigin: new google.maps.Point(PIN_WIDTH * scale / 2, -12) };
 }
 
 /** A diamond holding the people glyph: a hospital, school, or similar site the forecast has reached. */

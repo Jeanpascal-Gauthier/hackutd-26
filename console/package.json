@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/maps/*.test.ts"
+    "test": "tsx --test src/maps/*.test.ts src/map/*.test.ts src/map/*.test.mjs tests/*.test.ts"
   },
   "dependencies": {
     "@firewatch/shared": "*",
