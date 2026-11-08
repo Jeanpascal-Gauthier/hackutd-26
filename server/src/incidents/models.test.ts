@@ -1,9 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { GeoPoint } from "@firewatch/shared/types";
-import { forecastCrash, type RoadWay } from "./crashModel.ts";
+import { METRES_PER_DEGREE } from "../buildings/geometry.ts";
+import { crashAffectedRoads, forecastCrash, type RoadWay } from "./crashModel.ts";
 import { forecastFire, type NearbyBuilding } from "./fireModel.ts";
+import { FLOOD_MINUTES, floodSamplePoints, forecastFlood, isFloodReport } from "./floodModel.ts";
 import { geoDistance, localFrame } from "./geo.ts";
+import { CLOSE_BY_METERS, ZONE_METERS, closeBy, neighbourZones, zoneId } from "./zones.ts";
 
 const ORIGIN: GeoPoint = { lat: 32.99, lon: -96.75 };
 const frame = localFrame(ORIGIN);
@@ -213,4 +216,119 @@ test("crash: alternates are capped, and empty when there are none or no road", (
   const none = forecastCrash(ORIGIN, [road(1, "Far Rd", "primary", [1, 2], [[1000, 1000], [1500, 1000]])], "all");
   assert.deepEqual(none.alternateRoads, []);
   assert.equal(none.clearance, undefined);
+});
+
+// --- Zones, floods and red roads ---------------------------------------------------------------
+
+test("zones: ids are stable grid cells, and close by means a neighbouring cell within 700 m", () => {
+  assert.match(zoneId(ORIGIN), /^z:-?\d+:-?\d+$/);
+  assert.equal(zoneId(ORIGIN), zoneId(at(1, 1)), "a metre away is the same cell");
+  const around = neighbourZones(ORIGIN);
+  assert.equal(new Set(around).size, 9);
+  assert.equal(around[0], zoneId(ORIGIN));
+
+  // A cell edge must not split neighbours: 1 m below a row boundary and 2 m above it.
+  const rowDegrees = ZONE_METERS / METRES_PER_DEGREE;
+  const edge = (Math.floor(ORIGIN.lat / rowDegrees) + 1) * rowDegrees;
+  const below = { lat: edge - 1 / METRES_PER_DEGREE, lon: ORIGIN.lon };
+  const above = { lat: edge + 2 / METRES_PER_DEGREE, lon: ORIGIN.lon };
+  assert.notEqual(zoneId(below), zoneId(above));
+  assert.ok(closeBy(below, above) && closeBy(above, below));
+
+  // 600 m apart but two rows apart: not a neighbouring cell.
+  const twoRows = { lat: below.lat + 600 / METRES_PER_DEGREE, lon: ORIGIN.lon };
+  assert.ok(geoDistance(below, twoRows) < CLOSE_BY_METERS);
+  assert.equal(closeBy(below, twoRows), false);
+  assert.equal(closeBy(ORIGIN, at(800, 0)), false, "beyond 700 m");
+  assert.ok(closeBy(ORIGIN, at(300, 200)));
+});
+
+test("flood: detection reads the caller's what, or the description when there is none", () => {
+  assert.ok(isFloodReport(undefined, "a water main burst on Elm"));
+  assert.ok(isFloodReport(undefined, "the street is flooding"));
+  assert.ok(isFloodReport("Burst pipe", "water everywhere"));
+  assert.ok(isFloodReport("flood", "x"));
+  assert.equal(isFloodReport(undefined, "smells like gas"), false);
+  assert.equal(isFloodReport("gas leak", "and the basement is flooded"), false, "the named emergency wins");
+});
+
+const reachAt = (f: ReturnType<typeof forecastFlood>, i: number) => Math.max(...f.flood.steps[i]!.water.map((p) => geoDistance(ORIGIN, p)));
+
+test("flood: water grows with the square root of time, scaled by severity", () => {
+  const f = forecastFlood(ORIGIN, "critical", null, []);
+  assert.deepEqual(f.flood.steps.map((s) => s.minute), [...FLOOD_MINUTES]);
+  for (let i = 1; i < f.flood.steps.length; i++) assert.ok(reachAt(f, i) > reachAt(f, i - 1));
+  assert.ok(Math.abs(reachAt(f, f.flood.steps.length - 1) - 450) < 2, "critical reaches about 450 m by minute 30");
+  assert.ok(Math.abs(reachAt(f, 0) - 450 * Math.sqrt(2 / 30)) < 2, "sqrt(t)");
+  const last = (severity: "minor" | "serious") => reachAt(forecastFlood(ORIGIN, severity, null, []), FLOOD_MINUTES.length - 1);
+  assert.ok(Math.abs(last("serious") - 300) < 2);
+  assert.ok(Math.abs(last("minor") - 150) < 2);
+  assert.ok(f.flood.assumptions!.some((a) => a.includes("even circle")), "no elevation: says so");
+  assert.match(f.flood.summary!, /450 m by 30 minutes/);
+});
+
+test("flood: lower ground to the east draws the water east", () => {
+  const sample = floodSamplePoints(ORIGIN);
+  const eastward = sample.map((p) => 200 - 0.01 * frame.toMetres(p)[0]); // 1% downhill to the east
+  const f = forecastFlood(ORIGIN, "serious", eastward, []);
+  const last = f.flood.steps[f.flood.steps.length - 1]!.water.map(frame.toMetres);
+  const east = Math.max(...last.map(([e]) => e));
+  const west = -Math.min(...last.map(([e]) => e));
+  assert.ok(east > 1.5 * west, `east ${east} vs west ${west}`);
+  assert.match(f.flood.summary!, /farthest to the east/);
+  assert.ok(f.flood.assumptions!.some((a) => a.includes("Open-Meteo")));
+
+  const flat = forecastFlood(ORIGIN, "serious", sample.map(() => 180), []);
+  const ring = flat.flood.steps.at(-1)!.water.map((p) => geoDistance(ORIGIN, p));
+  assert.ok(Math.max(...ring) - Math.min(...ring) < 2, "flat ground is an even circle");
+});
+
+test("flood: unusable elevation falls back to an even circle", () => {
+  for (const bad of [[1, 2, 3], floodSamplePoints(ORIGIN).map(() => Number.NaN)]) {
+    const f = forecastFlood(ORIGIN, "serious", bad, []);
+    const ring = f.flood.steps.at(-1)!.water.map((p) => geoDistance(ORIGIN, p));
+    assert.ok(Math.max(...ring) - Math.min(...ring) < 2);
+    assert.ok(f.flood.assumptions!.some((a) => a.includes("even circle")));
+  }
+});
+
+test("flood: roads under water turn red from the minute the water reaches them", () => {
+  const roads = [
+    road(1, "Main St", "primary", [1, 2], [[-1000, 0], [1000, 0]]), // straight through the spot, two points only
+    road(2, "Far Rd", "primary", [3, 4], [[-1000, 2000], [1000, 2000]]),
+    road(3, "Edge Ave", "residential", [5, 6], [[200, -600], [200, 600]]), // 200 m east: reached later
+  ];
+  const { flood, affectedRoads } = forecastFlood(ORIGIN, "serious", null, roads);
+  assert.ok(affectedRoads.length > 0);
+  assert.ok(affectedRoads.every((r) => r.reason === "flood" && r.path.length >= 2));
+  assert.ok(!affectedRoads.some((r) => r.road === "Far Rd"));
+  for (let i = 1; i < affectedRoads.length; i++) assert.ok(affectedRoads[i]!.fromMinute >= affectedRoads[i - 1]!.fromMinute, "earliest first");
+  const main = affectedRoads.filter((r) => r.road === "Main St");
+  assert.equal(main[0]!.fromMinute, 2, "the road at the spot is wet at the first step");
+  assert.ok(main.some((r) => r.fromMinute === 30), "and the red grows outward");
+  const edge = affectedRoads.filter((r) => r.road === "Edge Ave");
+  assert.ok(edge.length && edge.every((r) => r.fromMinute >= 15), "200 m out is reached around minute 15 (300 m by 30)");
+  // Every red point is inside the water at its minute (to the 20 m road sampling).
+  for (const r of affectedRoads) {
+    const step = flood.steps.find((s) => s.minute === r.fromMinute)!;
+    const reach = Math.max(...step.water.map((p) => geoDistance(ORIGIN, p)));
+    assert.ok(r.path.every((p) => geoDistance(ORIGIN, p) <= reach + 1));
+  }
+  assert.match(flood.summary!, /Main St/);
+
+  const noRoads = forecastFlood(ORIGIN, "serious", null, null);
+  assert.deepEqual(noRoads.affectedRoads, []);
+  assert.ok(noRoads.flood.assumptions!.some((a) => a.includes("Roads could not be loaded")));
+});
+
+test("crash: red roads are the blocked and heavy queue, joined into runs, earliest first", () => {
+  const f = forecastCrash(ORIGIN, STREETS, "all");
+  const red = crashAffectedRoads(f);
+  assert.ok(red.length > 0);
+  assert.ok(red.length < f.segments.filter((s) => s.level !== "moderate").length, "pieces are joined");
+  assert.ok(red.every((r) => r.reason === "crash" && r.path.length >= 2));
+  assert.ok(red.some((r) => r.road === "Main St" && r.fromMinute < 1));
+  for (let i = 1; i < red.length; i++) assert.ok(red[i]!.fromMinute >= red[i - 1]!.fromMinute);
+  const noRoad = forecastCrash(ORIGIN, [], "all");
+  assert.deepEqual(crashAffectedRoads(noRoad), []);
 });

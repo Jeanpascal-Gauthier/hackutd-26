@@ -2,6 +2,7 @@
 // the shock-wave speed for each road class, and thins out where it splits across junctions.
 import type { CongestionSegment, CrashForecast, GeoPoint, LanesBlocked } from "@firewatch/shared/types";
 import { FORECAST_MINUTES, HORIZON_MINUTES, distance, localFrame, type Metres } from "./geo.ts";
+import type { AffectedRoad } from "./stepZero.ts";
 
 export interface RoadWay {
   id: number;
@@ -223,4 +224,33 @@ export function forecastCrash(origin: GeoPoint, ways: RoadWay[], lanesBlocked: L
     summary: `${place} is ${lanesBlocked === "all" ? "blocked" : "partly blocked"}. Queues total about ${(ten.queueMeters / 1000).toFixed(1)} km by 10 minutes and ${(last.queueMeters / 1000).toFixed(1)} km by 30 minutes${others.length ? `, reaching ${others.slice(0, 4).join(", ")}` : ""}. ${clears}`,
     assumptions: assumptions(lanesBlocked),
   };
+}
+
+const MAX_RED_ROADS = 80;
+const RED_BUCKET_MINUTES = 5;
+
+/**
+ * Red road sections for the agent: the blocked and heavy parts of the queue. Consecutive pieces of one
+ * road that turn red in the same 5 minutes are joined, so the red still grows with the queue.
+ */
+export function crashAffectedRoads(crash: CrashForecast): AffectedRoad[] {
+  const key = (p: GeoPoint) => `${p.lat},${p.lon}`;
+  const runs: AffectedRoad[] = [];
+  /** Runs that can still grow, by time bucket, road and end point. */
+  const ends = new Map<string, AffectedRoad>();
+  for (const segment of [...crash.segments].sort((a, b) => a.queueMinute - b.queueMinute)) {
+    if (segment.level === "moderate" || segment.path.length < 2) continue;
+    const bucket = Math.ceil(segment.queueMinute / RED_BUCKET_MINUTES);
+    const start = `${bucket}|${segment.road}|${key(segment.path[0]!)}`;
+    let run = ends.get(start);
+    if (run) {
+      ends.delete(start);
+      run.path.push(...segment.path.slice(1));
+    } else {
+      run = { path: [...segment.path], road: segment.road, reason: "crash", fromMinute: segment.queueMinute };
+      runs.push(run);
+    }
+    ends.set(`${bucket}|${segment.road}|${key(segment.path[segment.path.length - 1]!)}`, run);
+  }
+  return runs.slice(0, MAX_RED_ROADS);
 }

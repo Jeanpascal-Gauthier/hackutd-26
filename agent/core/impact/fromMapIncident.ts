@@ -28,7 +28,8 @@ export function fromMapIncident(m: MapIncidentInput): AgentIncident | null {
   const affectedRoads = m.affectedRoads ?? (m.crash ? crashRoads(m) : undefined);
   const out: AgentIncident = {
     id: m.id,
-    kind: m.kind,
+    // Until Step 0 adds "flood", the server sends floods as kind "other" with a `flood` forecast or label "Flood".
+    kind: m.kind === "other" && (m.flood || /^flood/i.test(m.label ?? "")) ? "flood" : m.kind,
     severity: m.severity ?? "unknown",
     location: { lat: m.location.lat, lon: m.location.lon },
     description: text ? `${m.label}: ${text}` : m.label,
@@ -37,7 +38,7 @@ export function fromMapIncident(m: MapIncidentInput): AgentIncident | null {
   };
   if (m.inBuilding !== undefined) out.inBuilding = m.inBuilding;
   if (m.lanesBlocked !== undefined) out.lanesBlocked = m.lanesBlocked;
-  if (m.kind === "flood") out.source = m.source ?? m.label;
+  if (out.kind === "flood") out.source = m.source ?? m.label;
   else if (m.source) out.source = m.source;
   if (m.fire) {
     out.fire = m.fire;

@@ -4,6 +4,8 @@
 import "./environment.ts";
 import { createApp } from "./app.ts";
 import { AGENT_EXPORT, guardAgent, loadAgentProcessor, loadAgentReset, loadOccupancyEstimator } from "./agent/bridge.ts";
+import { loadImpactAgent } from "./portfolio/bridge.ts";
+import { loadPortfolio } from "./portfolio/load.ts";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const TICK_MS = Number(process.env.TICK_MS ?? 2000);
@@ -18,9 +20,16 @@ const BROADCAST_MS = process.env.WS_BROADCAST_MS ? Number(process.env.WS_BROADCA
 // API key), so it loads whatever AGENT says. Mock mode never leaves the demo building.
 const estimateOccupancy = MOCK ? undefined : await loadOccupancyEstimator();
 
+// Portfolio impact (CBRE): which data/portfolio.json buildings the map incidents hit. The agent's
+// rules path is pure code, so it runs whatever AGENT says; AGENT=1 adds the Nemotron briefing.
+const portfolioBuildings = loadPortfolio();
+const impactAgent = portfolioBuildings.length ? await loadImpactAgent() : undefined;
+console.log(`[portfolio] loaded ${portfolioBuildings.length} buildings  impact->${impactAgent ? (AGENT ? "agent rules + Nemotron" : "agent rules") : "off"}`);
+const portfolio = { buildings: portfolioBuildings, agent: impactAgent, options: { llm: AGENT } };
+
 // Clears the agent's memory of each caller's earlier texts, so one demo run doesn't leak into the next.
 let resetAgent = () => {};
-const app = createApp({ mock: MOCK, tickMs: TICK_MS, voiceToken: VOICE_TOKEN, estimateOccupancy, broadcastMs: BROADCAST_MS, resetAgent: () => resetAgent() });
+const app = createApp({ mock: MOCK, tickMs: TICK_MS, voiceToken: VOICE_TOKEN, estimateOccupancy, broadcastMs: BROADCAST_MS, resetAgent: () => resetAgent(), portfolio });
 export const store = app.store;
 export const setReportProcessor = app.setReportProcessor;
 
