@@ -1,4 +1,5 @@
-// Console presentation props only. Adapt real events here after the team agrees on a wire format.
+// Tool-call trail panel. App.tsx maps the server's state.trail (shared TrailStep) into these display steps.
+import { SparkIcon } from "./Icons";
 export interface AgentStep {
   id: string;
   tool: string;
@@ -15,12 +16,12 @@ export function AgentTrail({ steps = [] }: { steps?: readonly AgentStep[] }) {
           <span className="eyebrow">AGENT ACTIVITY</span>
           <h2 id="agent-heading">Tool-call trail</h2>
         </div>
-        <span className="agent-icon" aria-hidden="true">✳</span>
+        <span className="agent-icon" aria-hidden="true"><SparkIcon size={20} /></span>
       </div>
       {steps.length ? (
         <ol className="tool-trail">
           {steps.map((step) => (
-            <li key={step.id} className={step.status}>
+            <li key={step.id} className={`${step.status} enter`}>
               <div><strong>{step.tool}</strong><span>{step.status}</span></div>
               <p>{step.summary}</p>
               {step.time !== undefined && (
