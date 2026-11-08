@@ -2,6 +2,7 @@ import { useState, type CSSProperties, type FormEvent } from "react";
 import building from "@firewatch/shared/building.json";
 import type { FloorExit, IncidentState, Report, TrailStep } from "@firewatch/shared/types";
 import { FloorPlan } from "./FloorPlan";
+import { Building3DPanel } from "./building3d";
 import { AgentTrail, type AgentStep } from "./AgentTrail";
 import { CheckIcon, FlameIcon, PinIcon, PulseIcon, ReplayIcon, SendIcon, StairsIcon, UsersIcon } from "./Icons";
 import { useIncident } from "./useIncident";
@@ -116,6 +117,7 @@ export function App() {
               <p className="subtle">{selectedReports.length} report{selectedReports.length === 1 ? "" : "s"} linked to this room.</p>
             </> : <Empty title="Inspect a room" text="Select a room on the floor plan or a location in the report feed." />}</div>
           </section>
+          <Building3DPanel state={state} floor={floor} selectedRoom={selectedRoom} onSelectRoom={setSelectedRoom} onSelectFloor={(f) => setFloor(f)} />
           <section className="panel timeline-panel" aria-labelledby="timeline-heading">
             <div className="timeline-heading"><div><span className="eyebrow">SHARED TIMELINE</span><h2 id="timeline-heading">Explore the incident</h2></div><span className="minute-badge">+{minute} min</span></div>
             <label className="sr-only" htmlFor="timeline">Simulation minute</label><input id="timeline" type="range" min={0} max={maxMinute} step={1} value={Math.min(minute, maxMinute)} disabled={!connected || !state} onChange={(event) => transmit({ type: "setSimMinute", minute: Number(event.target.value) })} aria-valuetext={`${minute} minutes`} />
