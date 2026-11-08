@@ -1,0 +1,111 @@
+<!--
+  Panel and div/span come from the bundled Horizon kit. The :dark styles apply
+  because iwsdk.config.json prefers the dark color scheme.
+-->
+<style>
+  .panel-root {
+    flex-direction: column;
+    width: 480px;
+  }
+
+  .panel-content {
+    flex-direction: column;
+    gap: 20px;
+    padding: 32px;
+  }
+
+  .stat-row {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px;
+    background-color: #ececec;
+    border-color: #c7c7c7;
+    border-width: 2px;
+    border-radius: 12px;
+  }
+
+  .stat-row:dark {
+    background-color: #26272b;
+    border-color: #40414a;
+  }
+
+  .stat-label {
+    color: #3a3b40;
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  .stat-label:dark {
+    color: #dddfe3;
+  }
+
+  .stat-count {
+    color: #1c1d20;
+    font-size: 44px;
+    font-weight: 700;
+  }
+
+  .stat-count:dark {
+    color: #fafaf7;
+  }
+
+  .risk-block {
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 30px;
+    margin-top: 8px;
+    background-color: #f6e4e4;
+    border-color: #a33a3a;
+    border-width: 3px;
+    border-radius: 18px;
+  }
+
+  .risk-block:dark {
+    background-color: #2a1a1a;
+    border-color: #c25858;
+  }
+
+  .risk-label {
+    color: #7a2020;
+    font-size: 26px;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .risk-label:dark {
+    color: #ff8a8a;
+  }
+
+  .risk-count {
+    color: #1c1d20;
+    font-size: 96px;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .risk-count:dark {
+    color: #fafaf7;
+  }
+</style>
+<Panel class="panel-root">
+  <div class="panel-content">
+    <div class="stat-row">
+      <span class="stat-label">Dispatched</span>
+      <span id="stat-dispatched-count" class="stat-count">0</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">En Route</span>
+      <span id="stat-enroute-count" class="stat-count">0</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">On Scene</span>
+      <span id="stat-onscene-count" class="stat-count">0</span>
+    </div>
+    <div class="risk-block">
+      <span class="risk-label">People at Risk</span>
+      <span id="stat-people-at-risk" class="risk-count">0</span>
+    </div>
+  </div>
+</Panel>

@@ -1,0 +1,106 @@
+<!--
+  Wall-mounted voice/comms panel. 8 addressable participant slots (0-7) laid
+  out as 4 quadrants of 2 stacked boxes each. A runtime system toggles each
+  slot's display/colors and the label/status text by element id; no JS here.
+  Panel, div, and span come from the bundled Horizon kit.
+-->
+<style>
+  .panel-root {
+    flex-direction: column;
+    width: 560px;
+  }
+
+  .panel-content {
+    flex-direction: column;
+    gap: 16px;
+    padding: 24px;
+  }
+
+  .grid-row {
+    flex-direction: row;
+    gap: 16px;
+  }
+
+  .quadrant {
+    flex-direction: column;
+    gap: 12px;
+    width: 256px;
+  }
+
+  .slot {
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px;
+    border-width: 3px;
+    border-radius: 10px;
+    background-color: #20242b;
+    border-color: #4a4f58;
+  }
+
+  .slot-label {
+    color: #1c1d20;
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .slot-label:dark {
+    color: #fafaf7;
+  }
+
+  .slot-status {
+    color: #3a3b40;
+    font-size: 13px;
+  }
+
+  .slot-status:dark {
+    color: #c3c6cc;
+  }
+</style>
+<Panel class="panel-root">
+  <div class="panel-content">
+    <div class="grid-row">
+      <div class="quadrant" id="quad-ul">
+        <div class="slot" id="slot-0" style="display: flex">
+          <span class="slot-label" id="slot-0-label">Caller 1</span>
+          <span class="slot-status" id="slot-0-status">idle</span>
+        </div>
+        <div class="slot" id="slot-1" style="display: flex">
+          <span class="slot-label" id="slot-1-label">Caller 2</span>
+          <span class="slot-status" id="slot-1-status">idle</span>
+        </div>
+      </div>
+      <div class="quadrant" id="quad-ur">
+        <div class="slot" id="slot-2" style="display: flex">
+          <span class="slot-label" id="slot-2-label">Caller 3</span>
+          <span class="slot-status" id="slot-2-status">idle</span>
+        </div>
+        <div class="slot" id="slot-3" style="display: flex">
+          <span class="slot-label" id="slot-3-label">Caller 4</span>
+          <span class="slot-status" id="slot-3-status">idle</span>
+        </div>
+      </div>
+    </div>
+    <div class="grid-row">
+      <div class="quadrant" id="quad-bl">
+        <div class="slot" id="slot-4" style="display: none">
+          <span class="slot-label" id="slot-4-label">Caller 5</span>
+          <span class="slot-status" id="slot-4-status">idle</span>
+        </div>
+        <div class="slot" id="slot-5" style="display: none">
+          <span class="slot-label" id="slot-5-label">Caller 6</span>
+          <span class="slot-status" id="slot-5-status">idle</span>
+        </div>
+      </div>
+      <div class="quadrant" id="quad-br">
+        <div class="slot" id="slot-6" style="display: none">
+          <span class="slot-label" id="slot-6-label">Caller 7</span>
+          <span class="slot-status" id="slot-6-status">idle</span>
+        </div>
+        <div class="slot" id="slot-7" style="display: none">
+          <span class="slot-label" id="slot-7-label">Caller 8</span>
+          <span class="slot-status" id="slot-7-status">idle</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</Panel>

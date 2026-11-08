@@ -3,6 +3,7 @@
 // Deterministic on purpose: the model reads the messy text, this picks a real room id.
 import type OpenAI from "openai";
 import type { Building, Room } from "@firewatch/shared/types";
+import type { AgentTool } from "./types.ts";
 
 /** At or above this, the agent trusts the room; below it, it texts the caller a follow-up. */
 export const CONFIDENT = 0.6;
@@ -35,7 +36,7 @@ export function mentionsFloor(text: string, floor: number): boolean {
   return new RegExp(`(^|\\D)${floor}(st|nd|rd|th)?(\\D|$)`).test(t) || words.some((w) => new RegExp(`\\b${w}\\b`).test(t));
 }
 
-export const locateRoomTool: OpenAI.Chat.Completions.ChatCompletionTool = {
+export const locateRoomSchema: OpenAI.Chat.Completions.ChatCompletionFunctionTool = {
   type: "function",
   function: {
     name: "locate_room",
@@ -148,3 +149,19 @@ export function locateRoom(args: LocateArgs, building: Building, heard?: string)
     followUp: `Where on floor ${floor} are you, and which room is the smoke or fire in?`,
   };
 }
+
+/** The locate_room tool: records where this report is, for merge_reports and the server. */
+export const locateRoomTool: AgentTool = {
+  schema: locateRoomSchema,
+  run(args, { ctx, heard, run }) {
+    const result = locateRoom(
+      { floor: args.floor as number | undefined, place: typeof args.place === "string" ? args.place : undefined },
+      ctx.building,
+      heard,
+    );
+    run.located = result;
+    run.report.roomId = result.roomId;
+    run.report.confidence = result.confidence;
+    return result;
+  },
+};
