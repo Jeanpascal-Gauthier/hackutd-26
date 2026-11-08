@@ -432,6 +432,7 @@ export class FireEyeSystem extends createSystem({}) {
         if (result === 'commit') { void this.diveAt(this.gestureTarget); this.gestureTarget = null; return; }
         if (result === 'pulling') {
           this.reticle?.place(this.gestureTarget ?? map.anchor.position, eye, this.gesture.progress, true);
+          this.reticle?.update(this.handPos);
           return;
         }
         this.gestureTarget = null;
@@ -439,7 +440,12 @@ export class FireEyeSystem extends createSystem({}) {
       if (!this.castFrom(this.aimHand)) { this.reticle?.hide(); return; }
       const overPanel = this.rayHitsPanel();
       const point = overPanel ? null : map.hit(this.raycaster);
-      if (point) this.reticle?.place(point, eye, 0, false); else this.reticle?.hide();
+      if (point) {
+        this.reticle?.place(point, eye, 0, false);
+        this.reticle?.update(this.handPos);
+      } else {
+        this.reticle?.hide();
+      }
       if (!overPanel && xr.getSelectState(this.aimHand).start) {
         // Pinching at the sky still works: it lands at the incident coordinate.
         this.gestureHand = this.aimHand;

@@ -119,7 +119,10 @@ export class StreetViewClient {
       if (res.status === 404) return null;
       if ((res.status === 401 || res.status === 403) && attempt === 0) { this.session = null; continue; }
       if (!res.ok) throw new Error(`Street View metadata failed (${res.status})`);
-      return parseMetadata(await res.json() as RawMetadata);
+      const body = await res.json() as RawMetadata;
+      // Validate that the response has a valid panoId before accepting it
+      if (!body.panoId) return null;
+      return parseMetadata(body);
     }
     return null;
   }
