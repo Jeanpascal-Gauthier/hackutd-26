@@ -9,7 +9,6 @@ import { IncidentTools } from "./IncidentTools";
 import { IncidentDecisions, IncidentLog } from "./IncidentActivity";
 import { PriorityActions } from "./IncidentPriority";
 import { IncidentQueue, IncidentStrip } from "./IncidentQueue";
-import { ResponseControls } from "./IncidentResponse";
 import { buildingDecisions, buildQueue, locationIssue, placeOf, type IncidentSelection } from "./incidents";
 import { MapPanel } from "./MapPanel";
 import { MoonIcon, ReplayIcon, SceneIcon, SunIcon } from "./Icons";
@@ -118,7 +117,6 @@ export function App() {
             {selected
               ? <PriorityActions pending={selected.recommendation} accepted={selected.accepted} connected={connected} onAccept={() => transmit({ type: "acceptRecommendation", incidentId: selected.id })} variant="incident" />
               : buildingSelected && <PriorityActions pending={buildingActions.recommendation} accepted={buildingActions.accepted} connected={connected} onAccept={() => transmit({ type: "acceptRecommendation" })} />}
-            {selected && <ResponseControls key={selected.id} incident={selected} connected={connected} onSend={transmit} />}
             {(selected || buildingSelected) && <CallerReports key={selected?.id ?? "building"} reports={reports} place={reportPlace} freshIds={freshReports} />}
           </aside>
 
