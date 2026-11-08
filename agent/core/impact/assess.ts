@@ -134,7 +134,8 @@ export function summarize(
     usdAtRisk,
     usdAtRiskAfterActions: Math.min(usdAtRisk, after),
     horizonMinutes,
-    headline: headlineFor(properties.length, people, usdAtRisk, horizonMinutes),
+    // After Execute the card shows what is still at risk: that drop is the demo's moment.
+    headline: headlineFor(properties.length, people, done.size ? Math.min(usdAtRisk, after) : usdAtRisk, horizonMinutes),
   };
 }
 
@@ -148,9 +149,13 @@ export function templateBriefing(properties: AffectedProperty[], summary: Impact
     return `No portfolio buildings are within reach of the ${n} in the next ${summary.horizonMinutes} min.`;
   }
   const parts = [`${top.name} is most at risk (${top.risk}).`];
-  const first = top.chain?.[0];
+  // A blocked road at minute 0 is a cause, not a failure: lead with the first system that breaks.
+  const first = top.chain?.find((s) => s.hazard !== "access") ?? top.chain?.[0];
   if (first) parts.push(`First failure: ${first.label} at minute ${first.minute}.`);
-  const action = top.actions?.find((a) => a.status !== "done") ?? top.actions?.[0];
+  // The pending action that saves the most (notices save $0); earliest deadline breaks ties.
+  const pending = (top.actions ?? []).filter((a) => a.status !== "done");
+  const action =
+    [...pending].sort((a, b) => b.savesUsd - a.savesUsd || a.deadlineMinute - b.deadlineMinute)[0] ?? top.actions?.[0];
   if (action) {
     const saves = action.savesUsd > 0 ? `, saves ${formatUsd(action.savesUsd)}` : "";
     parts.push(`Top action: ${action.text} ${when(action.deadlineMinute)}${saves}.`);

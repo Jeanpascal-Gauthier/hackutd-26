@@ -8,7 +8,7 @@
     "publish:shared": "tsx publish.ts",
     "validate": "tsx validate.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test building.test.ts"
+    "test": "tsx --test building.test.ts portfolio.test.ts"
   },
   "dependencies": {
     "@firewatch/shared": "*"

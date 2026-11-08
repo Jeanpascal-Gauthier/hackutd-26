@@ -22,6 +22,8 @@ export interface MapProviders {
   buildings(location: GeoPoint): Promise<NearbyBuildings>;
   /** Current surface wind. Throws if weather is unavailable. */
   wind(location: GeoPoint): Promise<WindReading>;
+  /** Ground elevation in metres, one per point, in order. Throws if unavailable. Optional: floods then spread evenly. */
+  elevation?(points: GeoPoint[]): Promise<number[]>;
 }
 
 const OVERPASS_WAIT_MS = 10000;
@@ -29,6 +31,7 @@ const SENSITIVE_WAIT_MS = 8000; // this lookup runs beside the ordinary one and 
 const MAX_SENSITIVE_SITES = 250; // a hard cap on the query; Overpass truncates arbitrarily past it
 const SAME_SITE_METERS = 300; // one hospital is often mapped as both a campus and a point
 const ROUTE_BATCH = 4;
+const ELEVATION_BATCH = 100; // Open-Meteo's limit of coordinates per request
 /** Matches this coarse put a pin kilometres away from the emergency. */
 const TOO_VAGUE = new Set(["country", "state", "county", "city", "postcode"]);
 
@@ -287,6 +290,19 @@ export function defaultMapProviders(service: Pick<BuildingService, "search">, op
       const speedMps = current.wind_speed_10m, fromDegrees = current.wind_direction_10m;
       if (typeof speedMps !== "number" || typeof fromDegrees !== "number") throw new Error("Open-Meteo returned no wind");
       return { speedMps, fromDegrees };
+    },
+    async elevation(points) {
+      const out: number[] = [];
+      for (let i = 0; i < points.length; i += ELEVATION_BATCH) {
+        const batch = points.slice(i, i + ELEVATION_BATCH).map(validateLocation);
+        const url = new URL("https://api.open-meteo.com/v1/elevation");
+        url.search = new URLSearchParams({ latitude: batch.map((p) => p.lat.toFixed(5)).join(","), longitude: batch.map((p) => p.lon.toFixed(5)).join(",") }).toString();
+        const body = await providerJson(url, "Open-Meteo elevation", { headers: { accept: "application/json" } }, { timeoutMs: 6000, maxBytes: 64 * 1024, ...request });
+        const heights = isObject(body) && Array.isArray(body.elevation) ? body.elevation : [];
+        if (heights.length !== batch.length || !heights.every((h): h is number => typeof h === "number" && Number.isFinite(h))) throw new Error("Open-Meteo returned no elevation");
+        out.push(...heights);
+      }
+      return out;
     },
   };
 }

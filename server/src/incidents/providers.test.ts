@@ -136,3 +136,24 @@ test("buildings: an ordinary-lookup failure still fails, so the forecast says bu
   const fetch = overpassFetch(() => { throw new Error("down"); }, () => ({ elements: [] }));
   await assert.rejects(defaultMapProviders(service as never, { geoapifyApiKey: " ", fetch }).buildings(P));
 });
+
+test("elevation: Open-Meteo heights come back in order, in batches of 100; a bad answer is an error", async () => {
+  const urls: string[] = [];
+  const fetch = (async (input: URL | RequestInfo) => {
+    const url = new URL(String(input));
+    urls.push(url.toString());
+    const lats = url.searchParams.get("latitude")!.split(",");
+    return json({ elevation: lats.map((lat) => Math.round(Number(lat) * 1000) / 10) });
+  }) as typeof globalThis.fetch;
+  const points = Array.from({ length: 150 }, (_, i) => ({ lat: P.lat + i * 1e-4, lon: P.lon }));
+  const heights = await defaultMapProviders(service as never, { fetch }).elevation!(points);
+  assert.equal(heights.length, 150);
+  assert.equal(heights[0], Math.round(P.lat * 1000) / 10);
+  assert.equal(urls.length, 2);
+  assert.match(urls[0]!, /^https:\/\/api\.open-meteo\.com\/v1\/elevation\?latitude=/);
+
+  const short = (async () => json({ elevation: [1] })) as typeof globalThis.fetch;
+  await assert.rejects(defaultMapProviders(service as never, { fetch: short }).elevation!([P, P]));
+  const down = (async () => new Response("", { status: 503 })) as typeof globalThis.fetch;
+  await assert.rejects(defaultMapProviders(service as never, { fetch: down }).elevation!([P]));
+});

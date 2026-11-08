@@ -15,6 +15,10 @@ import { onActiveBuilding, type OccupancyEstimator } from "./agent/bridge.ts";
 import { createBuildingService, type BuildingService } from "./buildings/service.ts";
 import { MapIncidents } from "./incidents/service.ts";
 import { defaultMapProviders, type MapProviders } from "./incidents/providers.ts";
+import { PortfolioImpactService, type PortfolioServiceOptions } from "./portfolio/service.ts";
+import type { ImpactAgent } from "./portfolio/bridge.ts";
+import { CbreDemo, type DemoFixtures } from "./portfolio/demo.ts";
+import type { PortfolioBuilding } from "./incidents/stepZero.ts";
 
 export interface AppOptions {
   /** Scripted demo calls on the demo building; building lookups are ignored. */
@@ -32,6 +36,14 @@ export interface AppOptions {
   broadcastMs?: number;
   /** Called by every reset (forgets the agent's per-caller memory). */
   resetAgent?(): void;
+  /**
+   * Portfolio impact (portfolio/service.ts): the buildings (data/portfolio.json) and the agent's
+   * impact functions. Absent, or without an agent: GET /portfolio still lists the buildings, and
+   * nothing is assessed.
+   */
+  portfolio?: { buildings: PortfolioBuilding[]; agent?: ImpactAgent; options?: PortfolioServiceOptions };
+  /** The scripted CBRE demo's fixtures (POST /portfolio/demo/...). Default: agent/fixtures/demoIncidents.ts, loaded on first use. */
+  loadDemoFixtures?: () => Promise<DemoFixtures | undefined>;
 }
 
 export function createApp(options: AppOptions = {}) {
@@ -68,7 +80,17 @@ export function createApp(options: AppOptions = {}) {
   });
   const mock = options.mock ? new MockIncident(store, live, ingest, options.tickMs ?? 2000) : undefined;
   const mapIncidents = new MapIncidents(store, options.mapProviders ?? defaultMapProviders(buildings), lookups);
+  const portfolio = new PortfolioImpactService(store, options.portfolio?.buildings ?? [], options.portfolio?.agent, options.portfolio?.options);
   const resetAgent = () => options.resetAgent?.();
+  // Between judges: back to the demo building, no lookup, no fire, no reports, an empty map.
+  const clearLive = () => {
+    resetAgent();
+    if (mock) mock.reset();
+    else lookups.resetToDemo();
+    mapIncidents.clear();
+    portfolio.clear();
+  };
+  const cbreDemo = new CbreDemo({ mapIncidents, portfolio, resetLive: clearLive, load: options.loadDemoFixtures });
 
   const httpServer = createHttpServer({
     ingest,
@@ -82,22 +104,25 @@ export function createApp(options: AppOptions = {}) {
     buildings,
     lookups,
     mapIncidents,
-    // Between judges: back to the demo building, no lookup, no fire, no reports, an empty map.
+    portfolio,
+    cbreDemo,
     resetLive: () => {
-      resetAgent();
-      if (mock) mock.reset();
-      else lookups.resetToDemo();
-      mapIncidents.clear();
+      clearLive();
+      cbreDemo.forget();
     },
     mock: mock && {
       reset: () => {
         resetAgent();
         mock.reset();
         mapIncidents.clear();
+        portfolio.clear();
+        cbreDemo.forget();
       },
       replay: () => {
         resetAgent();
         mapIncidents.clear();
+        portfolio.clear();
+        cbreDemo.forget();
         void mock.replay();
       },
     },
@@ -109,7 +134,7 @@ export function createApp(options: AppOptions = {}) {
     mapIncidents,
   }, { broadcastMs: options.broadcastMs });
 
-  return { store, active, live, lookups, ingest, mock, httpServer, setReportProcessor, mapIncidents };
+  return { store, active, live, lookups, ingest, mock, httpServer, setReportProcessor, mapIncidents, portfolio, cbreDemo };
 }
 
 export type App = ReturnType<typeof createApp>;

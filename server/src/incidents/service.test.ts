@@ -8,8 +8,11 @@ import { createApp } from "../app.ts";
 import { createBuildingService } from "../buildings/service.ts";
 import { VOICE_INCIDENT_FALLBACK, VOICE_INCIDENT_NEW, VOICE_INCIDENT_NOT_FOUND, VOICE_INCIDENT_UPDATE, VOICE_INCIDENT_WHAT, VOICE_INCIDENT_WHERE } from "../transport/voice.ts";
 import type { RoadWay } from "./crashModel.ts";
+import { localFrame } from "./geo.ts";
 import type { MapProviders } from "./providers.ts";
 import { MapIncidents, type MapIncidentInput } from "./service.ts";
+import type { MapIncidentPlus } from "./stepZero.ts";
+import { zoneId } from "./zones.ts";
 import { parseMapIncident } from "../transport/http.ts";
 import { IncidentStore, mapRecommendations } from "../state/store.ts";
 
@@ -300,10 +303,10 @@ test("a pin-only emergency gets Next actions, and never replaces a building fire
 const report = (over: Partial<MapIncidentInput> = {}): MapIncidentInput => ({ kind: "crash", address: "1 Main St", description: "wreck", severity: "unknown", lanesBlocked: "unknown", inBuilding: false, caller: "+1", channel: "voice", ...over });
 
 /** The service on its own, with refreshes off unless a test turns them on. */
-function direct(over: Partial<MapProviders> = {}, options: { forecastRefreshMs?: number } = {}) {
+function direct(over: Partial<MapProviders> = {}, options: { forecastRefreshMs?: number; now?: () => number } = {}) {
   const store = new IncidentStore();
   const service = new MapIncidents(store, providers(over), undefined, { forecastRefreshMs: 0, ...options });
-  const incident = (id = "inc-1") => store.get().mapIncidents!.find((x) => x.id === id)!;
+  const incident = (id = "inc-1"): MapIncidentPlus => store.get().mapIncidents!.find((x) => x.id === id)!;
   return { store, service, incident, list: () => store.get().mapIncidents ?? [] };
 }
 
@@ -681,4 +684,179 @@ test("manual reports and response actions reach WebSocket clients and survive re
     reconnected?.terminate();
     await s.close();
   }
+}));
+
+// --- Zones, links, floods, red roads -----------------------------------------------------------
+
+const nearA = localFrame(A);
+const SPOTS: Record<string, GeoPoint> = {
+  a: A,
+  "300 east": nearA.toPoint([300, 0]),
+  "450 northeast": nearA.toPoint([200, 400]),
+  "200 south": nearA.toPoint([0, -200]),
+  "1200 east": nearA.toPoint([1200, 0]),
+};
+const spots: Partial<MapProviders> = {
+  geocode: async (query) => (SPOTS[query] ? { location: SPOTS[query]!, formatted: `${query}, Richardson, TX 75080, United States` } : null),
+};
+const settledAll = (s: ReturnType<typeof direct>) => until("forecasts", () => s.list().every((x) => x.forecastStatus !== "running" && x.status !== "locating"));
+
+test("zones: three calls about one crash in a zone are one incident; a crash 1.2 km off is another", quietly(async () => {
+  const s = direct(spots);
+  await s.service.report(report({ address: "a", caller: "+1" }));
+  await ready(s);
+  await s.service.report(report({ address: "300 east", caller: "+2" }));
+  const third = await s.service.report(report({ address: "450 northeast", caller: "+3" }));
+  assert.equal(third.incident.id, "inc-1");
+  assert.equal(s.list().length, 1);
+  assert.equal(s.incident().reports.length, 3, "3 calls");
+  assert.deepEqual(s.incident().location, A, "the first pin stays");
+  assert.equal(s.incident().zoneId, zoneId(A));
+  assert.equal(s.incident().related, undefined, "same kind: merged, not linked");
+
+  await s.service.report(report({ address: "1200 east", caller: "+4" }));
+  await settledAll(s);
+  assert.equal(s.list().length, 2);
+  assert.equal(s.incident("inc-4").zoneId, zoneId(SPOTS["1200 east"]!));
+  assert.equal(s.incident("inc-4").related, undefined);
+}));
+
+test("zones: the close-by merge keeps the 30-minute window; an older crash nearby stays separate", quietly(async () => {
+  let clock = 1_000_000;
+  const s = direct(spots, { now: () => clock });
+  await s.service.report(report({ address: "a", caller: "+1" }));
+  await ready(s);
+  clock += 31 * 60 * 1000;
+  await s.service.report(report({ address: "300 east", caller: "+2" }));
+  await settledAll(s);
+  assert.equal(s.list().length, 2);
+  assert.equal(s.incident("inc-2").related, undefined, "same kind is never linked");
+}));
+
+test("links: a fire and a crash 300 m apart stay separate and point at each other; resolving drops the link", quietly(async () => {
+  const s = direct(spots);
+  await s.service.report(report({ kind: "fire", address: "a", caller: "+1" }));
+  await s.service.report(report({ kind: "crash", address: "300 east", caller: "+2" }));
+  await settledAll(s);
+  assert.equal(s.list().length, 2);
+  assert.deepEqual(s.incident("inc-1").related, ["inc-2"]);
+  assert.deepEqual(s.incident("inc-2").related, ["inc-1"]);
+
+  await s.service.report(report({ kind: "other", what: undefined, description: "a water main burst", address: "200 south", caller: "+3" }));
+  await s.service.report(report({ kind: "fire", address: "a", caller: "+4", description: "second caller, same fire" }));
+  await settledAll(s);
+  assert.equal(s.list().length, 3, "the second fire call merged");
+  assert.deepEqual(s.incident("inc-1").related, ["inc-2", "inc-3"], "deduped, in report order");
+  assert.deepEqual(s.incident("inc-3").related, ["inc-1", "inc-2"]);
+
+  s.service.setPhase("inc-2", "resolved");
+  assert.deepEqual(s.incident("inc-1").related, ["inc-3"]);
+  assert.deepEqual(s.incident("inc-3").related, ["inc-1"]);
+  assert.equal(s.incident("inc-2").related, undefined);
+  assert.equal(s.incident("inc-2").zoneId, zoneId(SPOTS["300 east"]!), "a resolved incident keeps its zone");
+  s.service.setPhase("inc-2", "on_scene");
+  assert.deepEqual(s.incident("inc-1").related, ["inc-2", "inc-3"], "reopening links it again");
+
+  // The crash's only caller corrects the place: it moves out of reach and the links follow.
+  await s.service.report(report({ kind: "crash", address: "1200 east", caller: "+2", description: "sorry, it is further east" }));
+  await settledAll(s);
+  assert.equal(s.incident("inc-2").related, undefined);
+  assert.deepEqual(s.incident("inc-1").related, ["inc-3"]);
+  assert.deepEqual(s.incident("inc-3").related, ["inc-1"]);
+  assert.equal(s.incident("inc-2").zoneId, zoneId(SPOTS["1200 east"]!));
+}));
+
+test("floods: a water main report is an `other` incident labelled Flood with a water forecast and red roads", quietly(async () => {
+  let asked = 0;
+  const downhillEast = { elevation: async (points: GeoPoint[]) => { asked++; return points.map((p) => 200 - 0.01 * nearA.toMetres(p)[0]); } };
+  const s = direct({ ...spots, ...downhillEast });
+  const statuses: string[] = [];
+  const stop = s.store.subscribe((state) => { const x = state.mapIncidents?.[0]; if (x && statuses.at(-1) !== x.forecastStatus) statuses.push(x.forecastStatus); });
+  const { reply } = await s.service.report(report({ kind: "other", what: undefined, description: "water main burst, the street is filling up", address: "a", severity: "critical" }));
+  assert.equal(reply, `I have the location as a, Richardson. ${VOICE_INCIDENT_NEW.other}`);
+  await ready(s);
+  stop();
+  assert.deepEqual(statuses, ["none", "running", "ready"]);
+  const flood = s.incident();
+  assert.equal(flood.kind, "other");
+  assert.equal(flood.label, "Flood");
+  assert.equal(flood.flood!.steps.length, 7);
+  const last = flood.flood!.steps.at(-1)!.water.map(nearA.toMetres);
+  assert.ok(Math.max(...last.map(([e]) => e)) > 1.5 * -Math.min(...last.map(([e]) => e)), "reaches farther downhill (east)");
+  assert.ok(flood.flood!.assumptions!.some((a) => a.includes("Open-Meteo")));
+  assert.match(flood.flood!.summary!, /water main break/);
+  assert.ok(flood.affectedRoads!.length > 0);
+  assert.ok(flood.affectedRoads!.every((r) => r.reason === "flood" && r.road === "Main St"));
+  assert.match(flood.recommendation!.actions[0]!, /for: Flood\.$/);
+  assert.match(flood.recommendation!.actions[1]!, /^Modeled forecast: Water from/);
+  assert.equal(asked, 1);
+
+  // A second caller close by joins it; a worse severity re-runs the forecast from cached ground and roads.
+  await s.service.report(report({ kind: "other", what: "street flooding", description: "water over the curb", address: "300 east", caller: "+2" }));
+  assert.equal(s.list().length, 1);
+  assert.equal(s.incident().reports.length, 2);
+  const s2 = direct({ ...spots, ...downhillEast });
+  await s2.service.report(report({ kind: "other", what: "flood", address: "a", severity: "minor" }));
+  await ready(s2);
+  const small = s2.incident().flood;
+  await s2.service.report(report({ kind: "other", what: "flood", address: "a", severity: "critical", description: "it is much bigger now" }));
+  await until("bigger flood", () => s2.incident().flood !== small && s2.incident().forecastStatus === "ready");
+  assert.equal(s2.incident().severity, "critical");
+  assert.ok(s2.incident().flood!.steps.at(-1)!.water.length > 0);
+  assert.equal(asked, 2, "one elevation lookup per flood");
+
+  // A named other emergency stays itself even if the description mentions water.
+  await s.service.report(report({ kind: "other", what: "gas leak", description: "and the basement is flooded", address: "1200 east", caller: "+9" }));
+  assert.equal(s.incident("inc-3").label, "Gas leak");
+  assert.equal(s.incident("inc-3").forecastStatus, "none");
+}));
+
+test("floods: without elevation the water is an even circle; without roads none are listed; both still forecast", quietly(async () => {
+  const s = direct({ ...spots, elevation: async () => { throw new Error("open-meteo down"); }, roads: async () => { throw new Error("overpass down"); } });
+  await s.service.report(report({ kind: "other", what: "flooding", address: "a" }));
+  await ready(s);
+  const flood = s.incident().flood!;
+  assert.ok(flood.assumptions!.some((a) => a.includes("even circle")));
+  assert.ok(flood.assumptions!.some((a) => a.includes("Roads could not be loaded")));
+  assert.deepEqual(s.incident().affectedRoads, []);
+
+  const plain = direct(spots); // a provider set without elevation at all
+  await plain.service.report(report({ kind: "other", what: "flood", address: "a" }));
+  await ready(plain);
+  assert.ok(plain.incident().flood!.assumptions!.some((a) => a.includes("even circle")));
+}));
+
+test("crash: the blocked queue becomes red roads on the incident", quietly(async () => {
+  const s = direct(spots);
+  await s.service.report(report({ address: "a", lanesBlocked: "all" }));
+  await ready(s);
+  const red = s.incident().affectedRoads!;
+  assert.ok(red.length > 0);
+  assert.ok(red.every((r) => r.reason === "crash" && r.road === "Main St"));
+  assert.equal(s.incident().fire, undefined);
+  await s.service.report(report({ kind: "fire", address: "300 east", caller: "+2" }));
+  await settledAll(s);
+  assert.equal(s.incident("inc-2").affectedRoads, undefined, "fires add no red roads");
+}));
+
+test("fields other services attach (impact, affectedProperties) survive every update", quietly(async () => {
+  const s = direct(spots);
+  await s.service.report(report({ address: "a", lanesBlocked: "some" }));
+  await ready(s);
+  const impact = { center: A, radiusMeters: 400, reasons: ["serious crash"] };
+  s.store.patch({ mapIncidents: s.list().map((x) => ({ ...x, impact, affectedProperties: [] })) });
+  const before = s.incident().crash;
+
+  await s.service.report(report({ address: "a", lanesBlocked: "all", description: "all lanes now" }));
+  await until("re-forecast", () => s.incident().crash !== before && s.incident().forecastStatus === "ready");
+  s.service.dispatch("inc-1", "Engine 3");
+  s.service.addNote("inc-1", "gate code 1");
+  await s.service.report(report({ kind: "fire", address: "300 east", caller: "+2" })); // relinks inc-1
+  await s.service.report(report({ address: "450 northeast", caller: "+3" })); // merged into inc-1
+  await settledAll(s);
+  assert.deepEqual(s.incident().related, ["inc-2"]);
+  assert.equal(s.incident().reports.length, 3);
+  s.service.setPhase("inc-1", "resolved");
+  assert.deepEqual(s.incident().impact, impact);
+  assert.deepEqual(s.incident().affectedProperties, []);
 }));
