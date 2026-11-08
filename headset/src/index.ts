@@ -8,6 +8,7 @@
 import { World } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
 import { BuildingSystem } from './building-system.js';
+import { ConsoleSystem } from './console-system.js';
 import { PanelSystem } from './panel.js';
 
 World.create(
@@ -16,4 +17,5 @@ World.create(
 ).then((world) => {
   world.registerSystem(PanelSystem);
   world.registerSystem(BuildingSystem);
+  world.registerSystem(ConsoleSystem);
 });
