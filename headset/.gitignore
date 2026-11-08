@@ -29,6 +29,9 @@ pnpm-debug.log*
 coverage/
 *.lcov
 
+# Render/screenshot output from CLI verification
+artifacts/
+
 # Runtime and temporary data
 pids/
 *.pid

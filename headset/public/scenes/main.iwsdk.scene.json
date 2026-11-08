@@ -3,9 +3,24 @@
   "units": "meters",
   "components": {
     "com.iwsdk.components.IBLGradient": {
-      "sky": [0.96, 0.94, 0.9, 1],
-      "equator": [0.8, 0.76, 0.7, 1],
-      "ground": [0.46, 0.42, 0.38, 1],
+      "sky": [
+        0.96,
+        0.94,
+        0.9,
+        1
+      ],
+      "equator": [
+        0.8,
+        0.76,
+        0.7,
+        1
+      ],
+      "ground": [
+        0.46,
+        0.42,
+        0.38,
+        1
+      ],
       "intensity": 0.25
     }
   },
@@ -16,17 +31,44 @@
     "shadowMapType": "pcf"
   },
   "resources": {},
+  "authoring": {
+    "views": [
+      {
+        "id": "hero",
+        "role": "hero",
+        "projection": "perspective",
+        "position": [
+          0.1,
+          1.55,
+          0.9
+        ],
+        "target": [
+          0.2,
+          1.3,
+          -1.4
+        ],
+        "fov": 75
+      }
+    ]
+  },
   "nodes": [
     {
       "id": "shadow-catcher",
       "name": "Shadow Catcher",
       "framingRole": "support",
       "transform": {
-        "position": [0, 0.001, -0.75]
+        "position": [
+          0,
+          0.001,
+          -0.75
+        ]
       },
       "components": {
         "ShadowCatcher": {
-          "size": [4, 4],
+          "size": [
+            4,
+            4
+          ],
           "opacity": 0.25
         }
       }
@@ -41,80 +83,252 @@
         "receiveShadow": true
       },
       "transform": {
-        "position": [0, 0, -0.75]
+        "position": [
+          0,
+          0,
+          -0.75
+        ]
       }
     },
     {
       "id": "building-floor-0",
       "name": "Building Floor 0",
-      "content": { "type": "asset", "asset": "building-floor-slab" },
-      "transform": { "position": [-0.75, 0.7975, -0.75] }
+      "content": {
+        "type": "asset",
+        "asset": "building-floor-slab"
+      },
+      "transform": {
+        "position": [
+          -0.75,
+          0.7975,
+          -0.75
+        ]
+      },
+      "components": {
+        "FloorState": {
+          "floorIndex": 0
+        }
+      }
     },
     {
       "id": "building-floor-1",
       "name": "Building Floor 1",
-      "content": { "type": "asset", "asset": "building-floor-slab" },
-      "transform": { "position": [-0.75, 0.8325, -0.75] }
+      "content": {
+        "type": "asset",
+        "asset": "building-floor-slab"
+      },
+      "transform": {
+        "position": [
+          -0.75,
+          0.8325,
+          -0.75
+        ]
+      },
+      "components": {
+        "FloorState": {
+          "floorIndex": 1
+        }
+      }
     },
     {
       "id": "building-floor-2",
       "name": "Building Floor 2",
-      "content": { "type": "asset", "asset": "building-floor-slab" },
-      "transform": { "position": [-0.75, 0.8675, -0.75] }
+      "content": {
+        "type": "asset",
+        "asset": "building-floor-slab"
+      },
+      "transform": {
+        "position": [
+          -0.75,
+          0.8675,
+          -0.75
+        ]
+      },
+      "components": {
+        "FloorState": {
+          "floorIndex": 2
+        }
+      }
     },
     {
       "id": "building-floor-3",
       "name": "Building Floor 3",
-      "content": { "type": "asset", "asset": "building-floor-slab" },
-      "transform": { "position": [-0.75, 0.9025, -0.75] }
+      "content": {
+        "type": "asset",
+        "asset": "building-floor-slab"
+      },
+      "transform": {
+        "position": [
+          -0.75,
+          0.9025,
+          -0.75
+        ]
+      },
+      "components": {
+        "FloorState": {
+          "floorIndex": 3
+        }
+      }
     },
     {
       "id": "building-floor-4",
       "name": "Building Floor 4",
-      "content": { "type": "asset", "asset": "building-floor-slab" },
-      "transform": { "position": [-0.75, 0.9375, -0.75] }
+      "content": {
+        "type": "asset",
+        "asset": "building-floor-slab"
+      },
+      "transform": {
+        "position": [
+          -0.75,
+          0.9375,
+          -0.75
+        ]
+      },
+      "components": {
+        "FloorState": {
+          "floorIndex": 4
+        }
+      }
     },
     {
       "id": "building-floor-5",
       "name": "Building Floor 5",
-      "content": { "type": "asset", "asset": "building-floor-slab" },
-      "transform": { "position": [-0.75, 0.9725, -0.75] }
+      "content": {
+        "type": "asset",
+        "asset": "building-floor-slab"
+      },
+      "transform": {
+        "position": [
+          -0.75,
+          0.9725,
+          -0.75
+        ]
+      },
+      "components": {
+        "FloorState": {
+          "floorIndex": 5
+        }
+      }
     },
     {
       "id": "building-floor-6",
       "name": "Building Floor 6",
-      "content": { "type": "asset", "asset": "building-floor-slab" },
-      "transform": { "position": [-0.75, 1.0075, -0.75] }
+      "content": {
+        "type": "asset",
+        "asset": "building-floor-slab"
+      },
+      "transform": {
+        "position": [
+          -0.75,
+          1.0075,
+          -0.75
+        ]
+      },
+      "components": {
+        "FloorState": {
+          "floorIndex": 6
+        }
+      }
     },
     {
       "id": "building-floor-7",
       "name": "Building Floor 7",
-      "content": { "type": "asset", "asset": "building-floor-slab" },
-      "transform": { "position": [-0.75, 1.0425, -0.75] }
+      "content": {
+        "type": "asset",
+        "asset": "building-floor-slab"
+      },
+      "transform": {
+        "position": [
+          -0.75,
+          1.0425,
+          -0.75
+        ]
+      },
+      "components": {
+        "FloorState": {
+          "floorIndex": 7
+        }
+      }
     },
     {
       "id": "building-floor-8",
       "name": "Building Floor 8",
-      "content": { "type": "asset", "asset": "building-floor-slab" },
-      "transform": { "position": [-0.75, 1.0775, -0.75] }
+      "content": {
+        "type": "asset",
+        "asset": "building-floor-slab"
+      },
+      "transform": {
+        "position": [
+          -0.75,
+          1.0775,
+          -0.75
+        ]
+      },
+      "components": {
+        "FloorState": {
+          "floorIndex": 8
+        }
+      }
     },
     {
       "id": "building-floor-9",
       "name": "Building Floor 9",
-      "content": { "type": "asset", "asset": "building-floor-slab" },
-      "transform": { "position": [-0.75, 1.1125, -0.75] }
+      "content": {
+        "type": "asset",
+        "asset": "building-floor-slab"
+      },
+      "transform": {
+        "position": [
+          -0.75,
+          1.1125,
+          -0.75
+        ]
+      },
+      "components": {
+        "FloorState": {
+          "floorIndex": 9
+        }
+      }
     },
     {
       "id": "building-floor-10",
       "name": "Building Floor 10",
-      "content": { "type": "asset", "asset": "building-floor-slab" },
-      "transform": { "position": [-0.75, 1.1475, -0.75] }
+      "content": {
+        "type": "asset",
+        "asset": "building-floor-slab"
+      },
+      "transform": {
+        "position": [
+          -0.75,
+          1.1475,
+          -0.75
+        ]
+      },
+      "components": {
+        "FloorState": {
+          "floorIndex": 10
+        }
+      }
     },
     {
       "id": "building-floor-11",
       "name": "Building Floor 11",
-      "content": { "type": "asset", "asset": "building-floor-slab" },
-      "transform": { "position": [-0.75, 1.1825, -0.75] }
+      "content": {
+        "type": "asset",
+        "asset": "building-floor-slab"
+      },
+      "transform": {
+        "position": [
+          -0.75,
+          1.1825,
+          -0.75
+        ]
+      },
+      "components": {
+        "FloorState": {
+          "floorIndex": 11
+        }
+      }
     },
     {
       "id": "welcome-panel",
@@ -124,8 +338,16 @@
         "asset": "welcome-panel"
       },
       "transform": {
-        "position": [0, 1.85, -2.2],
-        "rotationDeg": [-6, 0, 0],
+        "position": [
+          0,
+          1.85,
+          -2.2
+        ],
+        "rotationDeg": [
+          -6,
+          0,
+          0
+        ],
         "scale": 0.27
       },
       "components": {
@@ -140,7 +362,11 @@
         "asset": "voice-panel"
       },
       "transform": {
-        "position": [0, 1.35, -1.9],
+        "position": [
+          0,
+          1.35,
+          -1.9
+        ],
         "scale": 0.22
       }
     },
@@ -152,8 +378,16 @@
         "asset": "resources-panel"
       },
       "transform": {
-        "position": [1.56, 1.4, -0.9],
-        "rotationDeg": [0, -60, 0],
+        "position": [
+          1.56,
+          1.4,
+          -0.9
+        ],
+        "rotationDeg": [
+          0,
+          -60,
+          0
+        ],
         "scale": 0.2
       }
     },
@@ -161,12 +395,25 @@
       "id": "key-light",
       "name": "Key Light",
       "transform": {
-        "position": [-2.3541, 11.2763, 1.762],
-        "rotationDeg": [-73.3982, -11.3134, 0]
+        "position": [
+          -2.3541,
+          11.2763,
+          1.762
+        ],
+        "rotationDeg": [
+          -73.3982,
+          -11.3134,
+          0
+        ]
       },
       "components": {
         "DirectionalLight": {
-          "color": [1, 0.945, 0.87, 1],
+          "color": [
+            1,
+            0.945,
+            0.87,
+            1
+          ],
           "intensity": 2,
           "castShadow": true,
           "shadowMapSize": "1024",
@@ -184,8 +431,18 @@
       "name": "Fill Light",
       "components": {
         "HemisphereLight": {
-          "skyColor": [0.96, 0.94, 0.9, 1],
-          "groundColor": [0.55, 0.52, 0.48, 1],
+          "skyColor": [
+            0.96,
+            0.94,
+            0.9,
+            1
+          ],
+          "groundColor": [
+            0.55,
+            0.52,
+            0.48,
+            1
+          ],
           "intensity": 1
         }
       }

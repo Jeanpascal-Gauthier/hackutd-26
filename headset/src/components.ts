@@ -6,5 +6,6 @@
  */
 
 import { defineComponents } from '@iwsdk/core';
+import { FloorState } from './floor-component.js';
 
-export default defineComponents([]);
+export default defineComponents([FloorState]);
