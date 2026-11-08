@@ -13,7 +13,7 @@
 //   --no-headset  server + console only
 //   --no-form     don't start the QR report form
 //   --no-photon   don't start the Photon line even if its credentials are set
-//   --watch       restart the server on file changes (tsx watch); default is a plain start
+//   --watch       restart the server on file changes (Node watch); default is a plain start
 import { existsSync, readFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
