@@ -38,6 +38,19 @@ Open `https://localhost:8081/` in Quest Browser and enter VR. Reuse the existing
 app tab for later reloads so there is only one headset tab. The experience uses
 an opaque virtual room rather than physical-room passthrough.
 
+## Building controls
+
+- Hands: pinch the building with one hand to pick it up. Move or turn your hand
+  to carry and rotate it; release the pinch to leave it in place.
+- Pinch it with both hands, then spread your hands to enlarge it or bring them
+  together to shrink it. Zoom is limited to 0.5×–3× the original model size.
+- Controllers: hold the grip/squeeze button near the building. Use both
+  controllers together to scale it.
+
+The building rotates and scales around its centre, and live fire/smoke and route
+updates continue while it is held. These controls manipulate the whole building;
+individual floor/room selection from the plan is a separate interaction.
+
 ## Validate
 
 ```sh

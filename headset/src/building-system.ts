@@ -6,7 +6,11 @@
  */
 
 import {
+  Box3,
   Color,
+  Group,
+  TwoHandsGrabbable,
+  Vector3,
   createSystem,
   MeshStandardMaterial,
 } from '@iwsdk/core';
@@ -32,8 +36,21 @@ export class BuildingSystem extends createSystem({}) {
       return;
     }
     const model = createIncidentBuilding(building);
-    model.root.position.set(-1.4, 0.75, -1.35);
-    this.world.createTransformEntity(model.root);
+    // Rotate/scale about the building centre rather than its floor-plan corner.
+    const center = new Box3().setFromObject(model.root).getCenter(new Vector3());
+    model.root.position.copy(center).multiplyScalar(-1);
+    const handle = new Group();
+    handle.name = 'Incident Building';
+    handle.add(model.root);
+    handle.position.copy(center).add(new Vector3(-1.4, 0.75, -1.35));
+    const entity = this.world.createTransformEntity(handle);
+    entity.addComponent(TwoHandsGrabbable, {
+      translate: true,
+      rotate: true,
+      scale: true,
+      scaleMin: [0.5, 0.5, 0.5],
+      scaleMax: [3, 3, 3],
+    });
     this.roomMaterials = model.roomMaterials;
 
     this.socket = new IncidentSocket((state) => this.onState(state));
