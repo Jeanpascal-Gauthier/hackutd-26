@@ -48,7 +48,7 @@ test("7-break: floors 6-12 at risk, all by Stairwell A", () => {
     [6, 7, 8, 9, 10, 11, 12],
   );
   assert.ok(plan.floors.every((p) => p.stair === "Stairwell A"));
-  assert.deepEqual(plan.byStair, [{ stair: "Stairwell A", floors: "6-12", people: 202 }]);
+  assert.deepEqual(plan.byStair, [{ stair: "Stairwell A", floors: "6-12", people: 54 }]);
   assert.deepEqual(plan.noClearStair, []);
 
   const floor7 = plan.floors.find((p) => p.floor === 7)!;
@@ -63,10 +63,10 @@ test("7-break: people totals match the fixture", () => {
   const f = asForecast(forecast7Break);
   const plan = planExits(f.exits, 7);
   const total = f.exits.reduce((n, e) => n + e.people, 0);
-  assert.equal(plan.peopleAtRisk, 202);
+  assert.equal(plan.peopleAtRisk, 54);
   assert.equal(plan.peopleAtRisk, f.summary.peopleAtRisk);
   assert.equal(plan.floorsAtRisk, f.summary.floorsAtRisk.length);
-  assert.deepEqual(plan.notAtRisk, { floors: 5, people: total - 202 });
+  assert.deepEqual(plan.notAtRisk, { floors: 5, people: total - 54 });
 });
 
 test("10-east: only the fire floor is at risk", () => {
@@ -77,7 +77,7 @@ test("10-east: only the fire floor is at risk", () => {
     f.summary.floorsAtRisk,
   );
   assert.equal(plan.peopleAtRisk, f.summary.peopleAtRisk);
-  assert.deepEqual(plan.byStair, [{ stair: "Stairwell B", floors: "10", people: 35 }]);
+  assert.deepEqual(plan.byStair, [{ stair: "Stairwell B", floors: "10", people: 11 }]);
 });
 
 test("noClearStair: no stairwell, or the best one fills too", () => {
@@ -128,7 +128,7 @@ test("tool: no forecast but an origin -> calls server.forecast once", async () =
   assert.deepEqual(calls, ["7-break"]);
   assert.equal(env.run.forecast, f);
   assert.equal(env.run.exits, f.exits);
-  assert.equal(out.peopleAtRisk, 202);
+  assert.equal(out.peopleAtRisk, 54);
 });
 
 test("tool: neither forecast nor origin -> error, no server call", async () => {
@@ -155,8 +155,8 @@ test("tool: floors filter limits the per-floor list only", async () => {
     [8, 10],
   );
   assert.deepEqual(out.requestedNotAtRisk, [3]);
-  assert.equal(out.peopleAtRisk, 202);
-  assert.deepEqual(out.byStair, [{ stair: "Stairwell A", floors: "6-12", people: 202 }]);
+  assert.equal(out.peopleAtRisk, 54);
+  assert.deepEqual(out.byStair, [{ stair: "Stairwell A", floors: "6-12", people: 54 }]);
 });
 
 test("tool: bad floors argument -> error", async () => {

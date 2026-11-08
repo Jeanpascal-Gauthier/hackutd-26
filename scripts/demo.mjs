@@ -2,6 +2,8 @@
 //   server  : live mode with the Nemotron agent (AGENT=1 MOCK=0), port 8080
 //   console : Vite dev server, port 5173
 //   headset : headset/ Vite dev server (IWSDK plugin, self-signed HTTPS), port 8081, all interfaces
+//   form    : the QR fallback report form (agent/form), port 8090, all interfaces
+//   photon  : the Photon 2.0 line (agent/photon), when PHOTON_PROJECT_ID + PHOTON_API_KEY are in .env
 // Env is set through concurrently's JS API (not shell syntax) so it works the same in
 // PowerShell, cmd and Git Bash. Ctrl+C stops all three; if one dies, the others are stopped.
 //
@@ -9,6 +11,8 @@
 //   --mock        scripted demo calls, no agent (MOCK=1 AGENT=0): the fallback if the agent/API is down
 //   --no-agent    live mode with the rule-based locator (MOCK=0 AGENT=0)
 //   --no-headset  server + console only
+//   --no-form     don't start the QR report form
+//   --no-photon   don't start the Photon line even if its credentials are set
 //   --watch       restart the server on file changes (tsx watch); default is a plain start
 import { existsSync, readFileSync } from "node:fs";
 import net from "node:net";
@@ -19,20 +23,25 @@ import { printUrls } from "./urls.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const HEADSET_DIR = path.join(ROOT, "headset");
-const PORTS = { server: 8080, console: 5173, headset: 8081 };
+const PORTS = { server: 8080, console: 5173, headset: 8081, form: 8090 };
 
-const KNOWN = ["--mock", "--no-agent", "--no-headset", "--watch", "--help", "-h"];
+const KNOWN = ["--mock", "--no-agent", "--no-headset", "--no-form", "--no-photon", "--watch", "--help", "-h"];
 const args = process.argv.slice(2);
 const unknown = args.filter((a) => !KNOWN.includes(a));
 if (args.includes("--help") || args.includes("-h") || unknown.length) {
   if (unknown.length) console.error(`Unknown flag(s): ${unknown.join(" ")}\n`);
-  console.log("Usage: npm run demo -- [--mock] [--no-agent] [--no-headset] [--watch]");
+  console.log("Usage: npm run demo -- [--mock] [--no-agent] [--no-headset] [--no-form] [--no-photon] [--watch]");
   process.exit(unknown.length ? 1 : 0);
 }
 const mock = args.includes("--mock");
 const agent = !mock && !args.includes("--no-agent");
 const headset = !args.includes("--no-headset");
 const watch = args.includes("--watch");
+const form = !args.includes("--no-form");
+const envText = existsSync(path.join(ROOT, ".env")) ? readFileSync(path.join(ROOT, ".env"), "utf8") : "";
+const hasEnv = (name) => !!process.env[name] || new RegExp(String.raw`^\s*${name}\s*=\s*\S`, "m").test(envText);
+const photonLine = hasEnv("PHOTON_PROJECT_ID") && hasEnv("PHOTON_API_KEY") ? "Photon 2.0" : undefined;
+const photon = !args.includes("--no-photon") && !!photonLine;
 
 function fail(msg) {
   console.error(`\n[demo] ${msg}\n`);
@@ -61,7 +70,12 @@ function inUse(port) {
     });
   return Promise.all([probe("127.0.0.1"), probe("::1")]).then((r) => r.some(Boolean));
 }
-const wanted = { server: PORTS.server, console: PORTS.console, ...(headset ? { headset: PORTS.headset } : {}) };
+const wanted = {
+  server: PORTS.server,
+  console: PORTS.console,
+  ...(headset ? { headset: PORTS.headset } : {}),
+  ...(form ? { form: PORTS.form } : {}),
+};
 const busy = [];
 for (const [name, port] of Object.entries(wanted)) if (await inUse(port)) busy.push(`${port} (${name})`);
 if (busy.length) {
@@ -94,9 +108,18 @@ if (headset) {
   });
 }
 
+if (form) {
+  commands.push({ name: "form", prefixColor: "green", command: "npm run form -w agent", cwd: ROOT, env: { FORM_PORT: String(PORTS.form) } });
+}
+if (photon) {
+  // Retries on its own if the line can't connect, so a Photon problem never stops the demo.
+  commands.push({ name: "photon", prefixColor: "yellow", command: "npm run photon -w agent", cwd: ROOT });
+}
+
 console.log(
   `[demo] server: ${mock ? "MOCK=1 (scripted calls, no agent)" : `MOCK=0 live, ${agent ? "AGENT=1 Nemotron agent" : "AGENT=0 rule-based locator"}`}` +
-    `${headset ? "" : "  | headset: off"}  | Ctrl+C stops everything`,
+    `${headset ? "" : "  | headset: off"}${form ? "" : "  | form: off"}` +
+    `  | photon: ${photon ? `on (${photonLine})` : photonLine ? "off (--no-photon)" : "off (no Photon credentials in .env)"}  | Ctrl+C stops everything`,
 );
 
 const { result, commands: running } = concurrently(commands, {
@@ -107,12 +130,12 @@ const { result, commands: running } = concurrently(commands, {
 
 // Print the URLs once everything says it is up (or after 30 s), so they don't scroll away.
 const ready = new Set();
-const markers = { server: "[server] ws://", console: "ready in", headset: "ready in" };
+const markers = { server: "[server] ws://", console: "ready in", headset: "ready in", form: "[form] report page", photon: "[photon] listening" };
 let printed = false;
 const printOnce = () => {
   if (printed) return;
   printed = true;
-  printUrls({ headset, serverPort: PORTS.server, consolePort: PORTS.console, headsetPort: PORTS.headset });
+  printUrls({ headset, form, serverPort: PORTS.server, consolePort: PORTS.console, headsetPort: PORTS.headset, formPort: PORTS.form });
   console.log("[demo] reset between judges: `npm run demo:reset` (second terminal)   check: `npm run demo:check`");
 };
 const fallbackTimer = setTimeout(printOnce, 30000);

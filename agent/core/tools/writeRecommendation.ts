@@ -276,6 +276,9 @@ export const writeRecommendationSchema: OpenAI.Chat.Completions.ChatCompletionFu
 const floorOf = (roomId: string, building: Building) =>
   building.rooms.find((r) => r.id === roomId)?.floor ?? (Number.parseInt(roomId, 10) || 0);
 
+/** Trims, and drops quote marks the model sometimes wraps around its text (they'd reach callers' phones). */
+export const unquote = (s: string) => s.trim().replace(/^["'“”‘’`]+|["'“”‘’`]+$/g, "").trim();
+
 /** Rejected attempts per run. */
 const rejections = new WeakMap<RunState, number>();
 
@@ -316,8 +319,8 @@ export const writeRecommendationTool: AgentTool = {
     const problems = checkRecommendation(args, exits, originFloor, floors);
     if (!problems.length) {
       run.recommendation = {
-        actions: (args.actions as string[]).map((a) => a.trim()),
-        callerReply: (args.callerReply as string).trim(),
+        actions: (args.actions as string[]).map(unquote),
+        callerReply: unquote(args.callerReply as string),
       };
       return { accepted: true };
     }

@@ -9,18 +9,29 @@
 ```sh
 npm run demo
 ```
-This starts the server (live mode + Nemotron agent, :8080), the console (:5173) and the headset (HTTPS, :8081).
+This starts the server (live mode + Nemotron agent, :8080), the console (:5173), the headset (HTTPS, :8081),
+the QR report form (:8090) and the Photon line when its credentials are in `.env` (see `.env.example`).
 When all three are up it prints the URLs, including the Quest URL for this laptop's Wi-Fi IP.
 The server log must say `mode=live  reports->agent processReport()`.
 **Ctrl+C stops all three.** If one crashes, the others are stopped too, so just run it again.
 
 Options: `npm run demo -- --mock` (scripted calls, no agent), `-- --no-agent` (live, rule-based locator),
-`-- --no-headset`, `-- --watch` (server restarts on file edits; off by default so a save can't wipe the incident).
+`-- --no-headset`, `-- --no-form`, `-- --no-photon`, `-- --watch` (server restarts on file edits; off by default so a save can't wipe the incident).
 
 Second terminal: `npm run demo:check` (is everything up?), `npm run demo:urls` (URLs again), `npm run demo:reset`.
 
-**How reports get in:** type them into the console's "Add a report" panel (or `POST /ingest`, below).
-Real 911 texts are not wired up yet: the Photon SMS adapter (`agent/photon/index.ts`) is still a TODO.
+**How reports get in** (all three end at the server's `POST /ingest`, and the caller gets the reply):
+- **iMessage** to the project's Photon 2.0 line (iPhones; the person texts first). Needs `PHOTON_PROJECT_ID` +
+  `PHOTON_API_KEY` in `.env`; the demo's first line says `photon: on (Photon 2.0)`. It polls every 2 s, so no
+  webhook or tunnel. Shared iMessage lines are **per person**: each judge's phone must be registered first
+  (uses one seat), then they text the number Photon assigns them. Two ways:
+  - On the QR form: "Prefer iMessage? (iPhone)" -> enter phone -> it shows the number and a tap-to-text link.
+  - By hand: `npm run photon:assign -- +14155550123` prints the number to tell them; `-- --list` shows everyone. If the line fails it retries every 15 s and the rest of the demo keeps running.
+  Test without a line: `npm run photon -w agent -- --terminal`. Voice calls are not supported.
+- **QR form** for any phone, including Android: print or show `http://localhost:8090/qr` on the table card.
+  Phones on the same Wi-Fi open `http://<laptop IP>:8090/`. If the venue Wi-Fi isolates devices:
+  `npx -y cloudflared tunnel --url http://localhost:8090`, then open `/qr?url=<tunnel URL>` for the QR.
+- The console's "Add a report" panel (operator typing).
 
 ## URLs
 | What | URL |
@@ -29,6 +40,7 @@ Real 911 texts are not wired up yet: the Photon SMS adapter (`agent/photon/index
 | Headset in the laptop browser | https://localhost:8081 (accept the certificate warning) |
 | Quest | see below |
 | Server health | http://localhost:8080/health should return `{"ok":true,"mock":false}` |
+| Report form / its QR | http://localhost:8090/ and http://localhost:8090/qr |
 
 ## Opening the headset on the Quest (needs HTTPS for WebXR), in order of preference
 1. **Same Wi-Fi.** Join the Quest to the laptop's Wi-Fi and open `https://<laptop IP>:8081` (shown by `npm run demo:urls`).
@@ -75,3 +87,5 @@ Note: with the headset open, a new recommendation is **accepted and dispatched a
 - [ ] Quest: headset tab loaded, building visible, Enter VR works. Battery is fine.
 - [ ] `npm run demo:reset` done: no leftover reports from the last run.
 - [ ] First report text ready to paste into the console's "Add a report" panel.
+- [ ] QR card shows the right URL (scan it with your own phone and send one test report, then reset).
+- [ ] Photon: text the line once from an iPhone and get a reply (or the log says `photon: off` on purpose).

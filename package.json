@@ -14,6 +14,7 @@
     "demo:urls": "node scripts/urls.mjs",
     "demo:check": "node scripts/check.mjs",
     "demo:reset": "node scripts/reset.mjs",
+    "photon:assign": "npm run photon:assign -w agent --",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {

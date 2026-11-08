@@ -18,7 +18,7 @@ export function lanAddresses() {
   return out.sort((x, y) => Number(x.virtual) - Number(y.virtual));
 }
 
-export function printUrls({ headset = true, serverPort = 8080, consolePort = 5173, headsetPort = 8081 } = {}) {
+export function printUrls({ headset = true, form = true, serverPort = 8080, consolePort = 5173, headsetPort = 8081, formPort = 8090 } = {}) {
   const lan = lanAddresses();
   const real = lan.filter((a) => !a.virtual);
   const line = "-".repeat(64);
@@ -34,6 +34,11 @@ export function printUrls({ headset = true, serverPort = 8080, consolePort = 517
       console.log("  Quest, same Wi-Fi:      no LAN address found (not on Wi-Fi?) - use USB or a tunnel, see DEMO.md");
     }
     console.log(`  Quest over USB:         adb reverse tcp:${headsetPort} tcp:${headsetPort}  then https://localhost:${headsetPort}`);
+  }
+  if (form) {
+    console.log(`  Report form QR (print): http://localhost:${formPort}/qr`);
+    for (const a of real) console.log(`  Report form, phones:    http://${a.address}:${formPort}/   (${a.name})`);
+    console.log(`  Form via tunnel:        npx -y cloudflared tunnel --url http://localhost:${formPort}  then /qr?url=<tunnel URL>`);
   }
   const virtual = lan.filter((a) => a.virtual);
   if (virtual.length) console.log(`  (ignored virtual adapters: ${virtual.map((a) => `${a.name} ${a.address}`).join(", ")})`);
