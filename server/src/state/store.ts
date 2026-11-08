@@ -4,6 +4,12 @@ import type { IncidentState, LogEntry, Recommendation, Report } from "@firewatch
 
 export const MAX_LOG = 200;
 
+/** Marks caller reports that came from a map incident: they outlive a change of active building. */
+export const MAP_REPORT_PREFIX = "map-";
+export const isMapReport = (report: Report) => report.id.startsWith(MAP_REPORT_PREFIX);
+/** Recommendations written for a map incident, which also outlive a change of active building. */
+export const mapRecommendations = new WeakSet<Recommendation>();
+
 export type Listener = (state: IncidentState) => void;
 
 export const emptyState = (): IncidentState => ({

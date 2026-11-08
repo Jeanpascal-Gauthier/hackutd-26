@@ -254,3 +254,44 @@ test("the caller's own words count when the voice agent leaves lanes_blocked out
   assert.equal(lanes("one lane is blocked"), "unknown");
   assert.equal(lanes("all lanes are blocked", "some"), "some", "an explicit value wins");
 });
+
+test("every call shows in caller reports and fills Next actions; a building change keeps them; a reset clears them", quietly(async () => {
+  const s = await serve();
+  try {
+    await s.call("/voice/incident", crash);
+    await s.settled();
+    await s.call("/voice/incident", { ...crash, description: "someone is trapped" });
+    let state = s.app.store.get();
+    assert.equal(state.reports.length, 2);
+    assert.match(state.reports[0]!.text, /^Car crash at 1 Main St: two cars hit head on/);
+    assert.equal(state.reports[0]!.channel, "voice");
+    assert.equal(state.reports[0]!.roomId, undefined);
+    assert.match(state.recommendation!.actions[0]!, /^Send responders to 1 Main St, Richardson\.$/);
+    assert.match(state.recommendation!.actions[1]!, /^Modeled forecast: /);
+
+    s.app.live.reset();
+    state = s.app.store.get();
+    assert.equal(state.reports.length, 2);
+    assert.ok(state.recommendation);
+
+    await s.call("/live/reset", {});
+    state = s.app.store.get();
+    assert.deepEqual(state.reports, []);
+    assert.equal(state.recommendation, undefined);
+  } finally { await s.close(); }
+}));
+
+test("a pin-only emergency gets Next actions, and never replaces a building fire's plan", quietly(async () => {
+  const s = await serve();
+  try {
+    await s.call("/voice/incident", { type: "other", what: "gas leak", address: "9 Far Rd", description: "smells like gas", caller: "+1" });
+    assert.match(s.app.store.get().recommendation!.actions[0]!, /for: Gas leak\.$/);
+    assert.equal(s.app.store.get().recommendation!.actions.length, 1);
+
+    const plan = { actions: ["Evacuate floors 6 to 12 by Stairwell A"] };
+    s.app.store.setRecommendation(plan);
+    await s.call("/voice/incident", crash);
+    await s.settled();
+    assert.equal(s.app.store.get().recommendation, plan);
+  } finally { await s.close(); }
+}));

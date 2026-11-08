@@ -1,8 +1,9 @@
 // Every reported emergency on the map. A report answers the caller quickly: the geocode is awaited
 // for a few seconds at most, and forecasts run in the background and appear in the state when ready.
 // One emergency reported twice (a follow-up, a correction, a second caller) stays one incident.
-import type { IncidentSeverity, LanesBlocked, MapIncident, MapIncidentKind, Report } from "@firewatch/shared/types";
-import type { IncidentStore } from "../state/store.ts";
+import { randomUUID } from "node:crypto";
+import type { IncidentSeverity, LanesBlocked, MapIncident, MapIncidentKind, Recommendation, Report } from "@firewatch/shared/types";
+import { MAP_REPORT_PREFIX, isMapReport, mapRecommendations, type IncidentStore } from "../state/store.ts";
 import { VOICE_INCIDENT_NEW, VOICE_INCIDENT_NOT_FOUND, VOICE_INCIDENT_UPDATE, VOICE_INCIDENT_WHERE } from "../transport/voice.ts";
 import { forecastCrash, type RoadWay } from "./crashModel.ts";
 import { forecastFire } from "./fireModel.ts";
@@ -93,7 +94,12 @@ export class MapIncidents {
     this.forecastRun.clear();
     this.roadCache.clear();
     this.mergedInto.clear();
-    this.store.patch({ mapIncidents: [] });
+    const { reports, recommendation } = this.store.get();
+    this.store.patch({
+      mapIncidents: [],
+      reports: reports.filter((report) => !isMapReport(report)),
+      ...(recommendation && mapRecommendations.has(recommendation) && { recommendation: undefined }),
+    });
   }
 
   async report(input: MapIncidentInput): Promise<{ incident: MapIncident; reply: string }> {
@@ -121,6 +127,37 @@ export class MapIncidents {
     return { caller: input.caller ?? ANONYMOUS, text: input.description, time: this.now(), channel: input.channel };
   }
 
+  /** Puts the call in the console's caller reports, which are otherwise only for building reports. */
+  private addCallerReport(label: string, place: string | undefined, input: MapIncidentInput): void {
+    this.store.addReport({
+      id: `${MAP_REPORT_PREFIX}${randomUUID()}`,
+      caller: input.caller ?? ANONYMOUS,
+      text: `${label} at ${place ?? "an unknown location"}: ${input.description}`,
+      time: this.now(),
+      channel: input.channel,
+    });
+  }
+
+  /** Fills Next actions from the incident, unless a building fire's evacuation plan is showing. */
+  private recommend(id: string): void {
+    const incident = this.find(id);
+    if (!incident?.formatted) return;
+    const current = this.store.get().recommendation;
+    if (current && !mapRecommendations.has(current)) return;
+    const place = spoken(incident.formatted);
+    const forecast = incident.fire?.summary ?? incident.crash?.summary;
+    const crew = incident.kind === "fire" ? "fire crews" : "responders";
+    const recommendation: Recommendation = {
+      actions: [
+        `Send ${crew} to ${place}${incident.kind === "other" ? ` for: ${incident.label}` : ""}.`,
+        ...(forecast ? [`Modeled forecast: ${forecast}`] : []),
+      ],
+    };
+    mapRecommendations.add(recommendation);
+    this.store.setRecommendation(recommendation);
+    this.store.log("recommendation", `Recommended: ${recommendation.actions[0]}`);
+  }
+
   private async create(input: MapIncidentInput): Promise<{ incident: MapIncident; reply: string }> {
     const time = this.now();
     const label = input.what ? capitalize(input.what) : DEFAULT_LABEL[input.kind];
@@ -141,6 +178,7 @@ export class MapIncidents {
     const kept = [...this.list, incident].slice(-MAX_INCIDENTS);
     this.store.patch({ mapIncidents: kept });
     this.store.log("report", `${label} reported: ${input.address ?? "location not given"}`);
+    this.addCallerReport(label, input.address, input);
     if (!input.address) return { incident, reply: VOICE_INCIDENT_WHERE };
 
     const located = await this.locate(incident.id, input.address);
@@ -158,6 +196,7 @@ export class MapIncidents {
       ...(input.severity !== "unknown" && { severity: input.severity }),
       ...(lanesChanged && { lanesBlocked }),
     });
+    this.addCallerReport(existing.label, input.address ?? existing.formatted ?? existing.query, input);
 
     // A caller correcting their own location moves the pin; another caller's address does not.
     if (moved && (callers.size === 1 || existing.status !== "located")) {
@@ -214,6 +253,7 @@ export class MapIncidents {
     }
     this.update(id, { status: "located", location: match.location, formatted: match.formatted, error: undefined });
     this.store.log("report", `${incident.label} located: ${match.formatted}`);
+    if (incident.kind === "other") this.recommend(id);
     this.runForecast(id);
   }
 
@@ -227,7 +267,9 @@ export class MapIncidents {
     const job = incident.kind === "fire" ? this.fire(id, incident, current) : this.crash(id, incident, current);
     job.catch((err) => {
       console.error(`[incidents] forecast failed for ${id}:`, err instanceof Error ? err.message : err);
-      if (current()) this.update(id, { forecastStatus: "failed", error: "The forecast could not be built. The location is still correct." });
+      if (!current()) return;
+      this.update(id, { forecastStatus: "failed", error: "The forecast could not be built. The location is still correct." });
+      this.recommend(id);
     });
   }
 
@@ -237,7 +279,9 @@ export class MapIncidents {
       this.providers.wind(location).catch(() => null),
       this.providers.buildings(location).catch(() => null),
     ]);
-    if (current()) this.update(id, { fire: forecastFire(location, wind, buildings), forecastStatus: "ready" });
+    if (!current()) return;
+    this.update(id, { fire: forecastFire(location, wind, buildings), forecastStatus: "ready" });
+    this.recommend(id);
   }
 
   private async crash(id: string, incident: MapIncident, current: () => boolean): Promise<void> {
@@ -246,5 +290,6 @@ export class MapIncidents {
     if (!current()) return;
     this.roadCache.set(id, roads);
     this.update(id, { crash: forecastCrash(location, roads, incident.lanesBlocked ?? "unknown"), forecastStatus: "ready" });
+    this.recommend(id);
   }
 }
