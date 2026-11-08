@@ -14,9 +14,17 @@
 .action-label { font-size: 20px; font-weight: 700; }
 .radar-swatches { flex-direction: row; gap: 4px; }
 .radar-swatch { width: 46px; height: 10px; border-radius: 2px; }
+.estimate { width: 408px; color: #8a4b00; font-size: 18px; font-weight: 700; line-height: 1.25; }
+.estimate:dark { color: #ffb454; }
 </style>
 <Panel class="panel-root"><div class="panel-content">
 <span class="heading">Building inspection</span>
+    <div class="recommendation">
+      <span class="section-label">BUILDING</span>
+      <span id="building-name" class="recommendation-text">Loading building...</span>
+      <span id="building-detail" class="status">-</span>
+      <span id="building-estimated" class="estimate" style="display: none">Estimated layout and occupancy (generated, not mapped)</span>
+    </div>
     <div class="recommendation">
       <span class="section-label">HAZARD RADAR</span>
       <div class="radar-swatches">
