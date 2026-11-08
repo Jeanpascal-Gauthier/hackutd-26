@@ -1,4 +1,4 @@
-# FireSight headset
+# Firewatch headset
 
 VR command room with a desk wrapping around the three front walls, a tabletop
 building derived from the server's room footprints, live fire/smoke and accepted
