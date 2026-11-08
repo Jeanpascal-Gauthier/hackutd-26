@@ -2,6 +2,7 @@ import type { FloorExit, IncidentState } from "@firewatch/shared/types";
 import { estimatedFloors, useBuilding, type ActiveBuilding } from "./activeBuilding";
 import { CheckIcon, FlameIcon, StairsIcon, UsersIcon } from "./Icons";
 import { Empty, PeopleCount, Timestamp } from "./ui";
+import { Typewriter, typingDuration, useChangedSinceLoad } from "./Typewriter";
 
 const stairName = (id: string) => `Stair ${id.replace(/^stair-/, "").toUpperCase()}`;
 
@@ -60,6 +61,11 @@ export function PriorityActions({ state, connected, onAccept }: {
   const pending = state?.recommendation;
   const accepted = state?.accepted;
   const recommendation = pending ?? accepted?.recommendation;
+  // A recommendation that arrives after load (from a new report) types out, steps first, then the reply.
+  const signature = recommendation ? JSON.stringify([recommendation.actions, recommendation.callerReply ?? ""]) : null;
+  const typeOut = useChangedSinceLoad(signature, state !== null);
+  const lines = recommendation ? [...recommendation.actions, recommendation.callerReply ?? ""] : [];
+  const delays = lines.map((_, index) => lines.slice(0, index).reduce((sum, line) => sum + typingDuration(line), 0));
   return (
     <section className={`panel priority-actions ${pending ? "needs-decision" : ""}`} aria-labelledby="actions-heading">
       <div className="panel-heading">
@@ -70,12 +76,12 @@ export function PriorityActions({ state, connected, onAccept }: {
         <div className="priority-actions-body">
           {!pending && accepted && <p className="accepted-at">Last accepted decision · <Timestamp value={accepted.time} /></p>}
           <ol className="action-list priority-action-list">
-            {recommendation.actions.map((action, index) => <li key={`${index}-${action}`}>{action}</li>)}
+            {recommendation.actions.map((action, index) => <li key={`${index}-${action}`}><Typewriter id={`rec-${signature}-${index}`} text={action} active={typeOut} delay={delays[index]} /></li>)}
           </ol>
           {recommendation.callerReply && (
             <details className="caller-guidance" open={Boolean(pending)} key={pending ? "pending-reply" : "accepted-reply"}>
               <summary>Reply for the caller</summary>
-              <p>{recommendation.callerReply}</p>
+              <p><Typewriter id={`rec-${signature}-reply`} text={recommendation.callerReply} active={typeOut} delay={delays[recommendation.actions.length]} /></p>
             </details>
           )}
           {pending ? (

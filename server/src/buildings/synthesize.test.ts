@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Occupant } from "@firewatch/shared/types";
+import type { Building, Occupant } from "@firewatch/shared/types";
 import { synthesizeBuilding, summarizeCandidate, type SynthesizedBuilding } from "./synthesize.ts";
 import { createLocationOnlyRecord } from "./normalize.ts";
 import { METRES_PER_DEGREE, pointInRing, type Pt } from "./geometry.ts";
@@ -9,6 +9,7 @@ import { simulateSpread } from "../simulation/spread.ts";
 import { findExits } from "../simulation/exits.ts";
 import { locate } from "../live/locate.ts";
 import { recommend } from "../live/recommend.ts";
+import { DEMO } from "../live/buildingData.ts";
 
 // Fixtures are drawn in metres (x east, y north) around a point in Richardson, TX.
 const LAT = 32.99, LON = -96.75;
@@ -50,7 +51,7 @@ const FIXTURES: Record<string, BuildingRecord> = {
 const SHAFTS = ["stair-a", "stair-b", "elev-1"];
 
 /** The checks data/check.ts makes on the demo, adapted to generated buildings, plus outline containment. */
-function check({ building, sprinklers, doors }: SynthesizedBuilding): string[] {
+function check({ building, sprinklers, doors, inspections = [] }: SynthesizedBuilding): string[] {
   const errs: string[] = [];
   const err = (m: string) => errs.push(m);
   const profile = building.profile;
@@ -110,6 +111,8 @@ function check({ building, sprinklers, doors }: SynthesizedBuilding): string[] {
   for (const v of building.verticals) {
     if (v.floors[0] !== 1 || v.floors[1] !== floors) err(`${v.id}: floors ${v.floors}`);
     if (v.kind !== (v.id === "elev-1" ? "elevator" : "stair")) err(`${v.id}: kind ${v.kind}`);
+    // The stairs differ: stair B has a door propped open (on the fire floor); stair A and the elevator don't.
+    if (v.doorsClosed !== (v.id !== "stair-b")) err(`${v.id}: doorsClosed ${v.doorsClosed}`);
   }
 
   // Whole-building connectivity through the shafts.
@@ -133,6 +136,16 @@ function check({ building, sprinklers, doors }: SynthesizedBuilding): string[] {
     const l = door(d.a, d.b);
     if (!l) err(`door without link ${d.a}|${d.b}`);
     else if (l.fireRated !== d.ratingMinutes > 0) err(`door ${d.a}|${d.b}: rating mismatch`);
+  }
+  // Inspections: exactly one deficient record per floor, for the hall <-> stair B door.
+  const ids = inspections.map((r) => r.id);
+  const want = Array.from({ length: floors }, (_, i) => `fire-door:${i + 1}-hall|${i + 1}-stair-b`);
+  if (JSON.stringify(ids) !== JSON.stringify(want)) err(`inspections ${ids.join(", ")}`);
+  for (const r of inspections) {
+    const d = doors.find((x) => `${x.a}|${x.b}` === r.target);
+    if (!d || d.ratingMinutes !== 60) err(`${r.id}: target is not a 60-min door`);
+    if (r.id !== `${r.system}:${r.target}` || r.system !== "fire-door" || r.status !== "deficient") err(`${r.id}: bad record`);
+    if (!r.finding?.includes("propped open")) err(`${r.id}: finding ${r.finding}`);
   }
   for (const r of building.rooms) if (sprinklers[r.id] !== "none") err(`${r.id}: sprinkler ${sprinklers[r.id]}`);
   if (Object.keys(sprinklers).length !== building.rooms.length) err("sprinklers for unknown rooms");
@@ -316,6 +329,94 @@ test("spread model and exit finder run on a synthesized 6-floor building", () =>
   }
   const rec = recommend(exits, "2-break", building);
   assert.ok(rec.actions.some((a) => a.includes("floor 2 (Break Room)")));
+});
+
+test("stairwells differ like the demo's: stair B's door is propped open, stair A's are closed", () => {
+  const demoDoor = DEMO.inspections.find((r) => r.id === "fire-door:7-hall|7-stair-b")!;
+  for (const [name, rec] of Object.entries({ ...FIXTURES, "1 floor": record(polygon(rect(0, 0, 30, 20)), { floorsAboveGround: 1 }) })) {
+    const { building, inspections = [] } = synthesizeBuilding(rec);
+    const v = (id: string) => building.verticals.find((x) => x.id === id)!;
+    assert.deepEqual([v("stair-a").doorsClosed, v("stair-b").doorsClosed, v("elev-1").doorsClosed], [true, false, true], name);
+    // Explains why, in plain words on the console, like the demo's notes.
+    assert.ok(building.profile!.assumptions.some((a) => a.includes("Stairwell B") && a.includes("propped open on the fire floor")), name);
+    // Same record shape (and system/status) as the demo's "fire-door:7-hall|7-stair-b".
+    assert.equal(inspections.length, building.profile!.floors, name);
+    for (const r of inspections) {
+      assert.deepEqual(Object.keys(r).sort(), Object.keys(demoDoor).sort(), name);
+      assert.deepEqual([r.system, r.status], [demoDoor.system, demoDoor.status]);
+      assert.equal(r.lastInspected, "2026-11-08", "dated as of the map lookup, no clock read");
+    }
+  }
+});
+
+/** Every ordinary room holds 2 people. */
+const everyone = (building: Building): Occupant[] =>
+  building.rooms.filter((r) => !["hall", "stair", "elevator"].includes(r.kind!)).map((r) => ({ room: r.id, count: 2, flags: [], estimated: true }));
+
+test("forecast on a synthesized building: the propped stair B smoke-logs from the fire floor up, stair A stays clear", () => {
+  const cases: [string, BuildingRecord, number[]][] = [
+    ["6 floors", FIXTURES.rectangle, [1, 3, 6]],
+    ["12 floors", record(polygon(rect(0, 0, 30, 20)), { floorsAboveGround: 12 }), [2, 7, 12]],
+    ["location-only (4 floors)", FIXTURES["location-only"], [2]],
+    ["2 floors (retail)", FIXTURES.huge, [1, 2]],
+    ["1 floor", record(polygon(rect(0, 0, 30, 20)), { floorsAboveGround: 1 }), [1]],
+  ];
+  for (const [name, rec, fireFloors] of cases) {
+    const { building } = synthesizeBuilding(rec);
+    const top = building.profile!.floors;
+    for (const fire of fireFloors) {
+      // A fire in a room whose door stands open (break room, lobby, shop), so smoke fills the hall.
+      const origin = building.links.find((l) => l.a === `${fire}-hall` && l.kind === "door" && !l.closed)!.b;
+      const snaps = simulateSpread(building, origin, 30, { sprinklerRooms: [] });
+      assert.deepEqual(snaps, simulateSpread(building, origin, 30, { sprinklerRooms: [] }), "deterministic");
+      const exits = findExits(building, snaps, everyone(building));
+      for (let f = fire; f <= top; f++) {
+        const e = exits.find((x) => x.floor === f)!;
+        const at = `${name}, fire on ${fire}, floor ${f}`;
+        assert.equal(e.stair, "stair-a", at);
+        assert.ok(e.blockedAt["stair-b"] !== null, `${at}: stair B smoke-logged`);
+        // Closed doors still leak and smoke pools at the top of a shaft, so near the top of a short
+        // building (or a 1-floor one) stair A can fill late in the 30 minutes: never within 5 minutes of stair B.
+        const a = e.blockedAt["stair-a"];
+        assert.ok(a === null || a >= e.blockedAt["stair-b"]! + 5, `${at}: stair A ${a}, B ${e.blockedAt["stair-b"]}`);
+        assert.ok(e.route!.every((id) => !id.includes("stair-b")), at);
+      }
+      // The demo's picture in a tall building: stair A clear for 30 minutes on every floor below the top.
+      if (top === 12) for (let f = 1; f < top; f++) assert.equal(exits.find((x) => x.floor === f)!.blockedAt["stair-a"], null, `fire on ${fire}, floor ${f}`);
+      const reply = recommend(exits, origin, building).callerReply!;
+      assert.match(reply, /by Stairwell A/, `${name}, fire on ${fire}: ${reply}`);
+      assert.match(reply, /do not use Stairwell B/i, `${name}, fire on ${fire}: ${reply}`);
+    }
+  }
+});
+
+test("forecast: wherever the fire is (closed rooms too), stair A is picked and never fills before stair B", () => {
+  for (const rec of [FIXTURES.rectangle, FIXTURES.tiny]) {
+    const { building } = synthesizeBuilding(rec);
+    for (const origin of building.rooms.filter((r) => !["hall", "stair", "elevator"].includes(r.kind!))) {
+      const exits = findExits(building, simulateSpread(building, origin.id, 30), everyone(building));
+      for (const e of exits.filter((x) => x.floor >= origin.floor)) {
+        const [a, b] = [e.blockedAt["stair-a"] ?? Infinity, e.blockedAt["stair-b"] ?? Infinity];
+        assert.equal(e.stair, "stair-a", `${origin.id}, floor ${e.floor}`);
+        assert.ok(a >= b, `${origin.id}, floor ${e.floor}: A ${a}, B ${b}`);
+      }
+    }
+  }
+});
+
+test("the propped door is only assumed when no stair B door is recorded open", () => {
+  const { building } = synthesizeBuilding(FIXTURES.rectangle);
+  // Record stair B's floor-5 door as the open one: the fire on floor 3 no longer opens floor 3's.
+  const recorded = structuredClone(building);
+  recorded.links.find((l) => l.a === "5-hall" && l.b === "5-stair-b")!.closed = false;
+  const blockedB = (b: Building) => findExits(b, simulateSpread(b, "3-break", 30), everyone(b)).find((e) => e.floor === 3)!.blockedAt["stair-b"];
+  assert.notEqual(blockedB(building), null);
+  assert.equal(blockedB(recorded), null);
+  // All of stair B's doors closed (doorsClosed=true): both stairs behave the same again.
+  const shut = structuredClone(building);
+  shut.verticals.find((v) => v.id === "stair-b")!.doorsClosed = true;
+  const e = findExits(shut, simulateSpread(shut, "3-break", 30), everyone(shut)).find((x) => x.floor === 3)!;
+  assert.deepEqual(e.blockedAt, { "stair-a": null, "stair-b": null });
 });
 
 test("rule-based locator finds rooms in a synthesized office", () => {

@@ -118,6 +118,33 @@ Missing Geoapify configuration returns **503**. Invalid request input returns **
 failures return **502**, timeouts return **504**, and unknown cached IDs return **404**. Provider
 errors are sanitized so API keys and upstream error bodies are not returned to clients.
 
+### Offline copies (snapshots)
+
+`server/snapshots/*.json` holds saved live lookups, one file per address: the Geoapify candidates
+(`search`), the Overpass outlines around the top match (`nearby`), and the interior elements of the
+captured building(s) (`interiors`, keyed by `osm:way:N`), plus `savedAt`, `query` and optional
+hand-editable `aliases`. The normal code turns them into candidates and records, so confirmation
+works offline exactly as live. Save one (sequential requests, at most 3 per address; never prints
+the key):
+
+```powershell
+npm run snapshot -w server -- "800 W Campbell Rd, Richardson, TX"
+npm run snapshot -w server -- "<address>" --building osm:way:123 --alias "what a caller says" "<another address>"
+```
+
+On a provider failure (HTTP status 500 or above: timeout, 429, 5xx, network error, missing key) the
+service serves, in order: the stale in-memory result, then a matching snapshot (query, alias or
+saved address, ignoring case, punctuation and common abbreviations; outlines within 50 m of the
+point), else the original error. For 60 s after a failure, a matching snapshot is served without
+waiting on that provider again. `BUILDINGS_OFFLINE=1` never contacts the providers; an address with
+no snapshot then fails with 503 `offline_no_snapshot`. Responses served from a snapshot have
+`cache.source: "snapshot"`, `cache.offlineReason` (the error code or `offline_mode`) and
+`cache.fetchedAt` = the save time (live responses have `cache.source: "live"`); 409 resolve errors
+carry the same `cache`. The record's `warnings` and the active building's `profile.assumptions`
+start with `Offline copy saved <date>; live lookup unavailable (<reason>).`, and the incident log
+gets one `building` line per lookup. `GET /buildings/providers` adds
+`snapshots: { offlineMode, saved }`.
+
 References: [Geoapify geocoding](https://apidocs.geoapify.com/docs/geocoding/),
 [OSM indoor tagging](https://wiki.openstreetmap.org/wiki/Simple_Indoor_Tagging),
 [Overpass instance guidance](https://dev.overpass-api.de/overpass-doc/en/preface/commons.html).

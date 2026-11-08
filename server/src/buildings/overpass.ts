@@ -3,6 +3,17 @@ import { BuildingApiError, isObject, providerJson, type RequestOptions } from ".
 
 export const DEFAULT_OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 export const SEARCH_RADIUS_METERS = 150;
+/**
+ * Public instances ask clients to identify themselves: overpass-api.de answers 406 and
+ * overpass.kumi.systems 429 to Node's default "node" user agent, so every live lookup failed.
+ */
+export const OVERPASS_USER_AGENT = "FireSight/0.1 (HackUTD 2026 incident-response prototype; +https://github.com/Jeanpascal-Gauthier/hackutd-26)";
+/**
+ * Client timeout per Overpass request, unless the caller sets one. The queries run with
+ * `[timeout:8]` on the server, but a busy public instance queues them first and the geometry
+ * response can be large on venue Wi-Fi, so the shared 10 s provider default left ~2 s of margin.
+ */
+export const OVERPASS_TIMEOUT_MS = 15000;
 export interface Bounds { south: number; west: number; north: number; east: number }
 
 export function validateLocation(value: unknown): Coordinates {
@@ -65,9 +76,10 @@ export function validOverpassUrl(input: string): string {
 
 async function queryOverpass(query: string, url: string, options: RequestOptions): Promise<OsmElement[]> {
   const body = await providerJson(validOverpassUrl(url), "OpenStreetMap", {
-    method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json", "user-agent": OVERPASS_USER_AGENT },
     body: new URLSearchParams({ data: query }).toString(),
-  }, options);
+  }, { ...options, timeoutMs: options.timeoutMs ?? OVERPASS_TIMEOUT_MS });
   return elements(body);
 }
 

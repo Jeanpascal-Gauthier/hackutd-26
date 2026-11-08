@@ -2,7 +2,7 @@
 // synthesized two-floor building, a candidate summarizer and an occupancy estimator.
 import type { Building, BuildingCandidateSummary } from "@firewatch/shared/types";
 import { createApp, type AppOptions } from "../app.ts";
-import { createBuildingService } from "../buildings/service.ts";
+import { createBuildingService, type BuildingServiceOptions } from "../buildings/service.ts";
 import type { BuildingCandidate, BuildingRecord, Coordinates } from "../buildings/types.ts";
 import type { SynthesizedBuilding, SynthesizeOptions } from "../buildings/synthesize.ts";
 import type { OccupancyEstimator } from "../agent/bridge.ts";
@@ -125,13 +125,16 @@ export function fakes(): Fakes {
   return f;
 }
 
-/** A live-mode app on fakes. */
-export function fakeApp(options: Partial<AppOptions> = {}) {
+/** A live-mode app on fakes. No offline copies unless `service.snapshotDir` names a folder. */
+export function fakeApp(options: Partial<AppOptions> = {}, service: Partial<BuildingServiceOptions> = {}) {
   const world = fakeWorld();
   const f = fakes();
   const app = createApp({
     mock: false,
-    buildings: createBuildingService({ fetch: fakeFetch(world), geoapifyApiKey: "test-key", overpassApiUrl: "https://overpass.test/api/interpreter" }),
+    buildings: createBuildingService({
+      fetch: fakeFetch(world), geoapifyApiKey: "test-key", overpassApiUrl: "https://overpass.test/api/interpreter",
+      snapshotDir: false, offline: false, ...service,
+    }),
     synthesize: f.synthesize,
     summarize: f.summarize,
     estimateOccupancy: f.estimateOccupancy,

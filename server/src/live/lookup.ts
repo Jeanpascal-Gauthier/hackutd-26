@@ -19,7 +19,7 @@ import type { IncidentStore } from "../state/store.ts";
 import type { ReportProcessor } from "../state/processor.ts";
 import type { LiveIncident } from "./incident.ts";
 import { buildingData, DEMO, type BuildingData } from "./buildingData.ts";
-import type { BuildingService } from "../buildings/service.ts";
+import type { BuildingService, CacheInfo } from "../buildings/service.ts";
 import { BuildingApiError } from "../buildings/provider.ts";
 import { validateSearch } from "../buildings/geoapify.ts";
 import type { BuildingCandidate, BuildingRecord, Coordinates } from "../buildings/types.ts";
@@ -148,10 +148,22 @@ export class BuildingLookups {
     this.deps.store.log("building", `Building lookup failed: ${error} The incident stays on ${this.deps.live.active.summary().name}.`);
   }
 
+  /** Last lookup generation whose offline copy was logged (once per lookup is enough). */
+  private offlineLogged = 0;
+
+  /** Tells the operator (log line) that part of this lookup came from an offline copy. */
+  private noteOffline(gen: number, cache: CacheInfo | undefined, what: string): void {
+    if (gen !== this.gen || cache?.source !== "snapshot" || this.offlineLogged === gen) return;
+    this.offlineLogged = gen;
+    this.deps.store.log("building",
+      `${what} from an offline copy saved ${cache.fetchedAt.slice(0, 10)}; live lookup unavailable (${cache.offlineReason ?? "provider error"})`);
+  }
+
   private async search(gen: number, query: string): Promise<void> {
     try {
-      const { candidates } = await this.deps.buildings.search(query);
+      const { candidates, cache } = await this.deps.buildings.search(query);
       if (gen !== this.gen) return;
+      this.noteOffline(gen, cache, "Address match");
       const top = candidates[0];
       if (!top) throw new Error(`No address found for "${query}".`);
       this.location = top.location;
@@ -160,10 +172,13 @@ export class BuildingLookups {
 
       let record: BuildingRecord;
       try {
-        record = (await this.deps.buildings.resolve(top.location)).building;
+        const resolved = await this.deps.buildings.resolve(top.location);
+        record = resolved.building;
+        this.noteOffline(gen, resolved.cache, "Location");
       } catch (err) {
         if (gen !== this.gen) return;
         if (!(err instanceof BuildingApiError && err.status === 409 && err.code === "building_selection_required")) throw err;
+        this.noteOffline(gen, err.details.cache as CacheInfo | undefined, "Building outlines");
         const outlines = (err.details.candidates ?? []) as BuildingCandidate[];
         const summaries = outlines
           .map((c) => this.summarize(c, top.location))
@@ -203,8 +218,9 @@ export class BuildingLookups {
     const location = this.location;
     this.pending = (async () => {
       try {
-        const { building: record } = await this.deps.buildings.resolve({ ...location, buildingId });
+        const { building: record, cache } = await this.deps.buildings.resolve({ ...location, buildingId });
         if (gen !== this.gen) return;
+        this.noteOffline(gen, cache, "Building details");
         await this.build(gen, record);
       } catch (err) {
         this.fail(gen, err);
@@ -219,7 +235,10 @@ export class BuildingLookups {
     const address = current.match?.formatted ?? current.query;
     const synthesized = this.synthesize(record, { address, ...(this.timezone && { timezone: this.timezone }) });
     if (!synthesized?.building?.rooms?.length) throw new Error("Could not build a floor plan for this building.");
-    const building = withProfile(synthesized.building, record, address, this.timezone);
+    let building = withProfile(synthesized.building, record, address, this.timezone);
+    // An offline copy (server/snapshots/) is named first in the console's building notes.
+    const offline = (record.warnings ?? []).filter((w) => /offline copy saved/i.test(w));
+    if (offline.length) building = { ...building, profile: { ...building.profile, assumptions: [...offline, ...building.profile.assumptions] } };
 
     const started = this.now();
     const estimate = this.estimate(building);
@@ -231,7 +250,8 @@ export class BuildingLookups {
       sprinklers: synthesized.sprinklers ?? {},
       doors: synthesized.doors ?? [],
       occupants: estimate?.occupants ?? [],
-      inspections: [], // public buildings have no inspection records
+      // Public buildings have no real inspection records; only the assumed stair B door finding.
+      inspections: synthesized.inspections ?? [],
     });
     const { store, live } = this.deps;
     const state = store.get();

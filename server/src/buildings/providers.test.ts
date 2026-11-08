@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { searchAddresses } from "./geoapify.ts";
-import { buildingInteriors, nearbyBuildings } from "./overpass.ts";
+import { buildingInteriors, nearbyBuildings, OVERPASS_USER_AGENT } from "./overpass.ts";
 import { BuildingApiError, providerJson } from "./provider.ts";
 
 test("geocoding uses encoded parameters and returns bounded source-labelled candidates", async () => {
@@ -74,6 +74,18 @@ test("Overpass requests use bounded generated queries and preserve raw room fiel
   assert.match(queries[1], /\["highway"="corridor"\]/);
   assert.match(queries[1], /\(\._;>;\)/);
   assert.equal(result[0].tags?.["level:ref"], "G");
+});
+
+test("Overpass requests identify the app (public instances reject Node's default user agent)", async () => {
+  const agents: (string | null)[] = [];
+  const fetch: typeof globalThis.fetch = async (_, init) => {
+    agents.push(new Headers(init?.headers).get("user-agent"));
+    return Response.json({ elements: [] });
+  };
+  await nearbyBuildings({ lat: 32, lon: -96 }, undefined, { fetch });
+  await buildingInteriors({ south: 32, west: -96, north: 32.001, east: -95.999 }, undefined, { fetch });
+  assert.deepEqual(agents, [OVERPASS_USER_AGENT, OVERPASS_USER_AGENT]);
+  assert.match(OVERPASS_USER_AGENT, /^FireSight\//);
 });
 
 test("Overpass never repairs a polygon by discarding invalid vertices or topology", async () => {

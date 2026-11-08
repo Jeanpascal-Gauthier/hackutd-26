@@ -33,13 +33,34 @@ interface Edge {
   rise?: boolean;
 }
 
+/**
+ * Shaft doors the forecast treats as open although their link says closed. A vertical with
+ * doorsClosed=false has a door into it standing open; when the building records none of its doors
+ * open (generated buildings: which floor is unknown), the worst case is assumed: the one on each
+ * fire floor, so smoke enters that shaft where the fire is. The demo records its open door
+ * (7-hall <-> 7-stair-b), so nothing is assumed there.
+ */
+function assumedOpenDoors(b: Building, fireFloors: ReadonlySet<number>): Set<Link> {
+  const floorOf = new Map(b.rooms.map((r) => [r.id, r.floor]));
+  const out = new Set<Link>();
+  for (const v of b.verticals) {
+    if (v.doorsClosed) continue;
+    const isShaft = (id: string) => id === `${floorOf.get(id)}-${v.id}`;
+    const doors = b.links.filter((l) => l.kind === "door" && isShaft(l.a) !== isShaft(l.b));
+    if (doors.some((l) => !l.closed)) continue;
+    for (const l of doors) if (fireFloors.has(floorOf.get(isShaft(l.a) ? l.a : l.b)!)) out.add(l);
+  }
+  return out;
+}
+
 /** Directed edges; each link and vertical shaft yields edges in both directions. */
-function buildEdges(b: Building, opts: SpreadOptions): Edge[] {
+function buildEdges(b: Building, opts: SpreadOptions, fireFloors: ReadonlySet<number>): Edge[] {
   const edges: Edge[] = [];
   const known = new Set(b.rooms.map((r) => r.id));
+  const propped = assumedOpenDoors(b, fireFloors);
   for (const l of b.links) {
     if (!known.has(l.a) || !known.has(l.b)) continue;
-    const s = smokeRate(l);
+    const s = propped.has(l) ? C.smoke.openDoor : smokeRate(l);
     const f = s * C.fireRateRatio;
     edges.push({ from: l.a, to: l.b, smoke: s, fire: f }, { from: l.b, to: l.a, smoke: s, fire: f });
   }
@@ -126,7 +147,8 @@ export function simulateSpread(
   if (!origins.size) throw new Error("No origin room");
   for (const id of origins)
     if (!building.rooms.some((r) => r.id === id)) throw new Error(`Unknown origin room: ${id}`);
-  const edges = buildEdges(building, options);
+  const fireFloors = new Set(building.rooms.filter((r) => origins.has(r.id)).map((r) => r.floor));
+  const edges = buildEdges(building, options, fireFloors);
   const sprinklers = new Set(options.sprinklerRooms ?? []);
   let cur = new Map<string, RoomState>(
     building.rooms.map((r) => [

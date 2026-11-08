@@ -13,6 +13,7 @@ import { Empty, PanelHeading, PeopleCount, Timestamp, formatTime as time } from 
 import { FlameIcon, MoonIcon, PauseIcon, PinIcon, PlayIcon, ReplayIcon, SendIcon, SunIcon } from "./Icons";
 import { useIncident } from "./useIncident";
 import { useTheme } from "./theme";
+import { Typewriter } from "./Typewriter";
 import "./styles.css";
 import "./dispatch.css";
 
@@ -305,7 +306,7 @@ function ReportCard({ report, selected, fresh, onSelect }: { report: Report; sel
   return (
     <article className={`report-card${selected ? " selected-report" : ""}${fresh ? " is-new" : ""}`}>
       <div className="report-meta"><strong>{report.caller}</strong><time dateTime={new Date(report.time).toISOString()}>{time(report.time)}</time></div>
-      <p>{report.text}</p>
+      <p><Typewriter id={`report-${report.id}`} text={report.text} active={fresh} /></p>
       <div className="report-location"><button disabled={!canLocate} onClick={() => report.roomId && onSelect(report.roomId)}><PinIcon size={16} />{roomName(report.roomId)}</button>{uncertain && <span className="pill warn">Location uncertain</span>}</div>
     </article>
   );

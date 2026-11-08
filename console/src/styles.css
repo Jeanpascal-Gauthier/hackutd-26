@@ -472,6 +472,10 @@ input[type=range]:disabled { opacity: .45; cursor: not-allowed; }
   html { scroll-behavior: auto; }
   button:not(:disabled):active { scale: none; }
 }
+/* Typewriter: the untyped remainder holds its space so wrapping is final from the first frame.
+   The screen-reader copy is not selectable, so copying text gets it once. */
+.typewriter-rest { visibility: hidden; }
+.typewriter-reader { user-select: none; }
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes pin-in { from { opacity: 0; scale: 0.9; } }
 @keyframes arrive { from { background-color: var(--accent-surface); } }

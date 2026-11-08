@@ -9,7 +9,7 @@
 // rooms joined by closed walls. Frame: the hallway's west end / north edge is (0, 0), x runs along
 // the hall, so stair A sits at negative x, like the demo.
 import type { Building, BuildingCandidateSummary, BuildingProfile, Link, Room, RoomKind, Vertical } from "@firewatch/shared/types";
-import type { DoorRating, SprinklerStatus } from "../live/buildingData.ts";
+import type { DoorRating, InspectionRecord, SprinklerStatus } from "../live/buildingData.ts";
 import type { BuildingCandidate, BuildingRecord, Coordinates, Position } from "./types.ts";
 import {
   bbox, distanceToRing, largestInscribedRect, largestPolygon, longAxisAngle, openRing, pointInShape, polygonsOf,
@@ -31,6 +31,11 @@ export interface SynthesizedBuilding {
   sprinklers: Record<string, SprinklerStatus>;
   /** Every door link with its fire rating. */
   doors: DoorRating[];
+  /**
+   * The assumed stair B door deficiency, one fire-door record per floor (same shape as the demo's
+   * "fire-door:7-hall|7-stair-b"). Nothing else is known about a public building's inspections.
+   */
+  inspections?: InspectionRecord[];
 }
 
 const MAX_FLOORS = 40;
@@ -39,6 +44,17 @@ const FLOOR_HEIGHT_M = 3.5;
 /** Same ids as the demo (data/model.ts STAIRS / ELEVATOR). */
 const STAIR_A = "stair-a", STAIR_B = "stair-b", ELEVATOR = "elev-1";
 const SPRINKLER_ASSUMPTION = "No sprinkler records for this building; the forecast assumes no working sprinklers.";
+/**
+ * The two stairwells differ on purpose, as in the demo building: stair B has a door propped open,
+ * stair A's doors are shut. Which floor is unknown, so stair B's vertical says doorsClosed=false and
+ * every link stays closed; the spread model (simulation/spread.ts) then opens stair B's door on the
+ * fire floor, wherever the fire is. Smoke fills stair B from the fire floor up; stair A stays clear.
+ */
+const PROPPED_STAIR = STAIR_B;
+const PROPPED_ASSUMPTION =
+  "Stairwell B is assumed to have its 60-minute door propped open on the fire floor (hold-open device not released to the fire alarm, as found in the demo building), so smoke enters Stairwell B there. Stairwell A's doors are assumed closed.";
+const PROPPED_FINDING =
+  "Assumed, no inspection records for this building: door may be found propped open (hold-open device not released to fire alarm). The forecast treats it as open when this is the fire floor.";
 
 // ---------------------------------------------------------------------------------------------
 // Building use
@@ -462,16 +478,36 @@ export function synthesizeBuilding(record: BuildingRecord, options: SynthesizeOp
   if (mappedUsed) assumptions.push(`${mappedUsed} room name${mappedUsed === 1 ? " comes" : "s come"} from the map; their sizes and positions are generated.`);
   assumptions.push(SPRINKLER_ASSUMPTION);
   assumptions.push(
-    "Door states are assumed: room doors closed and 20-minute rated (break rooms, lobbies, shops and dining rooms open), stairwell and elevator doors closed and 60-minute rated.",
+    "Door states are assumed: room doors closed and 20-minute rated (break rooms, lobbies, shops and dining rooms open), stairwell and elevator doors 60-minute rated and closed, except as below.",
   );
+  assumptions.push(PROPPED_ASSUMPTION);
   if (plan.elevatorInHall) assumptions.push("No room for an elevator beside the hallway; it is placed at the east end of the hall.");
 
   const verticals: Vertical[] = [STAIR_A, STAIR_B, ELEVATOR].map((id) => ({
     id,
     kind: id === ELEVATOR ? "elevator" : "stair",
     floors: [1, floors],
-    doorsClosed: true,
+    // Stair B: a door is propped open (on the fire floor) => smoke can enter the shaft.
+    doorsClosed: id !== PROPPED_STAIR,
   }));
+
+  // The demo records the propped door as a deficient fire-door inspection; mirror it per floor.
+  // Dated as of the map lookup (no clock read); nextDue the same day: re-inspect now.
+  const asOf = /^\d{4}-\d{2}-\d{2}/.exec(record.source.fetchedAt)?.[0];
+  const inspections: InspectionRecord[] = asOf
+    ? doors
+        .filter((d) => d.b === `${Number.parseInt(d.a)}-${PROPPED_STAIR}`)
+        .map((d): InspectionRecord => ({
+          id: `fire-door:${d.a}|${d.b}`,
+          system: "fire-door",
+          target: `${d.a}|${d.b}`,
+          floor: Number.parseInt(d.a),
+          lastInspected: asOf,
+          nextDue: asOf,
+          status: "deficient",
+          finding: PROPPED_FINDING,
+        }))
+    : [];
 
   const { lat, lon } = record.location;
   const src = record.source;
@@ -490,7 +526,7 @@ export function synthesizeBuilding(record: BuildingRecord, options: SynthesizeOp
     attribution: src.license ? `${src.attribution} (${src.license.replace(/-[\d.]+$/, "")})` : src.attribution,
   };
 
-  return { building: { rooms, links, verticals, profile }, sprinklers, doors };
+  return { building: { rooms, links, verticals, profile }, sprinklers, doors, inspections };
 }
 
 /** A candidate outline for the console's mini map, in metres relative to `origin` (x = east, z = south). */
