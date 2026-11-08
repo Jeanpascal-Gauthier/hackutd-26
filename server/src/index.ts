@@ -10,6 +10,7 @@ import { forecast } from "./live/forecast.ts";
 import { doors, inspections, sprinklers } from "./live/buildingData.ts";
 import { MockIncident } from "./mock/controller.ts";
 import { AGENT_EXPORT, guardAgent, loadAgentProcessor, loadAgentReset } from "./agent/bridge.ts";
+import { createBuildingService } from "./buildings/service.ts";
 
 const PORT = Number(process.env.PORT ?? 8080);
 const TICK_MS = Number(process.env.TICK_MS ?? 2000);
@@ -50,6 +51,7 @@ const httpServer = createHttpServer({
   buildingInfo: { building: live.data.building, occupants: live.data.occupants, sprinklers, doors, inspections },
   forecast: (origin, minutes) => forecast(origin, live.data, minutes),
   voiceToken: VOICE_TOKEN,
+  buildings: createBuildingService(),
   resetLive: () => {
     resetAgent();
     mock ? mock.reset() : live.reset();
