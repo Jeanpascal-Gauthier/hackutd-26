@@ -12,7 +12,7 @@ async function start(reply = "Leave by Stairwell A. Do not use the elevator.", o
     ingest: async (input) => {
       calls.push(input);
       if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
-      return ok ? { ok, reply, roomId: "7-break", confidence: 0.85 } : { ok, error: "server down" };
+      return ok ? { ok, reply, incidentId: "inc-1", status: "needs_location" } : { ok, error: "server down" };
     },
     publicUrl: "http://10.0.0.5:8090/",
     log: () => {},
@@ -43,7 +43,7 @@ test("POST /report forwards text + a namespaced caller and returns the reply", a
     const res = await s.post({ text: "  smoke in the break room on 7  ", caller: "web-abc123" });
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { ok: true, reply: "Leave by Stairwell A. Do not use the elevator." });
-    assert.deepEqual(s.calls, [{ text: "smoke in the break room on 7", caller: "form:web-abc123" }]);
+    assert.deepEqual(s.calls, [{ text: "smoke in the break room on 7", caller: "form:web-abc123", channel: "form" }]);
   } finally {
     await s.close();
   }
