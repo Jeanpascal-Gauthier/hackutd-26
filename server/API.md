@@ -4,6 +4,123 @@ One port (default `8080`) serves both HTTP and the WebSocket. All bodies are JSO
 
 `npm run dev` starts **mock mode**: scripted calls replay through the real model. `MOCK=0 npm run dev` starts **live mode**: it waits for real reports. Both modes support every endpoint below.
 
+## Public building lookup
+
+These additive endpoints retrieve public building information. The existing `/building`, incident,
+console, headset, and simulation continue to use the demo building. Importing a public record does
+not activate it as an incident or make it suitable for evacuation guidance.
+
+### Setup
+
+The server loads the root `.env` file. Fill in its `GEOAPIFY_API_KEY` value locally, then restart
+the server. Keep credentials out of Git and browser code. The tracked `.env.example` contains
+the setting names; `.env` and `.env.*` variants are ignored, while `.env.example` remains public.
+
+```dotenv
+GEOAPIFY_API_KEY=your_key_here
+OVERPASS_API_URL=https://overpass-api.de/api/interpreter
+```
+
+Overpass normally needs no key. `OVERPASS_API_URL` is optional and allows a hosted or self-managed
+instance. Public instances have capacity limits; use bounded lookups and caching during a prototype,
+and a suitable hosted or self-managed instance for deployment. Overture dataset imports and
+Mappedin venue imports are separate future integrations; neither is enabled by these settings.
+
+Start the server and console from the repository root using `npm.cmd run dev` on Windows.
+Open `http://localhost:8080/buildings/providers` first: `geoapify.configured` should be `true`
+after filling the key and restarting. Configuration status does not test provider credentials or
+network connectivity.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /buildings/providers` | Configuration status without credential values. |
+| `GET /buildings/search?q=...` | Geoapify address/name candidates with coordinates and match information. |
+| `POST /buildings/resolve` | Find building candidates, or import an explicitly selected OSM building. |
+| `GET /buildings/:id` | Retrieve an imported record from this server's cache. |
+| `GET /buildings/:id/rooms` | Retrieve floors, room labels, mapped connections, and data coverage for a future agent integration. |
+
+### Address and building selection
+
+First try an address lookup in your browser:
+
+```text
+http://localhost:8080/buildings/search?q=1313%20Broadway%2C%20Tacoma%2C%20WA
+```
+
+Review the returned address candidates. A match may identify a street, neighborhood, or larger site,
+so it does not automatically identify a building. Use the selected result's latitude and longitude
+in a JSON request to `POST /buildings/resolve`:
+
+```json
+{ "lat": 47.250945, "lon": -122.439413 }
+```
+
+To send that POST from PowerShell, use the following (the first response is expected to be 409
+when building candidates are available; the catch prints its JSON details):
+
+```powershell
+$lookupBody = @{ lat = 47.250945; lon = -122.439413 } | ConvertTo-Json
+try {
+  Invoke-RestMethod -Uri 'http://localhost:8080/buildings/resolve' -Method Post `
+    -ContentType 'application/json' -Body $lookupBody | ConvertTo-Json -Depth 20
+} catch {
+  $_.ErrorDetails.Message
+}
+```
+
+When building candidates exist, the endpoint returns **409** with code
+`building_selection_required` and a candidate list, even when only one outline is found.
+Confirm the correct outline, then submit the same coordinates with its returned ID:
+
+```json
+{ "lat": 47.250945, "lon": -122.439413, "buildingId": "osm:way:123" }
+```
+
+`osm:way:123` is an illustrative ID; use the actual candidate ID. A selected building must be one
+of the candidates for that location. With no mapped outlines, the response contains a location-only
+record and explicit warnings. The API does not choose the nearest building automatically.
+
+After choosing the correct candidate, put its actual ID into this request:
+
+```powershell
+$lookupBody = @{ lat = 47.250945; lon = -122.439413; buildingId = 'osm:way:123' } | ConvertTo-Json
+Invoke-RestMethod -Uri 'http://localhost:8080/buildings/resolve' -Method Post `
+  -ContentType 'application/json' -Body $lookupBody | ConvertTo-Json -Depth 20
+```
+
+Use the resulting record's ID for the record and room-catalog endpoints. IDs containing colons can
+be URL-encoded, for example `osm%3Away%3A123`. Cached records are held in memory and cleared when
+the server restarts; responses identify their retrieval and expiry times, including stale status.
+
+### Geometry, room labels, and missing information
+
+Public records are independent of the rectangular `Building` type in `shared/types.ts`:
+
+- Footprints use geographic GeoJSON Polygon/MultiPolygon coordinates in **[longitude, latitude]**
+  order, including courtyard holes. They are not the demo model's local meter coordinates.
+- Floors retain source `level` values separately from signposted `level:ref` labels such as `G`
+  or `B1`. Source floor numbers are not automatically shifted or restricted to floors 1-12.
+- Rooms retain stable source IDs, original names, room numbers, purposes, source levels, original
+  tags, and available geometry. Unnamed rooms stay unnamed; a labeled point is not a room boundary.
+- Connections reflect mapped evidence only. Door states remain unknown, and this phase always
+  reports `completeness.routeReady: false`.
+- Source attribution, license, retrieval dates, and available source timestamps accompany records.
+  Missing heights, interiors, occupancy, and safety-system data are not replaced with demo values.
+
+The catalog can be supplied to Nemotron in a later integration to match caller descriptions to
+existing room IDs. The current demo-specific agent locator is not changed by these endpoints.
+Interior coverage is partial even when some rooms are mapped; it does not establish a complete
+floor plan or a validated routing graph. A client should continue accepting incident descriptions
+and displaying known locations when model information is unavailable.
+
+Missing Geoapify configuration returns **503**. Invalid request input returns **400**, upstream
+failures return **502**, timeouts return **504**, and unknown cached IDs return **404**. Provider
+errors are sanitized so API keys and upstream error bodies are not returned to clients.
+
+References: [Geoapify geocoding](https://apidocs.geoapify.com/docs/geocoding/),
+[OSM indoor tagging](https://wiki.openstreetmap.org/wiki/Simple_Indoor_Tagging),
+[Overpass instance guidance](https://dev.overpass-api.de/overpass-doc/en/preface/commons.html).
+
 ## For the agent
 
 There are two ways to connect. Pick one.

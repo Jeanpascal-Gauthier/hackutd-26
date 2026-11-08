@@ -13,6 +13,8 @@ import type { DoorRating, InspectionRecord } from "../live/buildingData.ts";
 import type { IngestInput, ProcessResult } from "../state/processor.ts";
 import type { Ingest } from "../state/ingest.ts";
 import { hasVoiceToken, speakable } from "./voice.ts";
+import { createBuildingRoutes } from "../buildings/routes.ts";
+import type { BuildingService } from "../buildings/service.ts";
 
 const MAX_BODY = 256 * 1024; // room for an agent trail
 const MAX_TRAIL = 50;
@@ -38,6 +40,8 @@ export interface HttpDeps {
   mock?: { reset(): void; replay(): void };
   /** Shared secret for POST /voice/report (env VOICE_TOKEN). Unset: the endpoint answers 503. */
   voiceToken?: string;
+  /** Public building lookups are separate from the active demo incident. */
+  buildings?: BuildingService;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -157,12 +161,14 @@ async function readJson(req: IncomingMessage, res: ServerResponse): Promise<{ ok
   }
 }
 
-export function createHttpServer({ ingest, getState, buildingInfo, forecast, resetLive, mock, voiceToken }: HttpDeps) {
+export function createHttpServer({ ingest, getState, buildingInfo, forecast, resetLive, mock, voiceToken, buildings }: HttpDeps) {
   const roomIds = new Set(buildingInfo.building.rooms.map((r) => r.id));
+  const handleBuildingRequest = buildings && createBuildingRoutes(buildings);
   return createServer(async (req, res) => {
     const method = req.method;
     const url = (req.url ?? "").split("?")[0];
     if (method === "OPTIONS") return json(res, 204, null);
+    if (handleBuildingRequest && await handleBuildingRequest(req, res)) return;
     if (method === "GET" && url === "/health") return json(res, 200, { ok: true, mock: !!mock });
     if (method === "GET" && url === "/state") return json(res, 200, getState());
     if (method === "GET" && url === "/building") return json(res, 200, buildingInfo);
