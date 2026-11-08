@@ -1,40 +1,38 @@
-// Tool-call trail panel. App.tsx maps the server's state.trail (shared TrailStep) into these display steps.
+import type { TrailStep } from "@firewatch/shared/types";
+import { Empty, PanelHeading } from "./ui";
 import { SparkIcon } from "./Icons";
-export interface AgentStep {
-  id: string;
-  tool: string;
-  summary: string;
-  status: "running" | "completed" | "failed";
-  time?: number;
+
+function formatValue(value: unknown) {
+  return JSON.stringify(value, null, 2) ?? "No value supplied";
 }
 
-export function AgentTrail({ steps = [] }: { steps?: readonly AgentStep[] }) {
+function hasError(output: unknown): boolean {
+  return typeof output === "object" && output !== null && "error" in output && Boolean(output.error);
+}
+
+export function AgentTrail({ steps = [], demo = false }: { steps?: readonly TrailStep[]; demo?: boolean }) {
   return (
     <section className="panel" aria-labelledby="agent-heading">
-      <div className="panel-heading">
-        <h2 id="agent-heading">Agent tool calls</h2>
-        <span className="agent-icon" aria-hidden="true"><SparkIcon size={18} /></span>
-      </div>
+      <PanelHeading label="Server tool activity" title="Tool-call trail" id="agent-heading" count={steps.length} aside={<span className="agent-icon" aria-hidden="true"><SparkIcon size={18} /></span>} />
+      <p className="panel-note trail-note">
+        {demo ? "Scripted scenario: tool entries and timings may be illustrative." : "Recorded tool calls in execution order, with the server's input, output, and duration."}
+      </p>
       {steps.length ? (
         <ol className="tool-trail">
-          {steps.map((step) => (
-            <li key={step.id} className={step.status}>
-              <div><strong>{step.tool}</strong><span>{step.status}</span></div>
-              <p>{step.summary}</p>
-              {step.time !== undefined && (
-                <time dateTime={new Date(step.time).toISOString()}>
-                  {new Date(step.time).toLocaleTimeString()}
-                </time>
-              )}
+          {steps.map((step, index) => (
+            <li key={`${index}-${step.tool}`} className={hasError(step.output) ? "failed" : "recorded"}>
+              <div><strong>{step.tool}</strong><span>{Math.round(step.ms)} ms</span></div>
+              <p className="tool-status">{hasError(step.output) ? "Tool returned an error" : "Call recorded"}</p>
+              <details>
+                <summary>Inspect input & output</summary>
+                <span className="eyebrow">INPUT</span><pre>{formatValue(step.input)}</pre>
+                <span className="eyebrow">OUTPUT</span><pre>{formatValue(step.output)}</pre>
+              </details>
             </li>
           ))}
         </ol>
       ) : (
-        <div className="agent-empty">
-          <span className="pending-label">Awaiting agent connection</span>
-          <p>Tool calls will appear here when the agent provides its activity trail.</p>
-          <span className="subtle">Current reports and recommendations are shown in their own panels.</span>
-        </div>
+        <Empty title="No tool calls recorded" text="Tool activity will appear when the server records it. Reports can also be processed by the rule-based locator." />
       )}
     </section>
   );

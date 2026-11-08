@@ -15,29 +15,52 @@ The console uses the current shared contract. Source changes are confined to
   of that file automatically supplies the new floors.
 - Submit caller name and report text to `POST /ingest`. The server broadcasts the
   resulting report; the console does not invent a local copy.
-- Scrub the shared timeline with `setSimMinute`. Mock mode is detected through
-  `GET /health` and uses the server's 0–10 minute script. Non-mock mode offers 0–30
-  minutes; simulation wiring remains the server owner's responsibility.
-- Accept a recommendation with `acceptRecommendation`. This acknowledges it on the
-  server; it does not dispatch crews, send a reply, or draw an evacuation route.
+- Scrub the shared 0–30 minute forecast with `setSimMinute`, in both mock and live
+  modes. Mock mode is detected through `GET /health`: scripted reports run through
+  the real spread model. Scrubbing changes forecast conditions; scripted callers
+  are delivered on replay ticks, not re-created when you move the slider backward.
+- Read `origin` and its confidence, plus `exits` for each occupied floor: people,
+  assistance flags, recommended stair, and predicted floor/stair smoke threshold
+  times. Times are absolute forecast minutes, not minutes remaining from the slider.
+- Accept a pending recommendation with `acceptRecommendation` as the commander
+  backup control. The server moves it to `accepted`, including the server time.
+  Acceptance from another client is also shown. The wire format does not identify
+  the actor or whether it was manual, so the console never labels it human approved.
+- Forecast route segments use dashed green outlines; accepted segments become solid
+  and draw on once when acceptance arrives, while retaining hazard colors.
+  Only rooms with known fire <= 0.01 and smoke < 0.3 are marked at the selected
+  minute; this is a visualization of the server route, not a new route calculation.
+- The themed 3D building view shares floor/room selection with the 2D map and report
+  feed. Theme controls, forecast playback, and new-report/log highlights are retained
+  alongside the detailed server panels. Playback pauses on reset, replay, disconnect,
+  or manual scrubbing. Three.js is provided by the merged console dependencies.
+- Read `dispatches` as destinations/times and click a destination to inspect it.
+  The console does not invent unit names, travel states, or crew arrival times.
 - Reset/replay the scripted demo using existing endpoints. These actions affect all
   clients and clear server reports.
-- Read a bounded browser-session activity log. It records observed state changes
-  and acceptance requests, not a durable audit history or agent reasoning.
+- Read `state.log` as the shared incident history, newest first, including activity
+  recorded before this browser connected. It survives browser refresh/reconnection
+  while the server incident is alive; server resets clear it. Connection state is
+  shown in the header rather than mixed into the server log.
 - Recover automatically when the socket drops. Last received data stays visible;
   controls are disabled until reconnection.
 
-## Agent handoff
+## Agent activity and remaining handoffs
 
-`AgentTrail.tsx` implements a tool-activity list with running/completed/failed
-states and an empty state. It currently receives no steps because
-`shared/events.ts` exposes only incident state, with no tool-call trail.
+`AgentTrail.tsx` consumes shared `TrailStep` values directly from `state.trail`, in
+execution order, with expandable input/output and recorded milliseconds. A call
+whose output contains an error is marked accordingly. The contract has neither
+call timestamps nor in-progress events; the UI does not manufacture either.
 
-The exported `AgentStep` interface is a console presentation prop, **not an agreed
-wire format**. Once B/C and the team agree on tool-call events in `shared/`, adapt
-those events in `useIncident.ts` and pass the actual steps to `AgentTrail` in
-`App.tsx`. No mock tool calls are displayed as agent output. Exit-route geometry
-and durable action history similarly need an agreed server contract.
+In mock mode the trail explains that entries/timings may be illustrative. The
+server can use either a real agent or its rule-based processor, and mock replay
+adds illustrative steps when an agent trail is unavailable. An empty trail means
+no calls were recorded, not that the server is disconnected.
+
+The headset currently auto-accepts recommendations and sends dispatch events.
+Manual commander approval is a handoff to the headset owner. This console shows
+what the server recorded without claiming the source of acceptance. Its backup
+Accept button acknowledges only; it does not send a caller reply or dispatch a crew.
 
 ## Server address
 
@@ -58,7 +81,9 @@ npm.cmd run typecheck -w console
 npm.cmd run build -w console
 ```
 
-Manual smoke check: connect to the mock server, replay, select a room with mouse
-and keyboard, submit a report, scrub time, accept a recommendation, and reset.
-Confirm a second client observes the same changes, and restart the server to
-check reconnect behavior. Test a narrow/mobile viewport and disconnected controls.
+Smoke check: replay the mock incident, inspect origin/confidence and tool details,
+select a room with mouse/keyboard, submit a report, and scrub to minutes 12 and 30.
+Accept and dispatch from a second client; confirm accepted actions, route segments,
+dispatch history and shared log appear on the console. Refresh and verify that
+history survives, then reset and verify it clears. Restart the server to check
+reconnection. Test narrow/mobile layouts and disabled controls while disconnected.

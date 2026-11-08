@@ -94,7 +94,9 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
         const y = pad + (room.z - minZ) * scale;
         const w = room.w * scale;
         const d = room.d * scale;
-        const onRoute = route.has(room.id);
+        // Retain forecast/acceptance animation, without marking hazardous or unknown segments green.
+        const onRoute = route.has(room.id) && current !== undefined && fire <= 0.01 && smoke < 0.3;
+        const isOrigin = origin?.roomId === room.id;
         const label = room.name.replace(/^Floor \d+ /, "");
         const status = current ? `fire ${Math.round(fire * 100)} percent, smoke ${Math.round(smoke * 100)} percent` : "awaiting incident data";
 
@@ -120,7 +122,7 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = nu
         const totalH = lines.reduce((sum, line) => sum + line.size, 0) + gap * Math.max(0, lines.length - 1);
         let cursor = y + d / 2 - totalH / 2;
 
-        return <g key={room.id} role="button" tabIndex={0} aria-pressed={selected} aria-label={`${room.name}, ${status}, ${count} recorded occupants${onRoute ? ", on the evacuation route" : ""}`} className={`map-room ${selected ? "is-selected" : ""}`} onClick={() => onSelect(room.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(room.id); } }}>
+        return <g key={room.id} role="button" tabIndex={0} data-room-id={room.id} data-origin={isOrigin || undefined} data-route={onRoute && routeActive || undefined} aria-pressed={selected} aria-label={`${room.name}, ${status}, ${count} recorded occupants${isOrigin ? ", suspected fire origin" : ""}${onRoute ? routeActive ? ", accepted route segment" : ", forecast route segment" : ""}`} className={`map-room ${selected ? "is-selected" : ""}`} onClick={() => onSelect(room.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelect(room.id); } }}>
           <title>{room.name} · {room.id}{current ? ` · fire ${Math.round(fire * 100)}% · smoke ${Math.round(smoke * 100)}%` : " · No incident data"}{count ? ` · ${count} people` : ""}{onRoute ? " · evacuation route" : ""}</title>
           {/* Fill and stroke as styles so scrubbing the timeline cross-fades them; :hover / :focus-visible override the stroke. */}
           <rect className="room-shape" x={x + 2} y={y + 2} width={Math.max(1, w - 4)} height={Math.max(1, d - 4)} rx={4} strokeWidth={selected ? 2.5 : 1} style={{ fill: roomFill(fire, smoke), stroke }} />

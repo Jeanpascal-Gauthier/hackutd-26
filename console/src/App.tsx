@@ -1,17 +1,18 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import building from "@firewatch/shared/building.json";
-import type { FloorExit, IncidentState, Report, TrailStep } from "@firewatch/shared/types";
+import type { FloorExit, IncidentState, Report } from "@firewatch/shared/types";
 import { FloorPlan } from "./FloorPlan";
 import { Building3DPanel } from "./building3d";
-import { AgentTrail, type AgentStep } from "./AgentTrail";
-import { CheckIcon, FlameIcon, MoonIcon, PauseIcon, PinIcon, PlayIcon, PulseIcon, ReplayIcon, SendIcon, StairsIcon, SunIcon, UsersIcon } from "./Icons";
+import { AgentTrail } from "./AgentTrail";
+import { ExitAnalysis } from "./ExitAnalysis";
+import { IncidentDecisions, IncidentLog } from "./IncidentActivity";
+import { Empty, PanelHeading, roomName, formatTime as time } from "./ui";
+import { CheckIcon, FlameIcon, MoonIcon, PauseIcon, PinIcon, PlayIcon, ReplayIcon, SendIcon, StairsIcon, SunIcon, UsersIcon } from "./Icons";
 import { useIncident } from "./useIncident";
 import { useTheme } from "./theme";
 import "./styles.css";
 
 const floors = [...new Set(building.rooms.map((room) => room.floor))].sort((a, b) => b - a);
-const roomName = (id?: string) => building.rooms.find((room) => room.id === id)?.name ?? id ?? "Location pending";
-const time = (value: number) => new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 /** Forecast playback: last minute and step interval. */
 const PLAY_END = 30;
 const PLAY_STEP_MS = 400;
@@ -38,10 +39,11 @@ function useFreshIds(ids: string[] | null): Set<string> {
 }
 
 export function App() {
-  const { state, connected, mode, send, request, log } = useIncident();
+  const { state, connected, mode, send, request } = useIncident();
   const { theme, toggle: toggleTheme } = useTheme();
   const [floor, setFloor] = useState(floors.includes(7) ? 7 : floors[0]);
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
+  const floorTabs = useRef<HTMLDivElement>(null);
   const [caller, setCaller] = useState("");
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -56,22 +58,22 @@ export function App() {
   const selectedReports = reports.filter((report) => report.roomId === selectedRoom);
   const minute = state?.simMinute ?? 0;
   // The server forecasts 0-30 minutes in both mock and live mode.
-  const maxMinute = Math.max(30, minute);
+  const maxMinute = PLAY_END;
   const floorStatus = statusByFloor(state);
   const exits = state?.exits ?? [];
-  const steps = (state?.trail ?? []).map(toStep);
   const serverLog = state?.log;
   const freshReports = useFreshIds(state ? state.reports.map((report) => report.id) : null);
   const freshLog = useFreshIds(serverLog ? serverLog.map(logId) : null);
 
-  // Route draw-on: only when `accepted` goes from absent to present while this screen is watching,
-  // never on first load. The token clears once the draw has finished, leaving a static solid route.
-  const acceptedSeen = useRef<boolean | null>(null);
+  // Draw a newly accepted decision once, including replacement decisions, never on first load.
+  // Clear the token after animation so the accepted route stays static.
+  const acceptedSeen = useRef<number | null | undefined>(undefined);
   const [routeDraw, setRouteDraw] = useState<number | null>(null);
   useLayoutEffect(() => {
     if (!state) return;
-    const now = !!state.accepted;
-    if (acceptedSeen.current === false && state.accepted) setRouteDraw(state.accepted.time);
+    const now = state.accepted?.time ?? null;
+    if (acceptedSeen.current !== undefined && now !== null && acceptedSeen.current !== now) setRouteDraw(now);
+    if (now === null) setRouteDraw(null);
     acceptedSeen.current = now;
   }, [state]);
   useEffect(() => {
@@ -79,6 +81,21 @@ export function App() {
     const timer = setTimeout(() => setRouteDraw(null), 2600);
     return () => clearTimeout(timer);
   }, [routeDraw]);
+
+  useEffect(() => {
+    const tabs = floorTabs.current;
+    if (!tabs) return;
+    const revealActiveFloor = () => {
+      const active = tabs.querySelector<HTMLElement>("[aria-pressed=true]");
+      if (!active) return;
+      const offset = active.getBoundingClientRect().left - tabs.getBoundingClientRect().left;
+      if (offset < 0 || offset + active.offsetWidth > tabs.clientWidth) tabs.scrollLeft += offset - 8;
+    };
+    revealActiveFloor();
+    const resize = new ResizeObserver(revealActiveFloor);
+    resize.observe(tabs);
+    return () => resize.disconnect();
+  }, [floor]);
 
   // Forecast playback: step the shared minute once every 400ms up to 30. Stops at the end, on
   // disconnect, when a send fails, or when the operator drags the slider.
@@ -111,6 +128,11 @@ export function App() {
     if (room) { setFloor(room.floor); setSelectedRoom(id); }
   }
 
+  function selectFloor(value: number) {
+    setFloor(value);
+    setSelectedRoom((id) => building.rooms.find((room) => room.id === id)?.floor === value ? id : null);
+  }
+
   async function submitReport(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting || !caller.trim() || !text.trim()) return;
@@ -126,6 +148,7 @@ export function App() {
   }
 
   async function demoAction(action: "reset" | "replay") {
+    setPlaying(false);
     setDemoBusy(true);
     setNotice(null);
     try {
@@ -171,9 +194,10 @@ export function App() {
         <section className="column building-column" aria-label="Building and timeline">
           <section className="panel building-panel" aria-labelledby="building-heading">
             <PanelHeading title="Building view" id="building-heading" aside={<span className="subtle">{floors.length} floors</span>} />
-            <div className="floor-toolbar"><div className="floor-tabs" role="group" aria-label="Select floor">{floors.map((value) => { const status = floorStatus.get(value); return <button key={value} className={floor === value ? "active" : ""} aria-pressed={floor === value} aria-label={`Floor ${value}${status ? `, ${status}` : ""}`} title={status ? `Floor ${value}: ${status}` : undefined} onClick={() => { setFloor(value); setSelectedRoom(null); }}>{status && <i className={`floor-dot ${status}`} aria-hidden="true" />}{value}</button>; })}</div></div>
+            <div className="floor-toolbar"><div ref={floorTabs} className="floor-tabs" role="group" aria-label="Select floor">{floors.map((value) => { const status = floorStatus.get(value); return <button key={value} className={floor === value ? "active" : ""} aria-pressed={floor === value} aria-label={`Floor ${value}${status ? `, ${status}` : ""}`} title={status ? `Floor ${value}: ${status}` : undefined} onClick={() => selectFloor(value)}>{status && <i className={`floor-dot ${status}`} aria-hidden="true" />}{value}</button>; })}</div></div>
             <FloorPlan floor={floor} state={state} selectedRoom={selectedRoom} onSelect={setSelectedRoom} drawRoute={routeDraw} />
             <div className="map-legend"><span><i className="swatch neutral" />No fire or smoke</span><span><i className="swatch smoke" />Smoke</span><span><i className="swatch fire" />Fire</span><span><i className="swatch origin" />Likely origin</span><span><i className="swatch route" />Route (forecast)</span><span><i className="swatch route-active" />Route (active)</span><span><i className="swatch selected" />Selected</span></div>
+            {state?.accepted && <p className="route-note">Active outlines mark accepted route segments below the smoke threshold with no visible fire at this minute. Hazard colors remain visible.</p>}
             <div className="room-inspector">{selected ? <>
               <div className="inspector-heading"><div><span className="eyebrow">Room details</span><h3>{selected.name}</h3></div><code>{selected.id}</code></div>
               <div className="room-stats"><span>Fire<strong>{selectedState ? `${Math.round(selectedState.fire * 100)}%` : "No data"}</strong></span><span>Smoke<strong>{selectedState ? `${Math.round(selectedState.smoke * 100)}%` : "No data"}</strong></span><span>Occupants<strong>{selectedOccupants.length ? selectedOccupants.reduce((sum, item) => sum + item.count, 0) : "Unrecorded"}</strong></span></div>
@@ -181,28 +205,29 @@ export function App() {
               <p className="subtle">{selectedReports.length} report{selectedReports.length === 1 ? "" : "s"} linked to this room.</p>
             </> : <Empty title="Inspect a room" text="Select a room on the floor plan or a location in the report feed." />}</div>
           </section>
-          <Building3DPanel state={state} floor={floor} selectedRoom={selectedRoom} onSelectRoom={setSelectedRoom} onSelectFloor={(f) => setFloor(f)} />
+          <Building3DPanel state={state} floor={floor} selectedRoom={selectedRoom} onSelectRoom={focusRoom} onSelectFloor={selectFloor} />
           <section className="panel timeline-panel" aria-labelledby="timeline-heading">
             <div className="timeline-heading"><div><h2 id="timeline-heading">Forecast timeline</h2><p className="subtle">Shared with every connected screen</p></div><div className="timeline-controls"><button className="button secondary play-button" disabled={!connected || !state} onClick={togglePlayback} aria-label={playing ? "Pause forecast playback" : `Play forecast from minute ${minute >= PLAY_END ? 0 : minute}`}>{playing ? <><PauseIcon size={15} />Pause</> : <><PlayIcon size={15} />Play</>}</button><span className="minute-readout"><strong>{minute}</strong>of {maxMinute} min</span></div></div>
             <label className="sr-only" htmlFor="timeline">Forecast minute</label><input id="timeline" type="range" min={0} max={maxMinute} step={1} value={Math.min(minute, maxMinute)} disabled={!connected || !state} onChange={(event) => { setPlaying(false); transmit({ type: "setSimMinute", minute: Number(event.target.value) }); }} aria-valuetext={`${minute} minutes`} />
             <div className="timeline-scale"><span>Now</span><span>+{maxMinute} min</span></div>
-            {mode === "mock" && <div className="demo-controls"><span>Replay uses scripted reports and estimates.</span><div><button className="button quiet" disabled={!connected || demoBusy} onClick={() => void demoAction("reset")}>Reset</button><button className="button secondary" disabled={!connected || demoBusy} onClick={() => void demoAction("replay")}><ReplayIcon size={15} />Replay demo</button></div></div>}
+            {mode === "mock" && <div className="demo-controls"><span>Scripted reports run through the spread model.</span><div><button className="button quiet" disabled={!connected || demoBusy} onClick={() => void demoAction("reset")}>Reset</button><button className="button secondary" disabled={!connected || demoBusy} onClick={() => void demoAction("replay")}><ReplayIcon size={15} />Replay demo</button></div></div>}
             <p className="model-note">Illustrative fire and smoke estimates.</p>
           </section>
+          <ExitAnalysis state={state} floor={floor} onSelectRoom={focusRoom} onSelectFloor={selectFloor} />
         </section>
         <aside className="column activity-column">
           <section className="panel recommendation-panel" aria-labelledby="recommendation-heading"><PanelHeading title="Recommended actions" id="recommendation-heading" aside={state?.recommendation ? <span className="pill warn">Needs review</span> : state?.accepted ? <span className="pill safe"><CheckIcon size={13} />Accepted</span> : undefined} />{state?.recommendation ? <div className="recommendation-content fade-in" key={state.recommendation.actions.join("|")}>
             <ol className="action-list">{state.recommendation.actions.map((action, index) => <li key={`${index}-${action}`}>{action}</li>)}</ol>
             {state.recommendation.callerReply && <div className="caller-reply"><span className="eyebrow">Suggested caller reply</span><p>“{state.recommendation.callerReply}”</p></div>}
-            <button className="button primary full-width" disabled={!connected} onClick={() => transmit({ type: "acceptRecommendation" })}><CheckIcon size={16} />Accept recommendation</button><p className="subtle">Lights the evacuation route on every screen. Crew dispatch and caller replies are handled separately.</p>
-          </div> : state?.accepted ? <Accepted accepted={state.accepted} /> : <Empty title="No recommendation pending" text="New suggested actions will appear here for operator review." />}</section>
-          {exits.length > 0 && <Evacuation exits={exits} active={!!state?.accepted} onFloor={(value) => { setFloor(value); setSelectedRoom(null); }} />}
-          <AgentTrail steps={steps} />
-          {serverLog ? <section className="panel" aria-labelledby="log-heading"><PanelHeading title="Incident log" id="log-heading" aside={<span className="count-badge" aria-label={`${serverLog.length} entries`}>{serverLog.length}</span>} /><p className="log-caption">Recorded by the server, the same on every screen.</p><ol className="incident-log">{[...serverLog].reverse().map((entry, index) => <li key={`${entry.time}-${serverLog.length - index}`} className={freshLog.has(logId(entry)) ? "is-new" : undefined}><span className={`log-dot ${entry.kind}`} aria-hidden="true" /><div><p>{entry.text}</p><time dateTime={new Date(entry.time).toISOString()}>{time(entry.time)}</time></div></li>)}</ol>{!serverLog.length && <Empty title="Waiting for activity" text="Reports, recommendations, and actions will be recorded here." />}</section>
-          : <section className="panel" aria-labelledby="log-heading"><PanelHeading title="Incident log" id="log-heading" aside={<span className="count-badge" aria-label={`${log.length} entries`}>{log.length}</span>} /><p className="log-caption">Activity observed in this browser session.</p><ol className="incident-log">{log.map((entry) => <li key={entry.id}><span className={`log-dot ${entry.kind}`} aria-hidden="true" /><div><p>{entry.message}</p><time dateTime={new Date(entry.time).toISOString()}>{time(entry.time)}</time></div></li>)}</ol>{!log.length && <Empty title="Waiting for activity" text="Connections, new reports, and actions will be recorded here." />}</section>}
+            <button className="button primary full-width" disabled={!connected} onClick={() => transmit({ type: "acceptRecommendation" })}><CheckIcon size={16} />Accept recommendation</button><p className="subtle">Commander backup control. Acceptance is shared across clients; caller replies and crew dispatch are handled separately.</p>
+          </div> : <Empty title="No recommendation pending" text={state?.accepted ? "The last accepted decision remains visible below." : "New suggested actions will appear here for review."} />}</section>
+          <IncidentDecisions state={state} onSelectRoom={focusRoom} />
+          {exits.length > 0 && <Evacuation exits={exits} active={!!state?.accepted} onFloor={selectFloor} />}
+          <AgentTrail steps={state?.trail} demo={mode === "mock"} />
+          <IncidentLog entries={serverLog} freshIds={freshLog} />
         </aside>
       </div>
-      <footer className="app-footer"><span><b>FireSight</b> · A shared view for faster decisions.</span><span>{mode === "mock" ? "Synthetic building · Scripted incident" : "Incident state supplied by server"}</span></footer>
+      <footer className="app-footer"><span><b>FireSight</b> · A shared view for faster decisions.</span><span>{mode === "mock" ? "Synthetic building · Scripted reports · Model forecast" : "Incident state supplied by server"}</span></footer>
     </main>
   </div>;
 }
@@ -220,7 +245,7 @@ function StatusStrip({ state, affected, occupants, reports }: { state: IncidentS
     if (at === null || stair === exit.stair) continue;
     if (!firstFill || at < firstFill.minute || (at === firstFill.minute && exit.floor < firstFill.floor)) firstFill = { minute: at, stair, floor: exit.floor };
   }
-  const fillDetail = firstFill ? `${stairLabel(firstFill.stair)} at floor ${firstFill.floor}${state && firstFill.minute <= state.simMinute ? " · already filled" : ""}` : state ? "No stairwell forecast to fill" : "Waiting for forecast";
+  const fillDetail = firstFill ? `${stairLabel(firstFill.stair)} at floor ${firstFill.floor}${state && firstFill.minute <= state.simMinute ? " · already filled" : ""}` : exits.length ? "No stairwell forecast to fill" : "Waiting for forecast";
   return <section className="status-strip" aria-label="Incident status">
     <div className={`status-cell origin ${originRoom ? "tone-fire" : ""}`}>
       <span className="status-label"><FlameIcon size={15} />Likely origin</span>
@@ -260,12 +285,6 @@ function floorRange(values: number[]): string {
   return `${sorted.length === 1 ? "Floor" : "Floors"} ${parts.join(", ")}`;
 }
 
-function PanelHeading({ title, id, aside }: { title: string; id?: string; aside?: ReactNode }) {
-  return <div className="panel-heading"><h2 id={id}>{title}</h2>{aside}</div>;
-}
-function Empty({ title, text }: { title: string; text: string }) {
-  return <div className="empty-state"><span className="empty-symbol" aria-hidden="true"><PulseIcon size={22} /></span><strong>{title}</strong><p>{text}</p></div>;
-}
 function ReportCard({ report, selected, fresh, onSelect }: { report: Report; selected: boolean; fresh: boolean; onSelect: (id: string) => void }) {
   const canLocate = building.rooms.some((room) => room.id === report.roomId);
   const low = report.confidence !== undefined && report.confidence < 0.7;
@@ -287,33 +306,6 @@ function statusByFloor(state: IncidentState | null): Map<number, "fire" | "smoke
 
 const isAtRisk = (exit: FloorExit) => exit.atRiskAt !== null || Object.values(exit.blockedAt).some((m) => m !== null);
 const stairLabel = (id: string | null) => (id ? `Stair ${id.replace(/^stair-/, "").toUpperCase()}` : "No clear stair");
-
-/** Short, human summary of one agent tool call for the trail panel. */
-function toStep(step: TrailStep, index: number): AgentStep {
-  const out = step.output as Record<string, unknown> | null;
-  let summary: string;
-  if (out && typeof out === "object" && "roomId" in out && typeof out.roomId === "string") {
-    summary = `${out.roomId}${typeof out.confidence === "number" ? ` · ${Math.round(out.confidence * 100)}% confidence` : ""}`;
-  } else if (out && typeof out === "object" && "followUp" in out) {
-    summary = `Asked caller: ${String(out.followUp)}`;
-  } else if (Array.isArray(out)) {
-    summary = `${out.length} floor${out.length === 1 ? "" : "s"} checked`;
-  } else if (out && typeof out === "object" && Array.isArray((out as { actions?: unknown }).actions)) {
-    summary = String((out as { actions: string[] }).actions[0] ?? "Recommendation written");
-  } else {
-    const text = JSON.stringify(out);
-    summary = text && text.length > 110 ? `${text.slice(0, 110)}…` : text ?? "Done";
-  }
-  return { id: `${index}-${step.tool}`, tool: step.tool, summary: `${summary} · ${step.ms} ms`, status: "completed" };
-}
-
-function Accepted({ accepted }: { accepted: NonNullable<IncidentState["accepted"]> }) {
-  return <div className="accepted-state fade-in">
-    <div className="accepted-head"><span className="accepted-check" aria-hidden="true"><CheckIcon size={18} /></span><div><strong>Recommendation accepted</strong><time dateTime={new Date(accepted.time).toISOString()}>{time(accepted.time)}</time></div></div>
-    <ol className="action-list compact">{accepted.recommendation.actions.map((action, index) => <li key={`${index}-${action}`}>{action}</li>)}</ol>
-    <p className="subtle">The evacuation route is lit on the floor plan. New suggestions will appear here.</p>
-  </div>;
-}
 
 function Evacuation({ exits, active, onFloor }: { exits: FloorExit[]; active: boolean; onFloor: (floor: number) => void }) {
   const rows = exits.filter(isAtRisk).sort((a, b) => b.floor - a.floor);
