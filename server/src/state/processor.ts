@@ -1,10 +1,12 @@
 // Replaceable seam for Person C's agent. POST /ingest calls the active ReportProcessor.
 // The server ships with the MOCK processor (mock/processor.ts); swap it with setReportProcessor().
-import type { Recommendation, TrailStep } from "@firewatch/shared/types";
+import type { Recommendation, Report, TrailStep } from "@firewatch/shared/types";
 
 export interface IngestInput {
   text: string;
   caller: string;
+  /** How the report arrived (POST /voice/report sets "voice"). */
+  channel?: Report["channel"];
   /**
    * Set when the caller (e.g. the agent running as its own process) already located the report.
    * The server then skips its ReportProcessor and uses these fields as the result.

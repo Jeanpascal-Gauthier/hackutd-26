@@ -143,7 +143,38 @@ The same records, filtered. Query parameters are all optional and combine: `floo
 - `recommendation`: pending actions for the commander. On `acceptRecommendation` it moves to `accepted: {recommendation, time}`, so keep the route lit while `accepted` is set.
 - `dispatches[]`: `{roomId, time}`.
 - `trail[]`: agent tool calls `{tool, input, output, ms}`.
-- `log[]`: a ready-made incident log, `{time, kind, text}`, where `kind` is report, origin, recommendation, accepted or dispatch. Last 200 entries.
+- `reports[]`: each `{id, caller, text, roomId?, confidence?, time, reply?, channel?}`. `reply` is what FireSight told that caller (follow-up question or advice), so a console can show "caller said / FireSight replied" transcripts. `channel` is `voice` for phone calls.
+- `log[]`: a ready-made incident log, `{time, kind, text}`, where `kind` is report, origin, recommendation, accepted or dispatch (replies to callers are logged as `report` entries starting "Replied to"). Last 200 entries.
+
+## Phone calls (Photon → ElevenLabs → FireSight)
+
+```
+judge's phone -> Photon number -SIP-> ElevenLabs voice agent (speech-to-text, talking, text-to-speech)
+                                         | webhook tool report_fire {text, caller}
+                                         v
+                tunnel -> POST /voice/report -> same ingest path as /ingest (agent, merge, forecast, trail)
+                                         | { reply }
+                voice agent reads the reply back <-+
+```
+
+### `POST /voice/report`
+The webhook tool an ElevenLabs voice agent calls during a call. It is off unless the server starts with `VOICE_TOKEN` set (503 otherwise), and it requires that token, because a tunnel makes the server public.
+
+- **Auth:** header `x-firesight-token: <VOICE_TOKEN>` (or `Authorization: Bearer <VOICE_TOKEN>`). Wrong or missing gives 401.
+- **Body:** `{ "text": "<what the caller said>", "caller": "<caller's phone number>" }`. `caller` is optional (defaults to `voice caller`). Agent-result fields are ignored on this endpoint.
+- **Response:** `{ ok, reply, roomId }`. `reply` is ready to speak: "floors 6–12" becomes "floors 6 to 12", parentheticals are dropped, at most 3 sentences. When the location is unclear, `reply` is the follow-up question; if processing fails it is still a safe line ("Help is on the way. Which floor are you on…"). `roomId` is the located room or `null`.
+- **Effects:** identical to `/ingest`: the report (marked `channel: "voice"`, with its `reply`) appears on every screen, the agent trail and the incident log update ("Call from +1555…").
+
+### Setup checklist
+1. **Server:** `AGENT=1 MOCK=0 AGENT_TIMEOUT_MS=12000 VOICE_TOKEN=<long random string> npm run dev`.
+2. **Tunnel:** `npx -y cloudflared tunnel --url http://localhost:8080` gives `https://<name>.trycloudflare.com`. The URL changes when the tunnel restarts; update the tool URL then.
+3. **Photon:** a purchased (voice-capable) number; Voice page → SIP profile, inbound on, target `sips:sip.rtc.elevenlabs.io:5061` (TLS).
+4. **ElevenLabs → ElevenAgents:** create an agent.
+   - First message: "FireSight. Where is the fire or smoke?"
+   - System prompt: ask where the fire or smoke is; say "One moment, locating you" and call `report_fire` with exactly what the caller said; read the tool's `reply` back word for word; if the reply is a question, ask it and call the tool again with the answer; never give your own evacuation advice.
+   - Tool `report_fire` (webhook): `POST https://<tunnel>/voice/report`, header `x-firesight-token`, body `text` (string, what the caller said) and `caller` (the caller's number from ElevenLabs' system dynamic variable, likely `system__caller_id`; check their docs), timeout about 25 s.
+   - Link the agent to the Photon SIP number.
+5. **Test:** `curl -XPOST https://<tunnel>/voice/report -H 'x-firesight-token: <token>' -H 'content-type: application/json' -d '{"text":"smoke in the break room on 7","caller":"+15555550100"}'`, then the ElevenLabs in-browser test call, then a real phone.
 
 ## Control
 

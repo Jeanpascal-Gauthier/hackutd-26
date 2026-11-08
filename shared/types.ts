@@ -40,6 +40,10 @@ export interface Report {
   roomId?: string;
   confidence?: number; // 0..1
   time: number; // epoch ms
+  /** What FireSight said back to the caller (follow-up question or advice), for transcripts. */
+  reply?: string;
+  /** How the report arrived. Absent on older reports. */
+  channel?: "voice" | "sms" | "form" | "console";
 }
 
 export interface RoomState {

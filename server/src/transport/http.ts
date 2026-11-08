@@ -4,6 +4,7 @@
 //   GET  /building    building + occupants + sprinklers + doors + inspections
 //   GET  /inspections inspection records, filtered by ?floor= &system= &status=
 //   POST /forecast    what-if forecast from an origin, state unchanged (agent tools)
+//   POST /voice/report phone-call webhook (ElevenLabs tool), token-protected; replies in speakable text
 //   GET  /health      POST /live/reset      POST /mock/reset, /mock/replay (mock mode)
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { Building, IncidentState, Occupant, Recommendation, TrailStep } from "@firewatch/shared/types";
@@ -11,6 +12,7 @@ import type { Forecast } from "../live/forecast.ts";
 import type { DoorRating, InspectionRecord } from "../live/buildingData.ts";
 import type { IngestInput, ProcessResult } from "../state/processor.ts";
 import type { Ingest } from "../state/ingest.ts";
+import { hasVoiceToken, speakable } from "./voice.ts";
 
 const MAX_BODY = 256 * 1024; // room for an agent trail
 const MAX_TRAIL = 50;
@@ -34,6 +36,8 @@ export interface HttpDeps {
   resetLive(): void;
   /** Present only in mock mode: POST /mock/reset and /mock/replay drive the scripted demo. */
   mock?: { reset(): void; replay(): void };
+  /** Shared secret for POST /voice/report (env VOICE_TOKEN). Unset: the endpoint answers 503. */
+  voiceToken?: string;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -153,7 +157,7 @@ async function readJson(req: IncomingMessage, res: ServerResponse): Promise<{ ok
   }
 }
 
-export function createHttpServer({ ingest, getState, buildingInfo, forecast, resetLive, mock }: HttpDeps) {
+export function createHttpServer({ ingest, getState, buildingInfo, forecast, resetLive, mock, voiceToken }: HttpDeps) {
   const roomIds = new Set(buildingInfo.building.rooms.map((r) => r.id));
   return createServer(async (req, res) => {
     const method = req.method;
@@ -191,6 +195,26 @@ export function createHttpServer({ ingest, getState, buildingInfo, forecast, res
       if (!mock) return json(res, 404, { ok: false, error: "mock mode is off" });
       url === "/mock/reset" ? mock.reset() : mock.replay();
       return json(res, 200, { ok: true });
+    }
+
+    if (method === "POST" && url === "/voice/report") {
+      if (!voiceToken) return json(res, 503, { ok: false, error: "voice is off: start the server with VOICE_TOKEN set" });
+      if (!hasVoiceToken(req, voiceToken)) return json(res, 401, { ok: false, error: "missing or wrong x-firesight-token" });
+      const r = await readJson(req, res);
+      if (!r.ok) return;
+      // Only the caller's words and number are taken from a call; never agent-result fields.
+      const b = isObj(r.body) ? r.body : {};
+      const caller = typeof b.caller === "string" && b.caller.trim() ? b.caller : "voice caller";
+      const input = validateIngest({ text: b.text, caller }, roomIds);
+      if (Array.isArray(input)) return json(res, 400, { ok: false, errors: input, reply: speakable(undefined) });
+      try {
+        const { report, reply } = await ingest({ ...input, channel: "voice" });
+        return json(res, 200, { ok: true, reply: speakable(reply), roomId: report.roomId ?? null });
+      } catch (err) {
+        console.error("[voice] processing failed", err);
+        // Still give the voice agent something safe to say.
+        return json(res, 200, { ok: false, reply: speakable(undefined), roomId: null });
+      }
     }
 
     if (method === "POST" && url === "/ingest") {
