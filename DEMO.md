@@ -192,6 +192,18 @@ Reload the Quest tab if it looks stale (the Engine 3 progress shown there is sim
 Note: with the headset open, a new recommendation is **accepted and dispatched automatically** by the headset.
 
 ## CBRE portfolio impact (90 seconds)
+Open the normal console at <http://localhost:5173/> with **no `fixture` parameter**. The map reads
+the server's `portfolioImpact`, forecasts, affected roads, radii, and related incident IDs. Click
+a portfolio building to see its published failure chain and actions. Execute calls
+`POST /portfolio/actions/:id/execute`; successful actions, costs, and history sync to all connected
+screens and survive a browser refresh. Failed requests leave the displayed risk unchanged.
+`?fixture=map` remains a separate, local-only demo.
+
+Building locations and systems come from `data/portfolio.json`; where it has no footprint, the
+map draws a small point marker rather than claiming a surveyed building outline. The portfolio
+and CBRE scripted incidents are sample input data; the impact calculations and action handling
+run through the backend and agent's common cost model.
+
 Live numbers depend on real wind and the time of day (one run gave ~$5K), so the judged run is **scripted**: the same
 three calls with hand-built forecasts, assessed at a weekday 2 pm. Server running (`npm run demo`), console open, then
 in a second terminal (any shell):
