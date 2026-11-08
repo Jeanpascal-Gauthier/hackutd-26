@@ -37,6 +37,15 @@
       </div>
       </div>
     </div>
+    <div id="fireeye-flood" class="list" style="display: none">
+      <span id="fireeye-flood-minute" class="text">Flood forecast / minute 30 of 30</span>
+      <span id="fireeye-flood-summary" class="small"></span>
+      <div class="row">
+        <Button id="fireeye-flood-back" class="button"><ButtonLabel class="button-label">-5 min</ButtonLabel></Button>
+        <Button id="fireeye-flood-play" class="button"><span id="fireeye-flood-play-label" class="incident-label">Replay 30 min</span></Button>
+        <Button id="fireeye-flood-forward" class="button"><ButtonLabel class="button-label">+5 min</ButtonLabel></Button>
+      </div>
+    </div>
     <div id="fireeye-status-box" class="status">
       <span id="fireeye-status" class="status-text">Waiting for agent recommendations</span>
       <span id="fireeye-map-status" class="status-text">Connecting to the map...</span>
