@@ -93,3 +93,43 @@ real-server check on port 18081 and do not reset the shared demo on port 8080.
 models and panels. Scene composition lives in
 `public/scenes/main.iwsdk.scene.json`; application systems are registered in
 `src/index.ts`.
+
+### FireEye briefing and 3D city
+
+The headset now opens in FireEye. It shows a quiet briefing room and the active
+building's name and coordinates. After the teammate WebSocket supplies a nonempty
+`recommendation.actions` and Google tiles are ready, it waits two seconds, raises
+the briefing screen, and opens the city. North/East/South/West change the viewing
+side without moving the observer; Briefing returns to the room and pauses automatic
+entry until Preview city is pressed. A manual preview is also available while
+waiting for the agent. Manual preview stays open through connection retries. Longer recommendations are paged without dropping
+text. The cyan beacon marks the selected coordinate.
+
+Set `GOOGLE_MAPS_API_KEY` in the repository root `.env` and enable Google's Map Tiles
+API for that key. Only that exact Maps key is exposed to the browser. Use
+`FIREWATCH_HEADSET_PORT=8085 FIREWATCH_SERVER_URL=http://localhost:8098 npm run dev`
+from `headset/` to use those ports, or omit the variables for defaults 8081/8080.
+The existing command room remains at `/?view=firewatch`.
+
+FireEye consumes the current building and recommendation contracts. Outdoor
+fire/smoke forecasts and crash-related traffic forecasts still need agent/server
+feeds; the map imagery itself is not live incident footage. The address
+`800 W. Campbell Road` is shared by multiple UTD buildings: confirm the selected
+building rather than treating the street address as a unique match.
+
+The focused integration check uses an isolated local WebSocket fixture, leaving the
+team's live incident untouched:
+
+```sh
+npx @iwsdk/cli dev up --headless --allow-browser-automation
+npx @iwsdk/cli browser run tests/fire-eye-flow.mjs --timeout 90000
+```
+
+It requires an active mapped building, streams real Google tiles, and checks the
+briefing, recommendation delivery, countdown, screen movement, map reveal,
+attribution, texture budget and application errors. This browser check does not
+establish physical Quest frame rate.
+
+The city overview uses a 250 m elevated setback; side views use 200 m. Map textures
+retain trilinear mipmaps and up to 4x anisotropic filtering. Immersive tile selection
+uses both eyes together, and the aerial camera uses a 0.5–3000 m clipping range.

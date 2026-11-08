@@ -6,15 +6,22 @@
  */
 
 import { iwsdkDev } from '@iwsdk/vite-plugin-dev';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 
 const incidentServer = process.env.FIREWATCH_SERVER_URL ?? 'http://localhost:8080';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [iwsdkDev()],
+  // The Maps browser key is public by design; expose only this exact root .env value.
+  envDir: '..',
+  envPrefix: 'VITE_',
+  define: {
+    'import.meta.env.GOOGLE_MAPS_API_KEY': JSON.stringify(loadEnv(mode, '..', 'GOOGLE_MAPS_API_KEY').GOOGLE_MAPS_API_KEY ?? ''),
+  },
   server: {
     host: '0.0.0.0',
-    port: 8081,
+    port: Number(process.env.FIREWATCH_HEADSET_PORT ?? 8081),
+    strictPort: true,
     open: false,
     // The headset loads over https (dev cert); browsers block a secure page
     // from talking to the FireSight server's plain http/ws on :8080 (mixed
@@ -64,4 +71,4 @@ export default defineConfig({
   },
   publicDir: 'public',
   base: './',
-});
+}));

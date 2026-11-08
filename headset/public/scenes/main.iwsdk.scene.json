@@ -231,6 +231,49 @@
         "RayInteractable": {},
         "PokeInteractable": {}
       }
+    },
+    {
+      "id": "briefing-room",
+      "name": "FireEye Briefing Room",
+      "content": {
+        "type": "asset",
+        "asset": "briefing-room"
+      }
+    },
+    {
+      "id": "fire-eye-panel",
+      "name": "FireEye Briefing Panel",
+      "content": {
+        "type": "asset",
+        "asset": "fire-eye-panel"
+      },
+      "transform": {
+        "position": [
+          0,
+          1.5,
+          -2.4
+        ],
+        "scale": 0.32
+      },
+      "components": {
+        "RayInteractable": {},
+        "PokeInteractable": {}
+      }
+    },
+    {
+      "id": "fire-eye-marker",
+      "name": "FireEye Location Marker",
+      "content": {
+        "type": "asset",
+        "asset": "fire-eye-marker"
+      },
+      "transform": {
+        "position": [
+          0,
+          -150,
+          -150
+        ]
+      }
     }
   ]
 }

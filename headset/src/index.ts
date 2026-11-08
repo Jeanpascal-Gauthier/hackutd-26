@@ -11,6 +11,7 @@ import { BuildingSystem } from './building-system.js';
 import { BuildingManipulationSystem } from './building-manipulation-system.js';
 import { ConsoleSystem } from './console-system.js';
 import { PanelSystem } from './panel.js';
+import { FireEyeSystem, fireEyeRequested } from './fire-eye-system.js';
 
 World.create(
   document.getElementById('scene-container') as HTMLDivElement,
@@ -18,8 +19,11 @@ World.create(
 ).then((world) => {
   // Dev-only handle for scripted on-device checks over adb/CDP; stripped from production builds.
   if (import.meta.env.DEV) (window as unknown as { __world?: unknown }).__world = world;
-  world.registerSystem(PanelSystem);
-  world.registerSystem(BuildingSystem);
-  world.registerSystem(BuildingManipulationSystem, { priority: -2.9 });
-  world.registerSystem(ConsoleSystem);
+  if (!fireEyeRequested()) {
+    world.registerSystem(PanelSystem);
+    world.registerSystem(BuildingSystem);
+    world.registerSystem(BuildingManipulationSystem, { priority: -2.9 });
+    world.registerSystem(ConsoleSystem);
+  }
+  world.registerSystem(FireEyeSystem);
 });
