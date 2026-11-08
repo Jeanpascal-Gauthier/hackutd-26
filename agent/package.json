@@ -8,7 +8,9 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "smoke": "tsx --env-file-if-exists=../.env scripts/smoke.ts"
+    "smoke": "tsx --env-file-if-exists=../.env scripts/smoke.ts",
+    "try": "tsx --env-file-if-exists=../.env scripts/try.ts",
+    "test": "tsx --test core/*/*.test.ts"
   },
   "dependencies": {
     "@firewatch/shared": "*",
