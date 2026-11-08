@@ -1,6 +1,7 @@
 // FireSight server entry. Wiring only (app.ts): one live incident (real spread model) behind ws +
 // http on one port. Live mode (default) waits for reports and supports building address lookup;
 // MOCK=1 opts into scripted calls on the demo building.
+import "./environment.ts";
 import { createApp } from "./app.ts";
 import { AGENT_EXPORT, guardAgent, loadAgentProcessor, loadAgentReset, loadOccupancyEstimator } from "./agent/bridge.ts";
 
@@ -10,7 +11,7 @@ const MOCK = process.env.MOCK === "1"; // scripted demo is opt-in; dev supports 
 const AUTOPLAY = process.env.AUTOPLAY !== "0";
 const AGENT = process.env.AGENT === "1"; // opt in: Nemotron agent (needs NVIDIA_API_KEY in .env)
 const VOICE_TOKEN = process.env.VOICE_TOKEN?.trim() || undefined; // enables POST /voice/report and /voice/address
-const AGENT_TIMEOUT_MS = Number(process.env.AGENT_TIMEOUT_MS ?? 20000);
+const AGENT_TIMEOUT_MS = Number(process.env.AGENT_TIMEOUT_MS ?? 12000); // voice: under the ElevenLabs tool timeout; Nemotron takes ~5 s, 8.5 s worst seen
 
 // Occupancy estimates for looked-up buildings: the agent's estimateOccupancy() is pure code (no
 // API key), so it loads whatever AGENT says. Mock mode never leaves the demo building.

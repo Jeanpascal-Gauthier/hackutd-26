@@ -18,6 +18,11 @@ building from the confirmed record (with an estimated layout) and activates it.
 The server loads the root `.env` file. Fill in its `GEOAPIFY_API_KEY` value locally, then restart
 the server. Keep credentials out of Git and browser code. The tracked `.env.example` contains
 the setting names; `.env` and `.env.*` variants are ignored, while `.env.example` remains public.
+The server entry point loads this file relative to its source location before initializing
+the app and agent, including when launched directly without CLI environment-file flags.
+Explicitly supplied environment variables take precedence. A missing `.env` is allowed.
+Development uses Node's built-in watcher with the tsx TypeScript loader. If a restart still
+shows old configuration, check for an older process holding port 8080 before launching again.
 
 ```dotenv
 GEOAPIFY_API_KEY=your_key_here
@@ -46,8 +51,12 @@ network connectivity.
 provider is visible without exposing credentials. If it reports `overpass` and address search
 succeeds but the outline lookup times out, remove `BUILDING_PROVIDER=overpass` or set it to
 `geoapify` and restart. Switching public Overpass hosts or increasing timeouts does not fix an
-unresponsive backend. Overpass requests identify the project and allow up to 30 seconds for
-the public instance's queue and response. Provider failures keep the current incident active;
+unresponsive backend. Overpass requests identify the project, allow up to 45 seconds of query
+execution, and use a 60-second HTTP deadline to accommodate queueing and response transfer.
+These limits apply to both outline and interior requests; Geoapify retains its 10-second deadline.
+Address lookup starts asynchronously, so clients receive progress updates while the provider runs.
+Overpass is an explicitly selectable provider, not an automatic fallback after a Geoapify error.
+Provider failures keep the current incident active;
 they are never interpreted as an empty map.
 
 | Endpoint | Purpose |
@@ -163,7 +172,7 @@ log line.
 
 - **Activation** bumps `IncidentState.building.version` (`building` is always set: `{id, name, version, layoutEstimated}`; the demo is `id: "demo"`). Clients re-fetch `GET /building` when `id` or `version` changes. The incident restarts on the new rooms: no fire, no recommendation, no dispatches; `occupants` are the estimate (`estimated: true`); `log` and `trail` are kept. Log lines have `kind: "building"`.
 - **Occupancy** comes from the agent's `estimateOccupancy(building, Date.now())` (agent/index.ts, loaded in live mode whatever `AGENT` says). The trail gets `{ tool: "estimate_occupancy", input: { buildingId, use, localTime }, output: { total, byFloor, basis }, ms }`. If the export is missing or throws: no occupants and the log line "Occupancy estimate unavailable…".
-- **Repeats are ignored:** a lookup whose normalized text (trimmed, spaces collapsed, case-folded) equals the current lookup's `query` or `match.formatted` does nothing unless that lookup `failed`. A different address supersedes a lookup in flight (its late results are dropped); the incident stays on the current building until the new one is confirmed.
+- **Repeats are ignored:** a lookup whose normalized text (trimmed, spaces collapsed, case-folded) equals the current lookup's `query` or `match.formatted` does nothing unless that lookup `failed`. So does the same address said another way or shorter ("800 West Campbell Road" after "800 W Campbell Rd, Richardson, TX": street words abbreviated, filler dropped, `server/src/live/address.ts`); one that adds detail ("100 Main St, Plano" after "100 Main St") is a new lookup. A different address supersedes a lookup in flight (its late results are dropped); the incident stays on the current building until the new one is confirmed.
 - **Reports during a lookup** (`searching`, `needs_confirmation`, `loading`) are **held**: stored with no `roomId`, no locator or agent call, and the fixed reply **"Help is on the way. We are confirming the building now. Do not use the elevator."** This includes `/ingest` with an agent result (it was located on the old building) and a report whose own processing started the lookup. After activation each held report is processed again on the new building, one at a time in arrival order, and goes through the normal update (merge, forecast, exits, recommendation; log "Held report from … located: …"). Callers are not messaged again.
 - **Back to the demo:** `useDemoBuilding` / `POST /incident/building/demo`, and `POST /live/reset` (`npm run demo:reset`), return to the demo building with no lookup and an empty incident.
 - The processor (agent or rule-based locator) is always told the active building: in-process, the agent's `processReport(input, ctx)` gets `{ ...defaultContext, building }`. A located `roomId` that the active building doesn't have falls back to the rule-based locator for that report.
@@ -348,6 +357,19 @@ The webhook tool an ElevenLabs voice agent calls during a call. It is off unless
 - **Response:** `{ ok, reply, roomId }`. `reply` is ready to speak: "floors 6–12" becomes "floors 6 to 12", parentheticals are dropped, at most 3 sentences. When the location is unclear, `reply` is the follow-up question; if processing fails it is still a safe line ("Help is on the way. Which floor are you on…"). `roomId` is the located room or `null`.
 - **Effects:** identical to `/ingest`: the report (marked `channel: "voice"`, with its `reply`) appears on every screen, the agent trail and the incident log update ("Call from +1555…").
 
+### `POST /voice/incident`
+The webhook tool `report_incident`: any emergency, placed on the map as `state.mapIncidents[]` (shared/types.ts `MapIncident`). Same auth as `/voice/report`.
+
+- **Body:** `{ type: "fire"|"crash"|"other", address, description, what?, in_building?, severity?, lanes_blocked?, caller? }`. `description` is required. An unrecognized `type` becomes `other`; unrecognized `severity` or `lanes_blocked` become `unknown`.
+- **Answer:** always 200 once authorized: `{ ok, reply, incidentId, status }`. `reply` is what the voice agent says. It waits at most 4 s for the geocoder, so `status` may still be `locating`.
+- **One emergency, one incident:** a report joins an existing incident of the same kind from the same caller in the last 30 minutes, at the same stated address, or within 150 m once geocoded. A sole caller giving a different address moves the pin.
+- **Forecasts** run in the background (`forecastStatus`). `fire` has wind-driven fire and smoke areas and nearby building exposures. `crash` has congestion segments by minute. `other` has none. Forecasts are modeled: `assumptions` must be shown with them.
+- **Data sources:** Geoapify (geocoding, and routes and places when Overpass is down), Overpass (roads and building outlines, first choice), Open-Meteo (wind, no key).
+- A fire with `in_building: true` also starts the building lookup, exactly like `/voice/address`.
+
+### `POST /map-incidents`
+The same body and behavior as `/voice/incident`, without the voice token, for the console and for testing. Answers `{ ok, incident, reply }`, or 400 with `errors` when `description` is missing.
+
 ### `POST /voice/address`
 The webhook tool `report_address`: the caller said the building's address. Same auth as `/voice/report` (503 without `VOICE_TOKEN`, 401 with a wrong token).
 - **Body:** `{ "address": "<the address as heard>", "caller": "<caller's number>" }` (`caller` optional).
@@ -355,13 +377,13 @@ The webhook tool `report_address`: the caller said the building's address. Same 
 - Until the operator confirms the building, `/voice/report` replies "Help is on the way. We are confirming the building now. Do not use the elevator."; those reports are located after activation.
 
 ### Setup checklist
-1. **Server:** `AGENT=1 MOCK=0 AGENT_TIMEOUT_MS=12000 VOICE_TOKEN=<long random string> npm run dev`.
+1. **Server:** `AGENT=1 MOCK=0 VOICE_TOKEN=<long random string> npm run dev` (`AGENT_TIMEOUT_MS` defaults to 12000). Or `npm run demo` with `VOICE_TOKEN` and `GEOAPIFY_API_KEY` in `.env`.
 2. **Tunnel:** `npx -y cloudflared tunnel --url http://localhost:8080` gives `https://<name>.trycloudflare.com`. The URL changes when the tunnel restarts; update the tool URL then.
 3. **Photon:** a purchased (voice-capable) number; Voice page → SIP profile, inbound on, target `sips:sip.rtc.elevenlabs.io:5061` (TLS).
 4. **ElevenLabs → ElevenAgents:** create an agent.
    - First message: "FireSight. What is the address of the building?" (or keep "Where is the fire or smoke?" for demo-building calls)
    - System prompt: ask for the building's address and call `report_address` with exactly what the caller said, then read its `reply`; ask where the fire or smoke is; say "One moment, locating you" and call `report_fire` with exactly what the caller said; read the tool's `reply` back word for word; if the reply is a question, ask it and call the tool again with the answer; never give your own evacuation advice.
-   - Tool `report_fire` (webhook): `POST https://<tunnel>/voice/report`, header `x-firesight-token`, body `text` (string, what the caller said) and `caller` (the caller's number from ElevenLabs' system dynamic variable, likely `system__caller_id`; check their docs), timeout about 25 s.
+   - Tool `report_fire` (webhook): `POST https://<tunnel>/voice/report`, header `x-firesight-token`, body `text` (string, what the caller said) and `caller` (the caller's number from ElevenLabs' system dynamic variable, likely `system__caller_id`; check their docs), timeout 20 s (above the server's `AGENT_TIMEOUT_MS`, default 12 s).
    - Tool `report_address` (webhook): `POST https://<tunnel>/voice/address`, header `x-firesight-token`, body `address` (string, the address as the caller said it) and `caller` (as above), timeout about 10 s. It returns immediately.
    - Link the agent to the Photon SIP number.
 5. **Test:** `curl -XPOST https://<tunnel>/voice/report -H 'x-firesight-token: <token>' -H 'content-type: application/json' -d '{"text":"smoke in the break room on 7","caller":"+15555550100"}'`, then the ElevenLabs in-browser test call, then a real phone.

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { ReportProcessor } from "../state/processor.ts";
 import { DEMO } from "./buildingData.ts";
 import { HOLD_REPLY, normalizeQuery } from "./lookup.ts";
+import { coveredBy } from "./address.ts";
 import { ADDRESS, ELEMENTS, fakeApp, gate, match } from "../testing/lookupFakes.ts";
 import { parseClientEvent, applyClientEvent } from "../state/actions.ts";
 import { loadOccupancyEstimator } from "../agent/bridge.ts";
@@ -61,6 +62,13 @@ test("the same query (any spacing or case) is ignored unless the last attempt fa
   assert.equal(world.calls.geoapify, 1);
   assert.equal(normalizeQuery("  A  b "), "a b");
 
+  // The same address said another way (spelled out, or shorter) is a repeat too: it must not
+  // reset the operator's confirmation.
+  for (const said of ["800 West Campbell Road, Richardson", "800 w. campbell rd", "800 West Campbell Rd Richardson TX"])
+    assert.equal((app.lookups.lookupAddress(said) as { unchanged?: boolean }).unchanged, true, said);
+  assert.equal(app.store.get().buildingLookup, before);
+  assert.equal(world.calls.geoapify, 1, "spelled-out and shorter forms start no new geocode");
+
   // After a failure, the same query is retried.
   const failing = fakeApp();
   failing.world.geoapifyDown = true;
@@ -73,6 +81,15 @@ test("the same query (any spacing or case) is ignored unless the last attempt fa
   await failing.app.lookups.idle();
   assert.equal(failing.app.store.get().buildingLookup?.status, "needs_confirmation");
 }));
+
+test("coveredBy: same address said another way or shorter; one that adds detail is new", () => {
+  assert.ok(coveredBy("800 West Campbell Road", "800 W Campbell Rd, Richardson, TX"));
+  assert.ok(coveredBy("800 w. campbell rd, richardson", "800 West Campbell Road, Richardson, TX 75080, United States"));
+  assert.ok(!coveredBy("100 Main St, Plano", "100 Main St"), "adds the city: a correction, so a new lookup");
+  assert.ok(!coveredBy("801 W Campbell Rd", "800 W Campbell Rd"));
+  assert.ok(!coveredBy("800", "8000 Main St"), "whole tokens only");
+  assert.ok(!coveredBy("the", "800 Main St"), "filler only says nothing");
+});
 
 test("a newer lookup supersedes an older one still in flight", quiet(async () => {
   const { app, world } = fakeApp();
