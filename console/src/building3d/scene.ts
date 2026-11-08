@@ -1,13 +1,14 @@
 // Imperative three.js scene behind the Building3D panel. React pushes state in;
-// the scene renders on demand (state, controls, eases, resize) and never runs
-// a continuous loop.
+// the scene renders on demand (state, controls, eases, resize). The only continuous
+// loop is the animated heat field, and only while a floor has fire or smoke.
 import {
   BoxGeometry, CanvasTexture, Color, DirectionalLight, EdgesGeometry, HemisphereLight, LineBasicMaterial,
-  LineSegments, type Mesh, PerspectiveCamera, Raycaster, Scene, SRGBColorSpace, Sprite, SpriteMaterial, Vector2, Vector3, WebGLRenderer,
+  LineSegments, Mesh, PerspectiveCamera, PlaneGeometry, type ShaderMaterial, Raycaster, Scene, SRGBColorSpace, Sprite, SpriteMaterial, Vector2, Vector3, WebGLRenderer,
 } from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { IncidentState, Room } from "@firewatch/shared/types";
 import { createBuildingModel, type BuildingModel } from "./model";
+import { createHeatMaterial, hasHeat, heatSources, setHeatBounds, setHeatSources, STILL_TIME, type HeatRect } from "../heat/heatField";
 import type { Theme3D } from "./theme";
 
 export interface SceneInput { state: IncidentState | null; floor: number; selectedRoom: string | null }
@@ -26,6 +27,9 @@ const FOV = 32;
 const VIEW_AZIMUTH = -0.62; // Radians from the entrance side (+z); negative looks in from Stairwell A (-x).
 const VIEW_ELEVATION = 0.36;
 const DRAG_PX = 5;
+/** Heat field layers per burning floor: height above the slab (m) and opacity. Higher layers spread wider (see heatField). */
+const HEAT_LAYERS = [{ y: 0.7, opacity: 1 }, { y: 1.7, opacity: 0.7 }, { y: 2.7, opacity: 0.45 }];
+const HEAT_MARGIN = 1.5; // Metres the field may bleed past the facade.
 
 /** cubic-bezier(x1, y1, x2, y2) timing function, solved for y at time x. */
 function cubicBezier(x1: number, y1: number, x2: number, y2: number) {
@@ -76,6 +80,8 @@ export class BuildingScene {
   private readonly marker: Sprite;
   private readonly targets = new Map<string, Target>();
   private readonly roomMeshes: Mesh[];
+  private readonly heatGeometry = new PlaneGeometry(1, 1);
+  private readonly heatLayers = new Map<number, Mesh<PlaneGeometry, ShaderMaterial>[]>();
   private readonly raycaster = new Raycaster();
   private readonly pointer = new Vector2();
   private readonly cleanups: (() => void)[] = [];
@@ -143,6 +149,7 @@ export class BuildingScene {
 
     this.applyTheme();
     this.updateTargets(true);
+    this.updateHeat();
     this.updateSelection();
     this.resize();
     this.fit(true);
@@ -158,12 +165,13 @@ export class BuildingScene {
     this.listen();
   }
 
-  setState(state: IncidentState | null) { this.input = { ...this.input, state }; this.updateTargets(); this.updateSelection(); this.requestRender(); }
+  setState(state: IncidentState | null) { this.input = { ...this.input, state }; this.updateTargets(); this.updateHeat(); this.updateSelection(); this.requestRender(); }
   setSelectedRoom(selectedRoom: string | null) { this.input = { ...this.input, selectedRoom }; this.updateSelection(); this.requestRender(); }
   setFloor(floor: number) {
     if (floor === this.input.floor) return;
     this.input = { ...this.input, floor };
     this.updateTargets();
+    this.updateHeat();
     this.updateSelection();
     const toTarget = this.controls.target.clone().setY(this.model.floorCenterY(floor));
     const offset = toTarget.clone().sub(this.controls.target);
@@ -198,6 +206,8 @@ export class BuildingScene {
     this.roomLineMaterial.dispose();
     this.marker.material.dispose();
     this.markerTexture.dispose();
+    for (const layers of this.heatLayers.values()) for (const mesh of layers) mesh.material.dispose();
+    this.heatGeometry.dispose();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
     this.canvas.remove();
@@ -215,6 +225,7 @@ export class BuildingScene {
     this.lastTime = now;
     let animating = this.stepTween(now);
     animating = this.stepRooms(dt) || animating;
+    animating = this.stepHeat(now) || animating;
     this.controls.update(); // Emits 'change' (and so another frame) while damping settles.
     this.renderer.render(this.scene, this.camera);
     if (animating) this.requestRender();
@@ -325,6 +336,51 @@ export class BuildingScene {
       moving = true;
     }
     return moving;
+  }
+
+  /** One set of floating heat-field layers per floor with fire or smoke; the selected floor reads strongest. */
+  private updateHeat() {
+    const { state, floor } = this.input;
+    const b = this.model.bounds;
+    const clip: HeatRect = [b.minX, b.minZ, b.maxX, b.maxZ];
+    const bounds: HeatRect = [b.minX - HEAT_MARGIN, b.minZ - HEAT_MARGIN, b.maxX + HEAT_MARGIN, b.maxZ + HEAT_MARGIN];
+    for (let level = 1; level <= this.model.floors; level++) {
+      const rooms = [...this.model.rooms.values()].filter((entry) => entry.room.floor === level).map((entry) => entry.room);
+      const sources = heatSources(rooms, state);
+      let layers = this.heatLayers.get(level);
+      if (!hasHeat(sources)) {
+        if (layers) { for (const mesh of layers) { this.scene.remove(mesh); mesh.material.dispose(); } this.heatLayers.delete(level); }
+        continue;
+      }
+      if (!layers) {
+        const slab = this.model.slab(level);
+        layers = HEAT_LAYERS.map((spec, index) => {
+          const material = createHeatMaterial({ layer: index });
+          material.depthTest = false; // Visible through the slabs above, like the selection outline.
+          const mesh = new Mesh(this.heatGeometry, material);
+          mesh.rotation.x = -Math.PI / 2; // Plane +y becomes world -z, matching the shader's uv mapping.
+          mesh.scale.set(bounds[2] - bounds[0], bounds[3] - bounds[1], 1);
+          mesh.position.set((bounds[0] + bounds[2]) / 2, slab.y + spec.y, (bounds[1] + bounds[3]) / 2);
+          mesh.renderOrder = 6 + index;
+          setHeatBounds(material, bounds, clip);
+          this.scene.add(mesh);
+          return mesh;
+        });
+        this.heatLayers.set(level, layers);
+      }
+      layers.forEach((mesh, index) => {
+        setHeatSources(mesh.material, sources);
+        mesh.material.uniforms.uOpacity!.value = HEAT_LAYERS[index]!.opacity * (level === floor ? 1 : SIGNAL_DIM);
+      });
+    }
+  }
+
+  /** Advances the heat field clock; true while it should keep animating. */
+  private stepHeat(now: number): boolean {
+    if (!this.heatLayers.size) return false;
+    const still = reducedMotion();
+    for (const layers of this.heatLayers.values()) for (const mesh of layers) mesh.material.uniforms.uTime!.value = still ? STILL_TIME : now / 1000;
+    return !still;
   }
 
   private updateSelection() {
