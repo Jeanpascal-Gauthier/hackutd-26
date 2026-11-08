@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import building from "@firewatch/shared/building.json";
 import type { IncidentState } from "@firewatch/shared/types";
 
@@ -7,6 +7,8 @@ interface FloorPlanProps {
   state: IncidentState | null;
   selectedRoom: string | null;
   onSelect: (id: string) => void;
+  /** Set (to the acceptance time) while the route should draw itself on once; null otherwise. */
+  drawRoute?: number | null;
 }
 
 /** On-screen text sizes (CSS px). SVG font sizes are derived from the measured map scale so text never renders smaller. */
@@ -17,11 +19,17 @@ const PAD_PX = 6;
 /** Rough average glyph width for DM Sans, as a fraction of the font size (slightly generous so text never clips). */
 const CHAR_EM = 0.6;
 
-/** Rooms on this floor that are part of an evacuation route (hall + clear stairwell). */
-function routeRooms(state: IncidentState | null, floor: number): Set<string> {
-  const ids = new Set<string>();
-  for (const exit of state?.exits ?? []) for (const id of exit.route ?? []) if (id.startsWith(`${floor}-`)) ids.add(id);
-  return ids;
+/**
+ * Rooms on this floor that are part of an evacuation route (hall + clear stairwell), mapped to their
+ * draw order: rank of the earliest position they take in any exit.route (hall first, then stair).
+ */
+function routeRooms(state: IncidentState | null, floor: number): Map<string, number> {
+  const position = new Map<string, number>();
+  for (const exit of state?.exits ?? []) (exit.route ?? []).forEach((id, index) => {
+    if (id.startsWith(`${floor}-`)) position.set(id, Math.min(index, position.get(id) ?? Infinity));
+  });
+  const ranks = [...new Set(position.values())].sort((a, b) => a - b);
+  return new Map([...position].map(([id, index]) => [id, ranks.indexOf(index)]));
 }
 
 const shortName = (label: string) => label.replace(/^Stairwell /, "Stair ").replace(/ (Office|Room)$/, "").replace(/^Conference$/, "Conf.").replace(/^Elevator$/, "Elev.");
@@ -33,7 +41,7 @@ function roomFill(fire: number, smoke: number) {
   return "var(--room-empty)";
 }
 
-export function FloorPlan({ floor, state, selectedRoom, onSelect }: FloorPlanProps) {
+export function FloorPlan({ floor, state, selectedRoom, onSelect, drawRoute = null }: FloorPlanProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const rooms = building.rooms.filter((room) => room.floor === floor);
   const minX = Math.min(...rooms.map((room) => room.x));
@@ -62,6 +70,7 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect }: FloorPlanPro
   if (!rooms.length) return <p className="empty-state">No geometry available for this floor.</p>;
   const route = routeRooms(state, floor);
   const routeActive = !!state?.accepted;
+  const drawing = routeActive && drawRoute !== null;
   const origin = state?.origin;
   const originRoom = origin ? rooms.find((room) => room.id === origin.roomId) : undefined;
   const labelSize = LABEL_PX / k;
@@ -115,7 +124,10 @@ export function FloorPlan({ floor, state, selectedRoom, onSelect }: FloorPlanPro
           <title>{room.name} · {room.id}{current ? ` · fire ${Math.round(fire * 100)}% · smoke ${Math.round(smoke * 100)}%` : " · No incident data"}{count ? ` · ${count} people` : ""}{onRoute ? " · evacuation route" : ""}</title>
           {/* Fill and stroke as styles so scrubbing the timeline cross-fades them; :hover / :focus-visible override the stroke. */}
           <rect className="room-shape" x={x + 2} y={y + 2} width={Math.max(1, w - 4)} height={Math.max(1, d - 4)} rx={4} strokeWidth={selected ? 2.5 : 1} style={{ fill: roomFill(fire, smoke), stroke }} />
-          {onRoute && <rect className={`room-route ${routeActive ? "active" : ""}`} x={x + 6} y={y + 6} width={Math.max(1, w - 12)} height={Math.max(1, d - 12)} rx={3} />}
+          {/* Forecast: static dashed outline. Accepted: solid. Just accepted: draws on once via a normalised dash (pathLength 1). */}
+          {onRoute && (drawing
+            ? <rect key={`draw-${drawRoute}`} className="room-route active draw" pathLength={1} style={{ "--order": route.get(room.id) ?? 0 } as CSSProperties} x={x + 6} y={y + 6} width={Math.max(1, w - 12)} height={Math.max(1, d - 12)} rx={3} />
+            : <rect key="route" className={`room-route ${routeActive ? "active" : ""}`} x={x + 6} y={y + 6} width={Math.max(1, w - 12)} height={Math.max(1, d - 12)} rx={3} />)}
           {lines.map((line, index) => {
             const top = cursor;
             cursor += line.size + gap;

@@ -1,9 +1,9 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import building from "@firewatch/shared/building.json";
 import type { FloorExit, IncidentState, Report, TrailStep } from "@firewatch/shared/types";
 import { FloorPlan } from "./FloorPlan";
 import { AgentTrail, type AgentStep } from "./AgentTrail";
-import { CheckIcon, FlameIcon, MoonIcon, PinIcon, PulseIcon, ReplayIcon, SendIcon, StairsIcon, SunIcon, UsersIcon } from "./Icons";
+import { CheckIcon, FlameIcon, MoonIcon, PauseIcon, PinIcon, PlayIcon, PulseIcon, ReplayIcon, SendIcon, StairsIcon, SunIcon, UsersIcon } from "./Icons";
 import { useIncident } from "./useIncident";
 import { useTheme } from "./theme";
 import "./styles.css";
@@ -11,6 +11,30 @@ import "./styles.css";
 const floors = [...new Set(building.rooms.map((room) => room.floor))].sort((a, b) => b - a);
 const roomName = (id?: string) => building.rooms.find((room) => room.id === id)?.name ?? id ?? "Location pending";
 const time = (value: number) => new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+/** Forecast playback: last minute and step interval. */
+const PLAY_END = 30;
+const PLAY_STEP_MS = 400;
+const logId = (entry: { time: number; kind: string; text: string }) => `${entry.time}-${entry.kind}-${entry.text}`;
+
+/**
+ * Ids that arrived after the first observation (not the ones present at load). Runs as a layout effect so
+ * a new card gets its highlight class before it is first painted.
+ */
+function useFreshIds(ids: string[] | null): Set<string> {
+  const known = useRef<Set<string> | null>(null);
+  const [fresh, setFresh] = useState<Set<string>>(() => new Set());
+  const signature = ids?.join("\n");
+  useLayoutEffect(() => {
+    if (!ids) return;
+    if (!known.current) { known.current = new Set(ids); return; }
+    const added = ids.filter((id) => !known.current!.has(id));
+    if (!added.length) return;
+    for (const id of added) known.current.add(id);
+    setFresh((previous) => new Set([...previous, ...added]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature]);
+  return fresh;
+}
 
 export function App() {
   const { state, connected, mode, send, request, log } = useIncident();
@@ -36,6 +60,50 @@ export function App() {
   const exits = state?.exits ?? [];
   const steps = (state?.trail ?? []).map(toStep);
   const serverLog = state?.log;
+  const freshReports = useFreshIds(state ? state.reports.map((report) => report.id) : null);
+  const freshLog = useFreshIds(serverLog ? serverLog.map(logId) : null);
+
+  // Route draw-on: only when `accepted` goes from absent to present while this screen is watching,
+  // never on first load. The token clears once the draw has finished, leaving a static solid route.
+  const acceptedSeen = useRef<boolean | null>(null);
+  const [routeDraw, setRouteDraw] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!state) return;
+    const now = !!state.accepted;
+    if (acceptedSeen.current === false && state.accepted) setRouteDraw(state.accepted.time);
+    acceptedSeen.current = now;
+  }, [state]);
+  useEffect(() => {
+    if (routeDraw === null) return;
+    const timer = setTimeout(() => setRouteDraw(null), 2600);
+    return () => clearTimeout(timer);
+  }, [routeDraw]);
+
+  // Forecast playback: step the shared minute once every 400ms up to 30. Stops at the end, on
+  // disconnect, when a send fails, or when the operator drags the slider.
+  const [playing, setPlaying] = useState(false);
+  const playhead = useRef(0);
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  useEffect(() => {
+    if (!playing) return;
+    const timer = setInterval(() => {
+      const next = playhead.current + 1;
+      if (next > PLAY_END || !sendRef.current({ type: "setSimMinute", minute: next })) { setPlaying(false); return; }
+      playhead.current = next;
+      if (next >= PLAY_END) setPlaying(false);
+    }, PLAY_STEP_MS);
+    return () => clearInterval(timer);
+  }, [playing]);
+  useEffect(() => { if (!connected) setPlaying(false); }, [connected]);
+
+  function togglePlayback() {
+    if (playing) { setPlaying(false); return; }
+    const start = minute >= PLAY_END ? 0 : minute;
+    if (start !== minute && !transmit({ type: "setSimMinute", minute: start })) return;
+    playhead.current = start;
+    setPlaying(true);
+  }
 
   function focusRoom(id: string) {
     const room = building.rooms.find((item) => item.id === id);
@@ -92,7 +160,7 @@ export function App() {
       <StatusStrip state={state} affected={affected} occupants={occupants} reports={reports.length} />
       <div className="dashboard-grid">
         <aside className="column reports-column">
-          <section className="panel reports-panel" aria-labelledby="reports-heading"><PanelHeading title="Caller reports" id="reports-heading" aside={<span className="count-badge" aria-label={`${reports.length} reports`}>{reports.length}</span>} /><div className="report-list">{reports.length ? reports.map((report) => <ReportCard key={report.id} report={report} selected={report.roomId === selectedRoom} onSelect={focusRoom} />) : <Empty title="Listening for reports" text="Incoming reports will appear here as the incident unfolds." />}</div></section>
+          <section className="panel reports-panel" aria-labelledby="reports-heading"><PanelHeading title="Caller reports" id="reports-heading" aside={<span className="count-badge" aria-label={`${reports.length} reports`}>{reports.length}</span>} /><div className="report-list">{reports.length ? reports.map((report) => <ReportCard key={report.id} report={report} fresh={freshReports.has(report.id)} selected={report.roomId === selectedRoom} onSelect={focusRoom} />) : <Empty title="Listening for reports" text="Incoming reports will appear here as the incident unfolds." />}</div></section>
           <section className="panel" aria-labelledby="manual-heading"><PanelHeading title="Add a report" id="manual-heading" /><form className="report-form" onSubmit={submitReport}>
             <label htmlFor="caller">Caller name<input id="caller" value={caller} onChange={(event) => setCaller(event.target.value)} placeholder="e.g. Dana · floor 7" required maxLength={100} disabled={submitting} /></label>
             <label htmlFor="report">What are they reporting?<textarea id="report" value={text} onChange={(event) => setText(event.target.value)} placeholder="Smoke coming from the break room on floor 7…" required maxLength={2000} rows={4} disabled={submitting} /></label>
@@ -103,7 +171,7 @@ export function App() {
           <section className="panel building-panel" aria-labelledby="building-heading">
             <PanelHeading title="Building view" id="building-heading" aside={<span className="subtle">{floors.length} floors</span>} />
             <div className="floor-toolbar"><div className="floor-tabs" role="group" aria-label="Select floor">{floors.map((value) => { const status = floorStatus.get(value); return <button key={value} className={floor === value ? "active" : ""} aria-pressed={floor === value} aria-label={`Floor ${value}${status ? `, ${status}` : ""}`} title={status ? `Floor ${value}: ${status}` : undefined} onClick={() => { setFloor(value); setSelectedRoom(null); }}>{status && <i className={`floor-dot ${status}`} aria-hidden="true" />}{value}</button>; })}</div></div>
-            <FloorPlan floor={floor} state={state} selectedRoom={selectedRoom} onSelect={setSelectedRoom} />
+            <FloorPlan floor={floor} state={state} selectedRoom={selectedRoom} onSelect={setSelectedRoom} drawRoute={routeDraw} />
             <div className="map-legend"><span><i className="swatch neutral" />No fire or smoke</span><span><i className="swatch smoke" />Smoke</span><span><i className="swatch fire" />Fire</span><span><i className="swatch origin" />Likely origin</span><span><i className="swatch route" />Route (forecast)</span><span><i className="swatch route-active" />Route (active)</span><span><i className="swatch selected" />Selected</span></div>
             <div className="room-inspector">{selected ? <>
               <div className="inspector-heading"><div><span className="eyebrow">Room details</span><h3>{selected.name}</h3></div><code>{selected.id}</code></div>
@@ -113,8 +181,8 @@ export function App() {
             </> : <Empty title="Inspect a room" text="Select a room on the floor plan or a location in the report feed." />}</div>
           </section>
           <section className="panel timeline-panel" aria-labelledby="timeline-heading">
-            <div className="timeline-heading"><div><h2 id="timeline-heading">Forecast timeline</h2><p className="subtle">Shared with every connected screen</p></div><div className="timeline-controls"><span className="minute-readout" aria-live="off"><strong>{minute}</strong>of {maxMinute} min</span></div></div>
-            <label className="sr-only" htmlFor="timeline">Forecast minute</label><input id="timeline" type="range" min={0} max={maxMinute} step={1} value={Math.min(minute, maxMinute)} disabled={!connected || !state} onChange={(event) => transmit({ type: "setSimMinute", minute: Number(event.target.value) })} aria-valuetext={`${minute} minutes`} />
+            <div className="timeline-heading"><div><h2 id="timeline-heading">Forecast timeline</h2><p className="subtle">Shared with every connected screen</p></div><div className="timeline-controls"><button className="button secondary play-button" disabled={!connected || !state} onClick={togglePlayback} aria-label={playing ? "Pause forecast playback" : `Play forecast from minute ${minute >= PLAY_END ? 0 : minute}`}>{playing ? <><PauseIcon size={15} />Pause</> : <><PlayIcon size={15} />Play</>}</button><span className="minute-readout"><strong>{minute}</strong>of {maxMinute} min</span></div></div>
+            <label className="sr-only" htmlFor="timeline">Forecast minute</label><input id="timeline" type="range" min={0} max={maxMinute} step={1} value={Math.min(minute, maxMinute)} disabled={!connected || !state} onChange={(event) => { setPlaying(false); transmit({ type: "setSimMinute", minute: Number(event.target.value) }); }} aria-valuetext={`${minute} minutes`} />
             <div className="timeline-scale"><span>Now</span><span>+{maxMinute} min</span></div>
             {mode === "mock" && <div className="demo-controls"><span>Replay uses scripted reports and estimates.</span><div><button className="button quiet" disabled={!connected || demoBusy} onClick={() => void demoAction("reset")}>Reset</button><button className="button secondary" disabled={!connected || demoBusy} onClick={() => void demoAction("replay")}><ReplayIcon size={15} />Replay demo</button></div></div>}
             <p className="model-note">Illustrative fire and smoke estimates.</p>
@@ -128,7 +196,7 @@ export function App() {
           </div> : state?.accepted ? <Accepted accepted={state.accepted} /> : <Empty title="No recommendation pending" text="New suggested actions will appear here for operator review." />}</section>
           {exits.length > 0 && <Evacuation exits={exits} active={!!state?.accepted} onFloor={(value) => { setFloor(value); setSelectedRoom(null); }} />}
           <AgentTrail steps={steps} />
-          {serverLog ? <section className="panel" aria-labelledby="log-heading"><PanelHeading title="Incident log" id="log-heading" aside={<span className="count-badge" aria-label={`${serverLog.length} entries`}>{serverLog.length}</span>} /><p className="log-caption">Recorded by the server, the same on every screen.</p><ol className="incident-log">{[...serverLog].reverse().map((entry, index) => <li key={`${entry.time}-${serverLog.length - index}`}><span className={`log-dot ${entry.kind}`} aria-hidden="true" /><div><p>{entry.text}</p><time dateTime={new Date(entry.time).toISOString()}>{time(entry.time)}</time></div></li>)}</ol>{!serverLog.length && <Empty title="Waiting for activity" text="Reports, recommendations, and actions will be recorded here." />}</section>
+          {serverLog ? <section className="panel" aria-labelledby="log-heading"><PanelHeading title="Incident log" id="log-heading" aside={<span className="count-badge" aria-label={`${serverLog.length} entries`}>{serverLog.length}</span>} /><p className="log-caption">Recorded by the server, the same on every screen.</p><ol className="incident-log">{[...serverLog].reverse().map((entry, index) => <li key={`${entry.time}-${serverLog.length - index}`} className={freshLog.has(logId(entry)) ? "is-new" : undefined}><span className={`log-dot ${entry.kind}`} aria-hidden="true" /><div><p>{entry.text}</p><time dateTime={new Date(entry.time).toISOString()}>{time(entry.time)}</time></div></li>)}</ol>{!serverLog.length && <Empty title="Waiting for activity" text="Reports, recommendations, and actions will be recorded here." />}</section>
           : <section className="panel" aria-labelledby="log-heading"><PanelHeading title="Incident log" id="log-heading" aside={<span className="count-badge" aria-label={`${log.length} entries`}>{log.length}</span>} /><p className="log-caption">Activity observed in this browser session.</p><ol className="incident-log">{log.map((entry) => <li key={entry.id}><span className={`log-dot ${entry.kind}`} aria-hidden="true" /><div><p>{entry.message}</p><time dateTime={new Date(entry.time).toISOString()}>{time(entry.time)}</time></div></li>)}</ol>{!log.length && <Empty title="Waiting for activity" text="Connections, new reports, and actions will be recorded here." />}</section>}
         </aside>
       </div>
@@ -157,7 +225,7 @@ function StatusStrip({ state, affected, occupants, reports }: { state: IncidentS
       <span className="status-value">{originRoom ? originRoom.name.replace(/^Floor \d+ /, "") : "—"}{originRoom && <small>floor {originRoom.floor}</small>}</span>
       <span className="status-detail">{origin ? `${Math.round(origin.confidence * 100)}% confidence · ${origin.roomId}` : state ? "Not yet located" : "Waiting for incident state"}</span>
     </div>
-    <div className={`status-cell ${atRisk.length ? "tone-fire" : "tone-safe"}`}>
+    <div className={`status-cell ${atRisk.length ? "tone-fire" : state && exits.length ? "tone-safe" : ""}`}>
       <span className="status-label"><UsersIcon size={15} />Floors to evacuate</span>
       <span className="status-value">{state ? atRisk.length : "—"}{atRisk.length > 0 && <small>{atRisk.length === 1 ? "floor" : "floors"}</small>}</span>
       <span className="status-detail">{atRisk.length ? `${floorRange(atRisk.map((exit) => exit.floor))} · ${peopleAtRisk} people` : state ? "No floors at risk" : "Waiting for forecast"}</span>
@@ -196,10 +264,10 @@ function PanelHeading({ title, id, aside }: { title: string; id?: string; aside?
 function Empty({ title, text }: { title: string; text: string }) {
   return <div className="empty-state"><span className="empty-symbol" aria-hidden="true"><PulseIcon size={22} /></span><strong>{title}</strong><p>{text}</p></div>;
 }
-function ReportCard({ report, selected, onSelect }: { report: Report; selected: boolean; onSelect: (id: string) => void }) {
+function ReportCard({ report, selected, fresh, onSelect }: { report: Report; selected: boolean; fresh: boolean; onSelect: (id: string) => void }) {
   const canLocate = building.rooms.some((room) => room.id === report.roomId);
   const low = report.confidence !== undefined && report.confidence < 0.7;
-  return <article className={`report-card ${selected ? "selected-report" : ""}`}><div className="report-meta"><strong>{report.caller}</strong><time dateTime={new Date(report.time).toISOString()}>{time(report.time)}</time></div><p>{report.text}</p><div className="report-location"><button disabled={!canLocate} onClick={() => report.roomId && onSelect(report.roomId)}><PinIcon size={14} />{roomName(report.roomId)}</button>{report.confidence !== undefined && <span className={low ? "confidence low" : "confidence"}>{Math.round(report.confidence * 100)}% confidence{low ? " · low" : ""}</span>}</div></article>;
+  return <article className={`report-card${selected ? " selected-report" : ""}${fresh ? " is-new" : ""}`}><div className="report-meta"><strong>{report.caller}</strong><time dateTime={new Date(report.time).toISOString()}>{time(report.time)}</time></div><p>{report.text}</p><div className="report-location"><button disabled={!canLocate} onClick={() => report.roomId && onSelect(report.roomId)}><PinIcon size={14} />{roomName(report.roomId)}</button>{report.confidence !== undefined && <span className={low ? "confidence low" : "confidence"}>{Math.round(report.confidence * 100)}% confidence{low ? " · low" : ""}</span>}</div></article>;
 }
 
 /** Worst condition on each floor, for the floor tab dots. */

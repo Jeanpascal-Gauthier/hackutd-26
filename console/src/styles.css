@@ -367,8 +367,14 @@ input[type=range]:disabled { opacity: .45; cursor: not-allowed; }
    visible if an animation never runs. */
 .fade-in { animation: fade-in 180ms ease-out both; }
 .origin-pin { animation: fade-in 200ms var(--ease-out) both; }
+/* A newly arrived report or log entry starts accent-tinted and settles to normal once. Colour only, no movement. */
+.report-card.is-new, .incident-log li.is-new { animation: arrive 1500ms ease-out; }
+/* Route draw-on after acceptance: the outline is one normalised dash (pathLength 1) revealed hall first,
+   then stair. Under reduced motion the route simply appears solid. */
+.room-route.draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 @media (prefers-reduced-motion: no-preference) {
   .origin-pin { animation-name: pin-in; }
+  .room-route.draw { animation: route-draw 600ms var(--ease-in-out) both; animation-delay: calc(var(--order, 0) * 160ms); }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
@@ -376,3 +382,5 @@ input[type=range]:disabled { opacity: .45; cursor: not-allowed; }
 }
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes pin-in { from { opacity: 0; scale: 0.9; } }
+@keyframes arrive { from { background-color: var(--accent-surface); } }
+@keyframes route-draw { from { stroke-dashoffset: 1; } }
