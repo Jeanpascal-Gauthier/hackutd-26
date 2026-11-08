@@ -140,13 +140,21 @@ export function locateRoom(args: LocateArgs, building: Building, heard?: string)
       followUp: `Which one on floor ${floor}: ${names.slice(0, -1).join(", ")} or ${names.at(-1)}?`,
     };
   }
+  // Floor known, room not: name the rooms that floor actually has, so the caller can pick one
+  // (rooms have names, not numbers: "room 3" can't be matched).
+  const options = building.rooms
+    .filter((r) => r.floor === floor && !/-(hall|stair-[ab]|elev-\d+)$/.test(r.id))
+    .map(shortName);
+  const said = place && !ignored.length ? `I couldn't find "${place.slice(0, 40)}" on floor ${floor}. ` : "";
   return {
     ...extra,
     roomId: hall?.id,
     roomName: hall?.name,
     confidence: 0.4,
     floor,
-    followUp: `Where on floor ${floor} are you, and which room is the smoke or fire in?`,
+    followUp: options.length
+      ? `${said}Which room on floor ${floor} is the smoke or fire in: ${options.slice(0, -1).join(", ")} or ${options.at(-1)}?`
+      : `Where on floor ${floor} are you, and which room is the smoke or fire in?`,
   };
 }
 

@@ -84,3 +84,16 @@ test("mentionsFloor does not confuse 1 with 11 or 12", () => {
   assert.equal(mentionsFloor("floor 12", 2), false);
   assert.equal(mentionsFloor("the 1st floor", 1), true);
 });
+
+test("floor known, room unknown: the question lists that floor's rooms and says what didn't match", () => {
+  const r = locateRoom({ floor: 7, place: "room 3" }, building, "there's a fire on floor 7, room 3");
+  assert.equal(r.roomId, "7-hall");
+  assert.ok(r.confidence < CONFIDENT);
+  assert.equal(
+    r.followUp,
+    `I couldn't find "room 3" on floor 7. Which room on floor 7 is the smoke or fire in: Break Room, East Office, West Office, Open Office or Conference?`,
+  );
+  assert.doesNotMatch(r.followUp ?? "", /Stairwell|Elevator|Hallway/);
+  // Floor 8 has a storage room; no place given -> no "couldn't find" prefix.
+  assert.match(locateRoom({ floor: 8 }, building, "8th floor").followUp ?? "", /^Which room on floor 8 .*Storage/);
+});

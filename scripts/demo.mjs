@@ -99,10 +99,14 @@ if (headset) {
   // `dev:runtime` (vite) already gets the IWSDK plugin's self-signed HTTPS on 0.0.0.0:8081.
   // IWSDK_DEV_OPEN=false stops the plugin from downloading (~120 MB, first run) and launching
   // its own Playwright Chromium; the Quest and your own browser don't need it.
+  // keep-alive.mjs starts it 8 s after the others and retries: its IWSDK plugin gives
+  // powershell.exe only 1.5 s to report the process start time, which Windows misses when every
+  // server starts at once ("RuntimeOwnerError ... birth identity"). If it still fails, the headset
+  // is reported OFF and the rest of the demo keeps running.
   commands.push({
     name: "headset",
     prefixColor: "magenta",
-    command: "npm run dev:runtime",
+    command: `node "${path.join(ROOT, "scripts", "keep-alive.mjs")}" --name headset --delay 8000 --tries 3 -- npm run dev:runtime`,
     cwd: HEADSET_DIR,
     env: { IWSDK_DEV_OPEN: "false" },
   });
