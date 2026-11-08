@@ -46,7 +46,9 @@ For development, `npm run dev` starts only the server (mock mode) and the consol
 ## Stack
 
 - **AI:** NVIDIA Nemotron through NVIDIA's OpenAI-compatible API, with tool calling
-- **Texts:** Photon 2.0 (`@photon-ai/api`), iMessage. Voice calls are not supported.
+- **Texts:** Photon 2.0 (`@photon-ai/api`), iMessage
+- **Phone calls:** a Photon voice number forwards calls over SIP to an ElevenLabs voice agent, which asks for the address and the fire's location and calls the server's `/voice/address` and `/voice/report` tools ([DEMO.md](DEMO.md#phone-calls-elevenlabs), [server/API.md](server/API.md#phone-calls-photon--elevenlabs--firesight))
+- **Address lookup:** Geoapify geocoding plus OpenStreetMap building outlines (`GEOAPIFY_API_KEY`)
 - **Headset:** Meta Immersive Web SDK, running in the Quest browser over HTTPS
 - **Console:** React, Vite, three.js
 - **Server:** Node + TypeScript, HTTP and WebSocket on one port
