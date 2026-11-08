@@ -60,8 +60,8 @@ Each message is a text from someone in the building reporting fire or smoke.
    - place: a short phrase of 1-4 words naming only the room or area where the fire or smoke is, e.g. "break room", "hallway", "east side". If the caller says the smoke is in one place and they are near another, use where the smoke is. If they only said where they are, use that. If there is no place, leave the field out.
    - If earlier messages from the same caller are listed, combine them: a reply like "east side" answers an earlier question.
    - Never invent a floor or room the caller did not mention. If they gave no location at all, call locate_room with no arguments.
-2. If locate_room's confidence is below ${CONFIDENT}, stop here: the system texts the caller its followUp question.
-3. Otherwise call these, one at a time, in this order:
+2. If locate_room found no floor (confidence 0), stop here: the system texts the caller its followUp question.
+3. Otherwise, even if the exact room is still unclear (the floor alone decides which stairwell is safe), call these, one at a time, in this order:
    a. merge_reports: combines every report so far into the likely fire origin.
    b. run_spread with no arguments: forecasts fire and smoke for 30 minutes from that origin.
    c. find_clear_exits: the clear stairwell for each floor at risk, and who needs help.
@@ -103,14 +103,21 @@ function parseArgs(raw: string): Record<string, unknown> | undefined {
 }
 
 /**
- * The follow-up question for the caller, or undefined once the room is known.
- * Fixed wording, not model output: a message to someone in a fire must not invent advice.
- * With no reply, the server texts the recommendation's callerReply instead, which carries the
- * evacuation route from the exit analysis (server/src/state/ingest.ts).
+ * What to text the caller. Fixed wording or checked text, never free model output: a message to
+ * someone in a fire must not invent advice.
+ * - Room known: undefined, so the server texts the recommendation's callerReply (the evacuation
+ *   route from the exit analysis; server/src/state/ingest.ts).
+ * - Floor known, room unclear: what to do now (the checked callerReply when there is one), then
+ *   the question listing that floor's rooms. A caller never gets only a question once we know
+ *   enough to tell them which way out is safe.
+ * - No floor: just the question.
  */
-function replyFor(located: LocateResult | undefined): string | undefined {
+function replyFor(located: LocateResult | undefined, recommendation: Recommendation | undefined): string | undefined {
   if (located && located.confidence >= CONFIDENT && located.roomId) return undefined;
-  return located?.followUp ?? "Which floor are you on, and which room is the smoke or fire in?";
+  const question = located?.followUp ?? "Which floor are you on, and which room is the smoke or fire in?";
+  if (located?.floor === undefined) return question;
+  const guidance = recommendation?.callerReply ?? "Fire crews are on the way. Do not use the elevator.";
+  return `${guidance} ${question}`;
 }
 
 async function runTool(name: string, rawArgs: string, env: ToolEnv): Promise<{ input: unknown; output: unknown }> {
@@ -172,6 +179,6 @@ export async function processReport(input: AgentInput, ctx: AgentContext = defau
     confidence: located?.confidence ?? 0,
     recommendation,
     trail,
-    reply: replyFor(located),
+    reply: replyFor(located, recommendation),
   };
 }
