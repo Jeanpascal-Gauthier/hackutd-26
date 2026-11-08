@@ -49,13 +49,20 @@ export function findExits(
     const riskRooms = [...occ.map((o) => o.room), `${floor}-hall`];
     const times = riskRooms.map(firstSmoky).filter((m): m is number => m !== null);
 
+    // Walk out: this floor's hall, then down the chosen stairwell to floor 1.
+    const stair = ranked[0]?.id ?? null;
+    const route = stair
+      ? [`${floor}-hall`, ...Array.from({ length: floor }, (_, i) => `${floor - i}-${stair}`)].filter((id) => index.has(id))
+      : [];
+
     exits.push({
       floor,
       people: occ.reduce((n, o) => n + o.count, 0),
       flags: [...new Set(occ.flatMap((o) => o.flags))].sort(),
-      stair: ranked[0]?.id ?? null,
+      stair,
       blockedAt,
       atRiskAt: times.length ? Math.min(...times) : null,
+      route,
     });
   }
   return exits;

@@ -102,15 +102,30 @@ async function main() {
   assert.equal(st().trail?.at(-1)?.tool, "locate_room");
   console.log("ok  /ingest with an agent result skips the locator; agent recommendation, reply and trail used");
 
+  assert.equal(st().exits?.find((e) => e.floor === 10)?.route?.at(-1), "1-stair-a");
+  console.log(`ok  floor 10 route: ${st().exits!.find((e) => e.floor === 10)!.route!.slice(0, 3).join(" > ")} > ... > 1-stair-a`);
+
+  const pending = st().recommendation;
   ws.send(JSON.stringify({ type: "acceptRecommendation" }));
   await sleep(100);
   assert.equal(st().recommendation, undefined);
-  console.log("ok  acceptRecommendation consumes it");
+  assert.deepEqual(st().accepted?.recommendation, pending, "accepted keeps it, so the route stays lit");
+  console.log("ok  acceptRecommendation moves it to `accepted`");
+
+  ws.send(JSON.stringify({ type: "dispatch", roomId: "7-break" }));
+  await sleep(100);
+  assert.equal(st().dispatches?.at(-1)?.roomId, "7-break");
+  const kinds = new Set(st().log?.map((l) => l.kind));
+  for (const k of ["report", "origin", "recommendation", "accepted", "dispatch"]) assert.ok(kinds.has(k as never), `log has ${k}`);
+  console.log(`ok  dispatch recorded; incident log has ${st().log!.length} entries:`);
+  for (const l of st().log!.slice(0, 4)) console.log(`      [${l.kind}] ${l.text}`);
 
   await post("/live/reset");
   await sleep(100);
   assert.equal(st().reports.length, 0);
   assert.equal(st().origin, undefined);
+  assert.equal(st().accepted, undefined);
+  assert.equal(st().log?.length, 0);
   console.log("ok  /live/reset clears the incident");
   console.log("ALL PASSED");
 }

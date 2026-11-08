@@ -30,6 +30,8 @@ export function createIngest(
       time: Date.now(),
     };
     store.addReport(report);
+    const where = report.roomId ? `${report.roomId} (${Math.round((report.confidence ?? 0) * 100)}%)` : "location unclear";
+    store.log("report", `Report from ${report.caller}: ${where}`);
     if (result.trail?.length) store.patch({ trail: [...(store.get().trail ?? []), ...result.trail] });
     live.onReport(result);
     return { report, result, reply: result.reply ?? store.get().recommendation?.callerReply };

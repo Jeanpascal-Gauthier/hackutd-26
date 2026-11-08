@@ -93,7 +93,16 @@ Returns the current `IncidentState` (`shared/types.ts`), the same object the Web
 - **Client → server:**
   - `{ "type": "setSimMinute", "minute": 0..30 }`: scrub the forecast for everyone.
   - `{ "type": "acceptRecommendation" }`
-  - `{ "type": "dispatch", "roomId": "7-break" }`: logged only, for now.
+  - `{ "type": "dispatch", "roomId": "7-break" }`: appends to `state.dispatches`.
+
+### State fields for drawing
+- `rooms[]`: `{roomId, fire, smoke}`, each 0..1, at `simMinute`.
+- `origin`: `{roomId, confidence}`, the likely fire room.
+- `exits[]`: per occupied floor, `{floor, people, flags, stair, blockedAt, atRiskAt, route}`. `route` is the list of rooms to light green: hall → clear stairwell → down to floor 1.
+- `recommendation`: pending actions for the commander. On `acceptRecommendation` it moves to `accepted: {recommendation, time}`, so keep the route lit while `accepted` is set.
+- `dispatches[]`: `{roomId, time}`.
+- `trail[]`: agent tool calls `{tool, input, output, ms}`.
+- `log[]`: a ready-made incident log, `{time, kind, text}`, where `kind` is report, origin, recommendation, accepted or dispatch. Last 200 entries.
 
 ## Control
 
@@ -103,3 +112,18 @@ Returns the current `IncidentState` (`shared/types.ts`), the same object the Web
 | `POST /live/reset` | Clears the incident: no fire, no reports. Also stops a running demo. |
 | `POST /mock/replay` | Mock mode: restart the scripted demo. |
 | `POST /mock/reset` | Mock mode: stop, minute 0. |
+
+## Remote access (Quest headset, other laptops)
+
+The Quest browser only allows WebXR over HTTPS, so it must reach the server through `wss://`. HTTP and the WebSocket share one port, so one tunnel covers both:
+
+```sh
+brew install cloudflared                      # once
+cloudflared tunnel --url http://localhost:8080
+# prints https://<random-name>.trycloudflare.com
+```
+
+- HTTP: `https://<random-name>.trycloudflare.com/health`
+- WebSocket: `wss://<random-name>.trycloudflare.com`
+
+The URL changes each time the tunnel restarts. **Clients should not hard-code `ws://localhost:8080`.** Read it from a `?server=` query parameter or a Vite env variable instead, for example `const WS_URL = new URLSearchParams(location.search).get("server") ?? "ws://localhost:8080"`. The headset app itself also needs HTTPS (its own dev server or a second tunnel).

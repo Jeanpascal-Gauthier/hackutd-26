@@ -1,6 +1,8 @@
 // Authoritative incident state. Everything that changes the incident goes through here;
 // subscribers (the WebSocket layer) are told after every change.
-import type { IncidentState, Recommendation, Report } from "@firewatch/shared/types";
+import type { IncidentState, LogEntry, Recommendation, Report } from "@firewatch/shared/types";
+
+export const MAX_LOG = 200;
 
 export type Listener = (state: IncidentState) => void;
 
@@ -38,11 +40,24 @@ export class IncidentStore {
     this.patch({ recommendation });
   }
 
-  /** Operator accepted the current recommendation: it is consumed. Returns it (or undefined). */
+  /** Commander accepted the pending recommendation: it moves to `accepted`. Returns it (or undefined). */
   acceptRecommendation(): Recommendation | undefined {
     const accepted = this.state.recommendation;
-    if (accepted) this.patch({ recommendation: undefined });
+    if (!accepted) return undefined;
+    this.patch({ recommendation: undefined, accepted: { recommendation: accepted, time: Date.now() } });
+    this.log("accepted", `Commander accepted: ${accepted.actions[0]}`);
     return accepted;
+  }
+
+  addDispatch(roomId: string): void {
+    this.patch({ dispatches: [...(this.state.dispatches ?? []), { roomId, time: Date.now() }] });
+    this.log("dispatch", `Crew dispatched to ${roomId}`);
+  }
+
+  /** Append to the incident log (keeps the last MAX_LOG entries). */
+  log(kind: LogEntry["kind"], text: string): void {
+    const log = [...(this.state.log ?? []), { time: Date.now(), kind, text }];
+    this.patch({ log: log.slice(-MAX_LOG) });
   }
 
   reset(next: IncidentState = emptyState()): void {

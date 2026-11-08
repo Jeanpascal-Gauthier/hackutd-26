@@ -1,5 +1,6 @@
 // LIVE mode controller (MOCK=0): reports -> merged origin -> 30-minute spread forecast
 // (precomputed, so scrubbing is instant) -> exits -> recommendation. Mirrors mock/controller.ts.
+import type { Recommendation } from "@firewatch/shared/types";
 import type { IncidentStore } from "../state/store.ts";
 import type { ProcessResult, ReportProcessor } from "../state/processor.ts";
 import type { SpreadSnapshot } from "../simulation/index.ts";
@@ -26,6 +27,8 @@ export class LiveIncident {
       reports: [],
       occupants: this.data.occupants,
       trail: [],
+      dispatches: [],
+      log: [],
     });
   }
 
@@ -41,24 +44,23 @@ export class LiveIncident {
    */
   onReport(result: ProcessResult): void {
     const origin = mergeReports(this.store.get().reports, this.data.building);
-    if (!origin) {
-      if (result.recommendation) this.store.patch({ recommendation: result.recommendation });
-      return;
-    }
-    if (origin.roomId === this.originId) {
-      this.store.patch(result.recommendation ? { origin, recommendation: result.recommendation } : { origin });
+    if (!origin || origin.roomId === this.originId) {
+      if (origin) this.store.patch({ origin });
+      if (result.recommendation) this.setRecommendation(result.recommendation);
       return;
     }
     this.originId = origin.roomId;
     const f = forecast(origin.roomId, this.data);
     this.snapshots = f.snapshots;
     const minute = Math.min(this.store.get().simMinute, FORECAST_MINUTES);
-    this.store.patch({
-      origin,
-      exits: f.exits,
-      rooms: this.snapshots[minute].rooms,
-      recommendation: result.recommendation ?? f.recommendation,
-    });
+    this.store.patch({ origin, exits: f.exits, rooms: this.snapshots[minute].rooms });
+    this.store.log("origin", `Fire origin: ${origin.roomId} (${Math.round(origin.confidence * 100)}%)`);
+    this.setRecommendation(result.recommendation ?? f.recommendation);
+  }
+
+  private setRecommendation(rec: Recommendation): void {
+    this.store.setRecommendation(rec);
+    this.store.log("recommendation", `Recommended: ${rec.actions.join("; ")}`);
   }
 
   /** Scrub the forecast. Before any report there is nothing to show, so only the minute moves. */
