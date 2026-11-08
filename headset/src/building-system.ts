@@ -28,14 +28,33 @@ export class BuildingSystem extends createSystem({}) {
   private mixColor = new Color();
   private socket: IncidentSocket | null = null;
 
-  async init(): Promise<void> {
+  private stopped = false;
+  private loadTimer: ReturnType<typeof setTimeout> | null = null;
+  private loadAbort: AbortController | null = null;
+
+  init(): void {
+    this.cleanupFuncs.push(() => this.stop());
+    void this.loadBuilding();
+  }
+
+  private async loadBuilding(): Promise<void> {
+    if (this.stopped) return;
+    const abort = new AbortController();
+    this.loadAbort = abort;
+    const timeout = setTimeout(() => abort.abort(), 8000);
     let building: Building;
     try {
-      building = (await fetchBuilding()).building;
+      building = (await fetchBuilding(abort.signal)).building;
     } catch (error) {
-      console.error('[BuildingSystem] failed to load /fs-api/building', error);
+      if (!this.stopped) {
+        console.warn('[BuildingSystem] waiting for building server', error);
+        this.loadTimer = setTimeout(() => { void this.loadBuilding(); }, 2000);
+      }
       return;
+    } finally {
+      clearTimeout(timeout);
     }
+    if (this.stopped) return;
     const model = createIncidentBuilding(building);
     // Rotate/scale about the building centre rather than its floor-plan corner.
     const center = new Box3().setFromObject(model.root).getCenter(new Vector3());
@@ -60,6 +79,9 @@ export class BuildingSystem extends createSystem({}) {
   }
 
   stop(): void {
+    this.stopped = true;
+    if (this.loadTimer != null) clearTimeout(this.loadTimer);
+    this.loadAbort?.abort();
     this.socket?.close();
   }
 

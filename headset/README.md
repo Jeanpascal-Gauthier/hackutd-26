@@ -64,6 +64,7 @@ individual floor/room selection from the plan is a separate interaction.
 ```sh
 npm run typecheck
 npm run build
+node --test tests/*.test.mjs
 ```
 
 Run these inside `headset/`; the root workspace typecheck does not include it.
@@ -74,11 +75,17 @@ Reports, room hazards, evacuation routes, and people-at-risk totals come from
 the real incident server. Room heights are a display assumption of 3.5 metres;
 room footprints come from `/building`.
 
-A new recommendation automatically sends dispatch and acceptance events to the
-shared server. There is no manual commander approval control yet. Engine 3's
-progress from dispatched to en route to on scene is simulated locally; it is
-not real crew tracking. This app therefore changes the shared incident when
-running against it. Use a demo server when trying the prototype independently.
+Recommendations wait for an operator to press **Accept recommendation**.
+**Dispatch crew** sends a real dispatch event for the inferred origin room.
+The connection indicator shows when state may be stale; action buttons are
+disabled while disconnected. Commands are not queued for a later reconnect.
+Engine 3's progression is simulated locally from the confirmed dispatch timestamp,
+not real crew tracking. Incident reset clears that simulated unit.
+
+If the server is unavailable at startup, the building fetch retries until it
+returns. WebSocket connections retry after disconnect and receive the latest
+shared incident state on reconnect. The transport tests include an isolated
+real-server check on port 18081 and do not reset the shared demo on port 8080.
 
 `iwsdk.config.json` selects the scene and VR features. `src/assets.ts` registers
 models and panels. Scene composition lives in
